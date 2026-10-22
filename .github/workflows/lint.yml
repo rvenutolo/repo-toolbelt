@@ -50,9 +50,10 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
-          # The image pull, and Sigstore's TUF root for the attestation check.
+          # The image pull, and the Sigstore and GitHub TUF roots for the
+          # attestation check.
           allowed-endpoints: >-
-            api.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 tuf-repo-cdn.sigstore.dev:443
+            api.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 tuf-repo-cdn.sigstore.dev:443 tuf-repo.github.com:443
       - name: Check the image is pinned
         id: check-pin
         env:
