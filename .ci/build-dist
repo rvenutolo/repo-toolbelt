@@ -4,9 +4,11 @@
 #              runner at bin/toolbelt, each Go lint at lints/<name>/<name>,
 #              each bash lint's directory at lints/<name>/ and lib/. Which
 #              lints exist, and in which language, comes from lints.toml, so
-#              the manifest is the only list. Local runs and the image share
+#              the manifest is the only list. Run it inside the repo to
+#              build; the repo is the one containing the working directory. Local runs and the image share
 #              this layout, so what runs here is what ships.
-# @arg $1 out_dir An empty or not-yet-existing directory to build into.
+# @arg $1 out_dir An empty or not-yet-existing directory to build into,
+#                 relative to the current directory or absolute.
 # @stdout Nothing.
 # @stderr Progress, and the reason for a failure.
 # @exitcode 0 the layout was built.
@@ -28,9 +30,13 @@ shopt -s inherit_errexit
 # @description Build the layout into the out dir.
 # @arg $1 out_dir directory to build into
 function main() {
-  local -r out_dir="$1"
+  # Absolute up front: the Go builds run from the repo root, so a relative
+  # path would land somewhere other than where mkdir and cp put the rest.
+  local out_dir
+  out_dir="$(realpath --canonicalize-missing -- "$1")"
+  readonly out_dir
   local repo_dir
-  repo_dir="$(dirname -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")")"
+  repo_dir="$(git rev-parse --show-toplevel)"
   readonly repo_dir
 
   if [[ -e "${out_dir}" ]] && [[ -n "$(ls --almost-all -- "${out_dir}")" ]]; then
@@ -56,8 +62,8 @@ function main() {
         cp --recursive -- "${repo_dir}/lints/${name}" "${out_dir}/lints/${name}"
         ;;
       *)
-        printf '%s: lint %s has unsupported language %s\n' "${0##*/}" "${name}" "${language}" >&2 # coverage-exempt: lints.toml is validated by internal/manifest, so no other language reaches here
-        exit 1                                                                                    # coverage-exempt: lints.toml is validated by internal/manifest, so no other language reaches here
+        printf '%s: lint %s has unsupported language %s\n' "${0##*/}" "${name}" "${language}" >&2
+        exit 1
         ;;
     esac
   done <<< "${lints}"
