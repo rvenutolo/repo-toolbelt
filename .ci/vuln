@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+
+# @description Scan the module with govulncheck and fail on every reachable
+#              vulnerability that SECURITY-EXCEPTIONS.md does not list.
+#              govulncheck has no ignore list, so the exceptions are filtered
+#              here. A reachable vulnerability is one whose trace starts at a
+#              called function; modules and packages that are merely required
+#              or imported are not findings. A scan that did not run, or whose
+#              report cannot be read, is a failure, never a pass. Must run
+#              inside the devShell.
+#
+#              SECURITY-EXCEPTIONS.md lists one exception per line, in the
+#              form `- <OSV id>: <reason>; review by <YYYY-MM-DD>`.
+# @noargs
+# @exitcode 0 no reachable vulnerability outside the exceptions.
+# @exitcode 1 a reachable vulnerability, or the scan did not complete.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash satisfies it.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
+  exit 1
+fi
+shopt -s inherit_errexit
+
+readonly EXCEPTIONS_FILE='SECURITY-EXCEPTIONS.md'
+readonly EXCEPTION_RE='^- (GO-[0-9]{4}-[0-9]+):'
+
+# One row per reachable vulnerability and module. A report always opens with a
+# config message, so one without it is not a report.
+readonly ROWS_FILTER='
+  if any(.[]; has("config")) | not then error("no config message") else . end
+  | [ .[] | .finding? // empty | select(.trace[0].function != null)
+      | { osv,
+          module: .trace[0].module,
+          version: (.trace[0].version // "unknown"),
+          fixed: (.fixed_version // "none released") } ]
+  | unique_by([.osv, .module]) | .[]
+  | [.osv, .module, .version, .fixed]
+  | @tsv'
+
+# @description Print the excepted OSV ids, one per line.
+# @noargs
+function excepted_ids() {
+  [[ -f "${EXCEPTIONS_FILE}" ]] || return 0
+  local line
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    if [[ "${line}" =~ ${EXCEPTION_RE} ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+    fi
+  done < "${EXCEPTIONS_FILE}"
+}
+
+# @description Scan the module and judge the findings.
+# @noargs
+function main() {
+  # A finding is this check's designed return, not a crash.
+  trap - ERR
+
+  # -format json: the text report is for people. In this format govulncheck
+  # exits 0 whatever it finds, so a non-zero status means the scan itself broke.
+  local report rows
+  if ! report="$(go tool govulncheck -format json ./...)"; then
+    printf 'FAIL: govulncheck did not complete; no vulnerability verdict\n' >&2
+    return 1
+  fi
+  if ! rows="$(jq --slurp --raw-output "${ROWS_FILTER}" <<< "${report}")"; then
+    printf "FAIL: could not read govulncheck's report; no vulnerability verdict\n" >&2
+    return 1
+  fi
+
+  local excepted
+  excepted="$(excepted_ids)"
+
+  local rc=0 osv module version fixed
+  while IFS=$'\t' read -r osv module version fixed; do
+    [[ -n "${osv}" ]] || continue
+    if grep --quiet --line-regexp --fixed-strings -- "${osv}" <<< "${excepted}"; then
+      printf 'excepted: %s in %s@%s\n' "${osv}" "${module}" "${version}" >&2
+      continue
+    fi
+    printf 'FAIL: %s in %s@%s, fixed in %s (https://pkg.go.dev/vuln/%s)\n' \
+      "${osv}" "${module}" "${version}" "${fixed}" "${osv}" >&2
+    rc=1
+  done <<< "${rows}"
+  return "${rc}"
+}
+
+main "$@"

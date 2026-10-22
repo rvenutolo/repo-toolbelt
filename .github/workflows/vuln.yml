@@ -1,0 +1,34 @@
+name: vuln
+on:
+  push:
+    branches: [main]
+  # New advisories appear without a code change, so the scan also runs daily.
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  # event_name is in the key so a scheduled run (ref = main) cannot be
+  # cancelled by a push to main landing in the same window.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  vuln:
+    name: vuln
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 vuln.go.dev:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `$/` waits on actionlint support; this job runs its own commit, so `./` is the same tree.
+      - uses: ./.github/actions/setup # zizmor: ignore[self-repository]
+      - name: Scan for reachable vulnerabilities
+        run: ./.ci/in-devshell ./.ci/vuln
