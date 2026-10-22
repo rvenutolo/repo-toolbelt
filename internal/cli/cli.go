@@ -1,33 +1,28 @@
-// Package cli implements the toolbelt command line: subcommand dispatch,
-// usage text and exit codes.
+// Package cli implements the toolbelt command line: subcommands, usage text
+// and the mapping from errors to exit codes.
 package cli
 
 import (
+	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
+	"runtime/debug"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
 )
 
-// Exit codes. A usage error is any bad argument, flag or lint selection.
+// Exit codes returned by ExitCode.
 const (
-	exitOK    = 0
-	exitUsage = 2
+	exitError     = 1
+	exitUsage     = 2
+	exitCancelled = 130
 )
 
-const usageText = `Usage: toolbelt <command> [options]
+const rootLong = `toolbelt runs the lints this image ships.
 
-Commands:
-  plan    print the job groups for a set of lints as JSON
-  list    print every lint with its speed and description
-  help    print this help
-
-Run 'toolbelt <command> --help' for a command's options.
-
-Exit codes: 0 success, 1 findings, 2 usage or setup error.
-`
+Exit codes: 0 success, 1 findings or a runtime error, 2 usage or setup error,
+130 interrupted.`
 
 // usageError is the caller's mistake: a bad argument, flag or lint selection.
 type usageError struct{ err error }
@@ -39,76 +34,47 @@ func usagef(format string, args ...any) error {
 	return usageError{fmt.Errorf(format, args...)}
 }
 
+// ExitCode maps an error returned by Run to a process exit code: 0 for nil,
+// 2 for a usage error, 130 when interrupted, 1 otherwise.
+func ExitCode(err error) int {
+	var usage usageError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &usage):
+		return exitUsage
+	case errors.Is(err, context.Canceled):
+		return exitCancelled
+	default:
+		return exitError
+	}
+}
+
 // Runner runs toolbelt commands against a fixed set of lints.
 type Runner struct {
 	// Lints is the manifest of lints the commands operate on.
 	Lints []manifest.Lint
+	// Version is the string --version prints.
+	Version string
 }
 
-// Run runs toolbelt with the embedded manifest and returns the exit code.
-func Run(args []string, env func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
-	return Runner{Lints: manifest.Load()}.Run(args, env, stdin, stdout, stderr)
+// Run runs toolbelt with the embedded manifest. Help and version requests
+// return nil. A non-nil error is for the caller to print and pass to ExitCode.
+func Run(ctx context.Context, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return Runner{Lints: manifest.Load(), Version: buildVersion()}.Run(ctx, args, getenv, stdin, stdout, stderr)
 }
 
-// Run executes the subcommand named by args[0] and returns the process exit
-// code. It reads the environment only through env and writes only to the given
-// streams.
-func (r Runner) Run(args []string, env func(string) string, _ io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usageText)
-		return exitUsage
-	}
-	var err error
-	switch args[0] {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usageText)
-		return exitOK
-	case "plan":
-		err = r.plan(args[1:], env, stdout, stderr)
-	case "list":
-		err = r.list(args[1:], stdout, stderr)
-	default:
-		err = usagef("unknown subcommand %q", args[0])
-	}
-	return finish(err, stderr)
+// Run executes args and reads the environment only through getenv and writes
+// only to the given streams.
+func (r Runner) Run(ctx context.Context, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
+	cmd := r.newRootCmd(getenv, stdin, stdout, stderr)
+	cmd.SetArgs(args)
+	return cmd.ExecuteContext(ctx)
 }
 
-// finish maps a subcommand's error to an exit code, reporting it on stderr.
-func finish(err error, stderr io.Writer) int {
-	var usage usageError
-	switch {
-	case err == nil, errors.Is(err, flag.ErrHelp):
-		return exitOK
-	case errors.As(err, &usage):
-		fmt.Fprintf(stderr, "toolbelt: %s\nRun 'toolbelt --help' for usage.\n", usage)
-		return exitUsage
-	default:
-		fmt.Fprintf(stderr, "toolbelt: %s\n", err)
-		return 1
+func buildVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
 	}
-}
-
-// newFlagSet returns a FlagSet that reports parse problems through Parse's
-// error instead of printing them.
-func newFlagSet(name string) *flag.FlagSet {
-	fs := flag.NewFlagSet("toolbelt "+name, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	return fs
-}
-
-// parseFlags parses args. On -h or --help it prints the synopsis and flag
-// defaults to stdout and returns flag.ErrHelp; any other parse failure is a
-// usage error.
-func parseFlags(fs *flag.FlagSet, args []string, synopsis string, stdout io.Writer) error {
-	err := fs.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintf(stdout, "Usage: toolbelt %s\n\n", synopsis)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
-		return flag.ErrHelp
-	}
-	if err != nil {
-		return usageError{err}
-	}
-	return nil
+	return "dev"
 }

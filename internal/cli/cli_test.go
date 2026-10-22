@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -22,13 +24,23 @@ type result struct {
 	stdout, stderr string
 }
 
+// run mirrors main: the error goes to stderr and maps to an exit code.
 func run(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	runner := cli.Runner{Lints: lints}
-	code := runner.Run(args, func(k string) string { return env[k] }, strings.NewReader(""), &stdout, &stderr)
-	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
+	runner := cli.Runner{Lints: lints, Version: "1.2.3"}
+	err := runner.Run(context.Background(), args, func(k string) string { return env[k] }, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		stderr.WriteString("error: " + err.Error() + "\n")
+	}
+	return result{code: cli.ExitCode(err), stdout: stdout.String(), stderr: stderr.String()}
 }
+
+type failingWriter struct{}
+
+var errWrite = errors.New("disk full")
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
 func TestRun_usage(t *testing.T) {
 	t.Parallel()
@@ -148,5 +160,48 @@ func TestRun_planHelp(t *testing.T) {
 	got := run(t, nil, "plan", "--help")
 	if got.code != 0 || got.stderr != "" || !strings.Contains(got.stdout, "--mode") {
 		t.Errorf("got %+v, want exit 0 with flags on stdout", got)
+	}
+}
+
+func TestRun_version(t *testing.T) {
+	t.Parallel()
+	got := run(t, nil, "--version")
+	if got.code != 0 || got.stderr != "" || !strings.Contains(got.stdout, "1.2.3") {
+		t.Errorf("got %+v, want exit 0 and the version on stdout", got)
+	}
+}
+
+func TestRun_flagsMayFollowLints(t *testing.T) {
+	t.Parallel()
+	got := run(t, nil, "plan", "a", "b", "--mode", "matrix")
+	if got.code != 0 || got.stdout != "{\"groups\":[[\"a\"],[\"b\"]]}\n" {
+		t.Errorf("got %+v, want exit 0 and a matrix plan", got)
+	}
+}
+
+func TestRun_writeErrorsExit1(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"list"}, {"plan", "a"}} {
+		t.Run(args[0], func(t *testing.T) {
+			t.Parallel()
+			runner := cli.Runner{Lints: lints}
+			err := runner.Run(context.Background(), args, func(string) string { return "" }, strings.NewReader(""), failingWriter{}, &bytes.Buffer{})
+			if !errors.Is(err, errWrite) || cli.ExitCode(err) != 1 {
+				t.Errorf("err = %v (exit %d), want the write error and exit 1", err, cli.ExitCode(err))
+			}
+		})
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	t.Parallel()
+	if got := cli.ExitCode(nil); got != 0 {
+		t.Errorf("nil: %d, want 0", got)
+	}
+	if got := cli.ExitCode(context.Canceled); got != 130 {
+		t.Errorf("canceled: %d, want 130", got)
+	}
+	if got := cli.ExitCode(errors.New("boom")); got != 1 {
+		t.Errorf("other: %d, want 1", got)
 	}
 }
