@@ -1,4 +1,4 @@
-package patchcov
+package coverage
 
 import (
 	"bytes"
@@ -66,4 +66,11 @@ func HashMarkers(src []byte) []Marker {
 		markers = append(markers, Marker{Line: n, Reason: strings.TrimSpace(string(m[1]))})
 	}
 	return markers
+}
+
+// Exempts reports whether m exempts b from the coverage count: it gives a
+// reason and sits on a line b spans. A marker without a reason exempts
+// nothing.
+func Exempts(m Marker, b Block) bool {
+	return m.Reason != "" && b.StartLine <= m.Line && m.Line <= b.EndLine
 }
