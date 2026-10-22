@@ -17,6 +17,6 @@ go internal/lintkit 8
 go internal/manifest 1
 go internal/patchcov 0
 go internal/pins 0
-go internal/refs 2
+go internal/refs 1
 go internal/runner 2
 go internal/selection 0

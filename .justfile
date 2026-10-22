@@ -13,7 +13,7 @@ check:
 lint:
     ./.ci/in-devshell ./.ci/run-lint-checks
 
-# Run the BATS suite: ./.ci/in-devshell ./run-tests
+# Run the Go tests and the BATS suite: ./.ci/in-devshell ./run-tests
 test:
     ./.ci/in-devshell ./run-tests
 

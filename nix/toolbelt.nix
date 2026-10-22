@@ -11,8 +11,10 @@ buildGoModule {
   pname = "repo-toolbelt";
   inherit version;
 
-  # Only what the Go build reads, so an edit to docs, tests or bash leaves
-  # this derivation alone. lints.toml is embedded in the runner.
+  # Only what the Go build reads, so the source hash ignores docs and bash.
+  # The derivation still rebuilds on every commit of a development build,
+  # whose version (0.0.0-<shortRev>) is linked in. lints.toml is embedded in
+  # the runner.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

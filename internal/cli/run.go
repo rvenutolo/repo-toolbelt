@@ -64,8 +64,8 @@ func (r Runner) newRunCmd(getenv func(string) string) *cobra.Command {
 			"pre-commit diffs against HEAD; pre-push reads git's lines from stdin, needs\n" +
 			"--remote, and runs the lints once per pushed ref; ci takes the event's raw\n" +
 			"--base and --head (with --default-branch as the fallback) and computes the\n" +
-			"merge-base itself. ci with neither flag gives the lints an empty base and\n" +
-			"range.",
+			"merge-bases itself, diffing the checkout. ci with neither flag gives the\n" +
+			"lints an empty base and range.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := r.run(cmd.Context(), cmd, args, flags, getenv)
 			// An interrupted run fails in whatever step it reached; report it

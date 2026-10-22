@@ -132,31 +132,49 @@ func (g git) ci(ctx context.Context, in Input) ([]Target, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--head: %w", err)
 	}
-	base := ""
 	if in.Base != "" && !isZero(in.Base) {
 		b, err := g.commit(ctx, in.Base)
 		switch {
 		case err == nil:
-			if base, err = g.mergeBase(ctx, b, head); err != nil {
-				return nil, err
-			}
+			return g.ciWithBase(ctx, b, head)
 		case !errors.Is(err, errNotCommit):
 			return nil, fmt.Errorf("--base: %w", err)
 		}
 	}
-	if base == "" {
-		if in.DefaultBranch == "" {
-			return nil, fmt.Errorf("%w: --default-branch is required when --base is empty, all zeros or not in the checkout", ErrUsage)
-		}
-		def, err := g.commit(ctx, "refs/remotes/origin/"+in.DefaultBranch)
-		if err != nil {
-			return nil, fmt.Errorf("origin/%s is not in the checkout; fetch it: %w", in.DefaultBranch, err)
-		}
-		if base, err = g.mergeBase(ctx, def, head); err != nil {
-			return nil, err
-		}
+	if in.DefaultBranch == "" {
+		return nil, fmt.Errorf("%w: --default-branch is required when --base is empty, all zeros or not in the checkout", ErrUsage)
+	}
+	def, err := g.commit(ctx, "refs/remotes/origin/"+in.DefaultBranch)
+	if err != nil {
+		return nil, fmt.Errorf("origin/%s is not in the checkout; fetch it: %w", in.DefaultBranch, err)
+	}
+	base, err := g.mergeBase(ctx, def, head)
+	if err != nil {
+		return nil, err
 	}
 	return []Target{{Base: base, Range: base + ".." + head}}, nil
+}
+
+// ciWithBase diffs the checkout against its merge base with base, and takes
+// the range from base's merge base with head. On a pull request the checkout
+// is GitHub's merge of head into base, so diffing it against the branch point
+// would count base's own commits since then as changes; the range still ends
+// at head, so the synthetic merge commit is not judged. On a push the
+// checkout is head and both merge bases agree.
+func (g git) ciWithBase(ctx context.Context, base, head string) ([]Target, error) {
+	checkout, err := g.commit(ctx, "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("the checkout's HEAD: %w", err)
+	}
+	diffBase, err := g.mergeBase(ctx, base, checkout)
+	if err != nil {
+		return nil, err
+	}
+	rangeBase, err := g.mergeBase(ctx, base, head)
+	if err != nil {
+		return nil, err
+	}
+	return []Target{{Base: diffBase, Range: rangeBase + ".." + head}}, nil
 }
 
 func (g git) mergeBaseWithRemoteHead(ctx context.Context, head, remote string) (string, error) {
