@@ -1,0 +1,3 @@
+check-workflow-hermetic:
+  wrapper: a
+  wrapper: b

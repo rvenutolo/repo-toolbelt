@@ -2,7 +2,11 @@ module github.com/rvenutolo/repo-toolbelt
 
 go 1.26.9
 
-require github.com/BurntSushi/toml v1.6.0
+require (
+	github.com/BurntSushi/toml v1.6.0
+	github.com/goccy/go-yaml v1.19.2
+	github.com/google/go-cmp v0.7.0
+)
 
 require (
 	golang.org/x/mod v0.42.0 // indirect

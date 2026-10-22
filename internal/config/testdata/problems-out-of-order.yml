@@ -1,0 +1,5 @@
+zzz: 1
+check-workflow-hermetic:
+  wrapper: a
+  wrapper: b
+aaa: 1

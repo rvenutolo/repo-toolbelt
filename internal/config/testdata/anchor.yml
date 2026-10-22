@@ -1,0 +1,2 @@
+check-issue-numbers: &section
+  a: 1
