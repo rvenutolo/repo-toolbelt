@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+# @description Fail when a kcov Cobertura report covers no line at all. A
+#              suite that runs the measured bash always covers some of it, so
+#              a total of zero means kcov is not tracing the scripts, not that
+#              they are untested, and a coverage gate reading that report
+#              would grade nothing. Must run inside the devShell.
+# @arg $1 report the path of kcov's cobertura.xml
+# @stderr the reason, when the check fails.
+# @exitcode 0 the report covers at least one line.
+# @exitcode 1 the report covers no line, cannot be read, or no report is named.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash satisfies it.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
+  exit 1
+fi
+shopt -s inherit_errexit
+
+# @description Print a failure reason for the report to stderr and exit 1.
+# @arg $1 message the reason
+function fail() {
+  local -r message="$1"
+  printf '%s: %s: %s\n' "${0##*/}" "${REPORT}" "${message}" >&2
+  exit 1
+}
+
+# @description Check the report's total covered-line count.
+# @noargs
+function main() {
+  if [[ ! -f "${REPORT}" ]]; then
+    fail 'no such report'
+  fi
+  local covered
+  if ! covered="$(yq --input-format xml --output-format yaml '.coverage."+@lines-covered"' "${REPORT}")"; then
+    fail 'cannot read the report'
+  fi
+  if [[ ! "${covered}" =~ ^[0-9]+$ ]]; then
+    fail 'no lines-covered count on the coverage element'
+  fi
+  if ((10#${covered} == 0)); then
+    fail 'kcov recorded no covered lines, so it is not tracing the bash under test'
+  fi
+}
+
+if (($# != 1)); then
+  printf 'usage: %s <cobertura.xml>\n' "${0##*/}" >&2
+  exit 1
+fi
+readonly REPORT="$1"
+
+main "$@"

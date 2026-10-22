@@ -3,8 +3,9 @@
 # @description Run the test suites. With no arguments, runs the Go tests with a
 #              coverage profile under .coverage/go/ and then every BATS test
 #              under test/ beneath kcov, which writes its report under
-#              .coverage/bats/. With arguments, forwards them to bats verbatim
-#              and measures nothing.
+#              .coverage/bats/, and fails if that report covers no line at
+#              all. With arguments, forwards them to bats verbatim and
+#              measures nothing.
 #
 #              Both suites always run and the exit codes aggregate, so one run
 #              surfaces every failing suite. Must run inside the devShell.
@@ -135,6 +136,9 @@ function main() {
   run_go_tests || rc=1
   log_info 'running BATS tests under kcov'
   run_bats_under_kcov || rc=1
+  # kcov exits 0 with an empty report when it fails to trace, so a report that
+  # covers nothing is checked for here rather than trusted.
+  ./.ci/check-kcov-hits "${COVERAGE_DIR}/bats/bats/cobertura.xml" || rc=1
   if ((rc != 0)); then
     log_err 'one or more test suites failed'
   fi
