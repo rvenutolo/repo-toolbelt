@@ -49,33 +49,8 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	return append(findings, history...), nil
 }
 
-// ReadReports reads every report the section names. A report that is
-// missing, or names a file outside the repository, is a finding, and then
-// the reports are nil; any other failure to read one is an error.
-func ReadReports(root string, section coverage.Section) ([]coverage.Report, []lintkit.Finding, error) {
-	reports := make([]coverage.Report, len(section.Reports))
-	var findings []lintkit.Finding
-	for i, spec := range section.Reports {
-		report, err := coverage.ReadFile(root, spec)
-		var outside *coverage.OutsideError
-		switch {
-		case errors.Is(err, coverage.ErrNotFound):
-			findings = append(findings, lintkit.Finding{Path: spec.Path, Message: "coverage report not found"})
-		case errors.As(err, &outside):
-			findings = append(findings, lintkit.Finding{Path: spec.Path, Message: outside.Error()})
-		case err != nil:
-			return nil, nil, err
-		}
-		reports[i] = report
-	}
-	if len(findings) > 0 {
-		return nil, findings, nil
-	}
-	return reports, nil, nil
-}
-
 func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error) {
-	reports, findings, err := ReadReports(root, section)
+	reports, findings, err := coverage.ReadReports(root, section)
 	if err != nil || len(findings) > 0 {
 		return findings, err
 	}

@@ -12,7 +12,6 @@ import (
 
 	"github.com/rvenutolo/repo-toolbelt/internal/config"
 	"github.com/rvenutolo/repo-toolbelt/internal/coverage"
-	"github.com/rvenutolo/repo-toolbelt/internal/coveragedrop"
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
@@ -70,7 +69,7 @@ func (r Runner) updateBaseline(root string, stdout, stderr io.Writer) (string, e
 		}
 		return "", codeError{code: exitError, err: fmt.Errorf("the %s section has %d problem(s)", coverageDropLint, len(problems))}
 	}
-	reports, findings, err := coveragedrop.ReadReports(root, section)
+	reports, findings, err := coverage.ReadReports(root, section)
 	if err != nil {
 		return "", setupf("%w", err)
 	}

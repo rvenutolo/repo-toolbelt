@@ -18,7 +18,6 @@ import (
 	"syscall"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/coverage"
-	"github.com/rvenutolo/repo-toolbelt/internal/coveragedrop"
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
@@ -46,7 +45,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer root.Close()
-	reports, findings, err := coveragedrop.ReadReports(lc.Root, section)
+	reports, findings, err := coverage.ReadReports(lc.Root, section)
 	if err != nil || len(findings) > 0 {
 		return findings, err
 	}

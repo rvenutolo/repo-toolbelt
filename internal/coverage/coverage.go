@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
 // ErrNotFound is the report file not existing.
@@ -93,4 +95,29 @@ func ReadFile(root string, spec ReportSpec) (Report, error) {
 		return Report{}, fmt.Errorf("read %s: %w", spec.Path, err)
 	}
 	return report, nil
+}
+
+// ReadReports reads every report the section names. A report that is
+// missing, or names a file outside the repository, is a finding, and then
+// the reports are nil; any other failure to read one is an error.
+func ReadReports(root string, section Section) ([]Report, []lintkit.Finding, error) {
+	reports := make([]Report, len(section.Reports))
+	var findings []lintkit.Finding
+	for i, spec := range section.Reports {
+		report, err := ReadFile(root, spec)
+		var outside *OutsideError
+		switch {
+		case errors.Is(err, ErrNotFound):
+			findings = append(findings, lintkit.Finding{Path: spec.Path, Message: "coverage report not found"})
+		case errors.As(err, &outside):
+			findings = append(findings, lintkit.Finding{Path: spec.Path, Message: outside.Error()})
+		case err != nil:
+			return nil, nil, err
+		}
+		reports[i] = report
+	}
+	if len(findings) > 0 {
+		return nil, findings, nil
+	}
+	return reports, nil, nil
 }
