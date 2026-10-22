@@ -2,6 +2,7 @@ package issuerefs
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,20 +16,20 @@ import (
 // Check is the check-issue-numbers lint: it validates the section, then
 // reports every reference in the tracked text files that no exemption covers,
 // and every exemption that covered nothing.
-func Check(ctx lintkit.Context) ([]lintkit.Finding, error) {
-	exemptions, problems, err := ParseSection(ctx.Section)
+func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
+	exemptions, problems, err := ParseSection(lc.Section)
 	if err != nil {
 		return nil, err
 	}
 	if len(problems) > 0 {
 		return problems, nil
 	}
-	root, err := os.OpenRoot(ctx.Root)
+	root, err := os.OpenRoot(lc.Root)
 	if err != nil {
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer root.Close()
-	files, err := textFiles(ctx.Root)
+	files, err := textFiles(ctx, lc.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -48,11 +49,10 @@ func Check(ctx lintkit.Context) ([]lintkit.Finding, error) {
 
 // textFiles lists the tracked files git takes for text, by git's own test,
 // in git's order. A tracked file missing from the working tree is left out.
-func textFiles(dir string) ([]string, error) {
+func textFiles(ctx context.Context, dir string) ([]string, error) {
 	// An empty pattern matches every line, so this lists every tracked text
 	// file with any content; an empty file holds no reference to report.
-	cmd := exec.Command("git", //nolint:noctx // a lint is cancelled by the runner signalling its whole process group, git included
-		"grep", "-I", "-z", "--files-with-matches", "--color=never", "-e", "", "--")
+	cmd := exec.CommandContext(ctx, "git", "grep", "-I", "-z", "--files-with-matches", "--color=never", "-e", "", "--")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

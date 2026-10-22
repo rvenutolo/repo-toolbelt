@@ -10,5 +10,5 @@ import (
 )
 
 func main() {
-	os.Exit(lintkit.Main("check-issue-numbers", issuerefs.Check))
+	os.Exit(lintkit.Main("check-issue-numbers", "issue reference", issuerefs.Check))
 }

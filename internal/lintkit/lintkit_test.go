@@ -2,6 +2,7 @@ package lintkit_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,8 +32,9 @@ func newHarness(t *testing.T, section string) *harness {
 	return &harness{dir: dir, env: map[string]string{"TOOLBELT_SECTION": sectionFile}}
 }
 
-func (h *harness) run(check lintkit.Check, args ...string) int {
-	return lintkit.Run("demo", check, lintkit.Env{
+func (h *harness) run(t *testing.T, check lintkit.Check, args ...string) int {
+	t.Helper()
+	return lintkit.Run(t.Context(), "demo", "widget", check, lintkit.Env{
 		Args:   args,
 		Getenv: func(name string) string { return h.env[name] },
 		Dir:    h.dir,
@@ -42,13 +44,13 @@ func (h *harness) run(check lintkit.Check, args ...string) int {
 }
 
 func returning(findings ...lintkit.Finding) lintkit.Check {
-	return func(lintkit.Context) ([]lintkit.Finding, error) { return findings, nil }
+	return func(context.Context, lintkit.Context) ([]lintkit.Finding, error) { return findings, nil }
 }
 
 func TestRun_noFindingsPasses(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	if got := h.run(returning()); got != 0 {
+	if got := h.run(t, returning()); got != 0 {
 		t.Errorf("exit = %d, want 0", got)
 	}
 	if h.stdout.Len() != 0 || h.stderr.Len() != 0 {
@@ -59,7 +61,7 @@ func TestRun_noFindingsPasses(t *testing.T) {
 func TestRun_findingsSortedThenCounted(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	got := h.run(returning(
+	got := h.run(t, returning(
 		lintkit.Finding{Path: "b.txt", Line: 2, Message: "b two"},
 		lintkit.Finding{Path: "a.txt", Line: 10, Message: "a ten"},
 		lintkit.Finding{Path: "b.txt", Line: 0, Message: "b whole file"},
@@ -74,7 +76,7 @@ func TestRun_findingsSortedThenCounted(t *testing.T) {
 		"a.txt:10: a ten\n" +
 		"b.txt: b whole file\n" +
 		"b.txt:2: b two\n" +
-		"5 demo finding(s)\n"
+		"5 widget(s)\n"
 	if diff := cmp.Diff(want, h.stdout.String()); diff != "" {
 		t.Errorf("stdout mismatch (-want +got):\n%s", diff)
 	}
@@ -86,11 +88,11 @@ func TestRun_findingsSortedThenCounted(t *testing.T) {
 func TestRun_equalLocationsKeepCheckOrder(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	h.run(returning(
+	h.run(t, returning(
 		lintkit.Finding{Path: "a", Line: 1, Message: "second"},
 		lintkit.Finding{Path: "a", Line: 1, Message: "first"},
 	))
-	want := "a:1: second\na:1: first\n2 demo finding(s)\n"
+	want := "a:1: second\na:1: first\n2 widget(s)\n"
 	if diff := cmp.Diff(want, h.stdout.String()); diff != "" {
 		t.Errorf("stdout mismatch (-want +got):\n%s", diff)
 	}
@@ -99,8 +101,8 @@ func TestRun_equalLocationsKeepCheckOrder(t *testing.T) {
 func TestRun_escapesUserValuesOntoOneLine(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	h.run(returning(lintkit.Finding{Path: "a\nb\tc", Line: 3, Message: "x\ry\x1bz\x7f\x00 \xffé"}))
-	want := "a\\nb\\tc:3: x\\ry?z?? ?é\n1 demo finding(s)\n"
+	h.run(t, returning(lintkit.Finding{Path: "a\nb\tc", Line: 3, Message: "x\ry\x1bz\x7f\x00 \xffé"}))
+	want := "a\\nb\\tc:3: x\\ry?z?? ?é\n1 widget(s)\n"
 	if diff := cmp.Diff(want, h.stdout.String()); diff != "" {
 		t.Errorf("stdout mismatch (-want +got):\n%s", diff)
 	}
@@ -109,13 +111,13 @@ func TestRun_escapesUserValuesOntoOneLine(t *testing.T) {
 func TestRun_sectionError(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	h.run(returning(
+	h.run(t, returning(
 		lintkit.SectionError("exempt[0]", "reason is missing or empty"),
 		lintkit.SectionError("", "unknown key 'x'"),
 	))
 	want := ".repo-toolbelt.yml: demo: exempt[0]: reason is missing or empty\n" +
 		".repo-toolbelt.yml: demo: unknown key 'x'\n" +
-		"2 demo finding(s)\n"
+		"2 widget(s)\n"
 	if diff := cmp.Diff(want, h.stdout.String()); diff != "" {
 		t.Errorf("stdout mismatch (-want +got):\n%s", diff)
 	}
@@ -124,7 +126,7 @@ func TestRun_sectionError(t *testing.T) {
 func TestRun_checkErrorIsSetupFailure(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
-	got := h.run(func(lintkit.Context) ([]lintkit.Finding, error) {
+	got := h.run(t, func(context.Context, lintkit.Context) ([]lintkit.Finding, error) {
 		return []lintkit.Finding{{Message: "dropped"}}, errors.New("git ls-files failed")
 	})
 	if got != 2 {
@@ -145,8 +147,8 @@ func TestRun_passesContext(t *testing.T) {
 	h.env["TOOLBELT_BASE"] = "abc"
 	h.env["TOOLBELT_RANGE"] = "abc..def"
 	var got lintkit.Context
-	if code := h.run(func(ctx lintkit.Context) ([]lintkit.Finding, error) {
-		got = ctx
+	if code := h.run(t, func(_ context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
+		got = lc
 		return nil, nil
 	}); code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr %q", code, h.stderr.String())
@@ -170,7 +172,7 @@ func TestRun_help(t *testing.T) {
 			t.Parallel()
 			h := newHarness(t, "null")
 			called := false
-			got := h.run(func(lintkit.Context) ([]lintkit.Finding, error) {
+			got := h.run(t, func(context.Context, lintkit.Context) ([]lintkit.Finding, error) {
 				called = true
 				return nil, nil
 			}, arg)
@@ -221,7 +223,7 @@ func TestRun_setupFailures(t *testing.T) {
 				tc.section(h)
 			}
 			called := false
-			got := h.run(func(lintkit.Context) ([]lintkit.Finding, error) {
+			got := h.run(t, func(context.Context, lintkit.Context) ([]lintkit.Finding, error) {
 				called = true
 				return nil, nil
 			}, tc.args...)
@@ -249,7 +251,7 @@ func TestRun_unwritableStdoutIsSetupFailure(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
 	var stderr bytes.Buffer
-	got := lintkit.Run("demo", returning(lintkit.Finding{Message: "x"}), lintkit.Env{
+	got := lintkit.Run(t.Context(), "demo", "widget", returning(lintkit.Finding{Message: "x"}), lintkit.Env{
 		Getenv: func(name string) string { return h.env[name] },
 		Dir:    h.dir,
 		Stdout: failingWriter{},
@@ -266,7 +268,7 @@ func TestRun_unwritableStdoutIsSetupFailure(t *testing.T) {
 func TestRun_unwritableUsageIsSetupFailure(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	got := lintkit.Run("demo", returning(), lintkit.Env{
+	got := lintkit.Run(t.Context(), "demo", "widget", returning(), lintkit.Env{
 		Args:   []string{"--help"},
 		Getenv: func(string) string { return "" },
 		Stdout: failingWriter{},
@@ -277,5 +279,26 @@ func TestRun_unwritableUsageIsSetupFailure(t *testing.T) {
 	}
 	if want := "demo: write usage: closed pipe\n"; stderr.String() != want {
 		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestRun_passesTheContextThrough(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "null")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	code := lintkit.Run(ctx, "demo", "widget", func(ctx context.Context, _ lintkit.Context) ([]lintkit.Finding, error) {
+		return nil, ctx.Err()
+	}, lintkit.Env{
+		Getenv: func(name string) string { return h.env[name] },
+		Dir:    h.dir,
+		Stdout: &h.stdout,
+		Stderr: &h.stderr,
+	})
+	if code != 2 {
+		t.Errorf("exit = %d, want 2", code)
+	}
+	if want := "demo: context canceled\n"; h.stderr.String() != want {
+		t.Errorf("stderr = %q, want %q", h.stderr.String(), want)
 	}
 }

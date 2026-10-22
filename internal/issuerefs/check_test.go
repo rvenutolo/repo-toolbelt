@@ -1,6 +1,8 @@
 package issuerefs_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,7 +73,7 @@ func TestCheck(t *testing.T) {
 		{"path":"old.md","reason":"no longer exists"}
 	]}`
 
-	got, err := issuerefs.Check(lintkit.Context{Root: repo, Section: []byte(section)})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte(section)})
 	if err != nil {
 		t.Fatalf("Check error = %v", err)
 	}
@@ -88,7 +90,7 @@ func TestCheck(t *testing.T) {
 func TestCheck_noSectionStillScans(t *testing.T) {
 	t.Parallel()
 	repo := makeRepo(t, map[string]string{"CHANGELOG.md": "## 1.0 (#5)\n"})
-	got, err := issuerefs.Check(lintkit.Context{Root: repo, Section: []byte("null")})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
 	if err != nil {
 		t.Fatalf("Check error = %v", err)
 	}
@@ -101,7 +103,7 @@ func TestCheck_noSectionStillScans(t *testing.T) {
 func TestCheck_sectionProblemsStopTheScan(t *testing.T) {
 	t.Parallel()
 	repo := makeRepo(t, map[string]string{"a.md": "#1\n"})
-	got, err := issuerefs.Check(lintkit.Context{Root: repo, Section: []byte(`{"exempt":[{"path":"a.md"}]}`)})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte(`{"exempt":[{"path":"a.md"}]}`)})
 	if err != nil {
 		t.Fatalf("Check error = %v", err)
 	}
@@ -114,7 +116,7 @@ func TestCheck_sectionProblemsStopTheScan(t *testing.T) {
 func TestCheck_emptyRepoPasses(t *testing.T) {
 	t.Parallel()
 	repo := makeRepo(t, nil)
-	got, err := issuerefs.Check(lintkit.Context{Root: repo, Section: []byte("null")})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
 	if err != nil {
 		t.Fatalf("Check error = %v", err)
 	}
@@ -136,7 +138,7 @@ func TestCheck_symlinksAreNotFollowed(t *testing.T) {
 		}
 	}
 	gitIn(t, repo, "add", "--all")
-	got, err := issuerefs.Check(lintkit.Context{Root: repo, Section: []byte("null")})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
 	if err != nil {
 		t.Fatalf("Check error = %v", err)
 	}
@@ -160,10 +162,21 @@ func TestCheck_setupFailures(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := issuerefs.Check(lintkit.Context{Root: tc.root, Section: []byte(tc.section)})
+			got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: tc.root, Section: []byte(tc.section)})
 			if err == nil {
 				t.Errorf("Check error = nil with findings %v, want an error", got)
 			}
 		})
+	}
+}
+
+func TestCheck_cancelledContextStopsGit(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{"a.md": "#1\n"})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	got, err := issuerefs.Check(ctx, lintkit.Context{Root: repo, Section: []byte("null")})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Check error = %v with findings %v, want context.Canceled", err, got)
 	}
 }

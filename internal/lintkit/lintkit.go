@@ -4,14 +4,17 @@
 package lintkit
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode"
 	"unicode/utf8"
 )
@@ -57,9 +60,10 @@ type Finding struct {
 	section bool
 }
 
-// Check is a lint's check. A returned error is a setup failure, not a
-// finding, and any findings returned with it are dropped.
-type Check func(ctx Context) ([]Finding, error)
+// Check is a lint's check. ctx is cancelled when the lint is interrupted. A
+// returned error is a setup failure, not a finding, and any findings returned
+// with it are dropped.
+type Check func(ctx context.Context, lc Context) ([]Finding, error)
 
 // Env is the process a lint runs in.
 type Env struct {
@@ -85,22 +89,27 @@ func SectionError(where, problem string) Finding {
 }
 
 // Main runs check as the lint called name in this process and returns the
-// exit status for os.Exit.
-func Main(name string, check Check) int {
+// exit status for os.Exit. noun names what the lint counts, in the singular,
+// for the count line. SIGINT or SIGTERM cancels the check's context.
+func Main(name, noun string, check Check) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	context.AfterFunc(ctx, stop) // the first signal cancels ctx; a second one kills the process
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		return exitSetup
 	}
-	return Run(name, check, Env{Args: os.Args[1:], Getenv: os.Getenv, Dir: dir, Stdout: os.Stdout, Stderr: os.Stderr})
+	return Run(ctx, name, noun, check, Env{Args: os.Args[1:], Getenv: os.Getenv, Dir: dir, Stdout: os.Stdout, Stderr: os.Stderr})
 }
 
 // Run runs check as the lint called name in env and returns its exit status:
 // 0 with no findings; 1 with findings, printed one per line sorted by path
-// then line and followed by a count; 2 on a setup failure, printed to stderr
-// as `<name>: <reason>`. `--help` prints the usage and returns 0.
-func Run(name string, check Check, env Env) int {
-	ctx, help, err := setup(name, env)
+// then line and followed by `<N> <noun>(s)`; 2 on a setup failure, an
+// interruption included, printed to stderr as `<name>: <reason>`. `--help`
+// prints the usage and returns 0.
+func Run(ctx context.Context, name, noun string, check Check, env Env) int {
+	lc, help, err := setup(name, env)
 	if err != nil {
 		fmt.Fprintf(env.Stderr, "%s: %v\n", name, err)
 		return exitSetup
@@ -112,7 +121,7 @@ func Run(name string, check Check, env Env) int {
 		}
 		return exitPass
 	}
-	findings, err := check(ctx)
+	findings, err := check(ctx, lc)
 	if err != nil {
 		fmt.Fprintf(env.Stderr, "%s: %v\n", name, err)
 		return exitSetup
@@ -120,7 +129,7 @@ func Run(name string, check Check, env Env) int {
 	if len(findings) == 0 {
 		return exitPass
 	}
-	if err := report(env.Stdout, name, findings); err != nil {
+	if err := report(env.Stdout, name, noun, findings); err != nil {
 		fmt.Fprintf(env.Stderr, "%s: write findings: %v\n", name, err)
 		return exitSetup
 	}
@@ -172,7 +181,7 @@ func usage(name string) string {
 
 // report prints the findings sorted by path then line, keeping the check's
 // order among equals, then the count.
-func report(w io.Writer, name string, findings []Finding) error {
+func report(w io.Writer, name, noun string, findings []Finding) error {
 	sorted := slices.Clone(findings)
 	slices.SortStableFunc(sorted, func(a, b Finding) int {
 		if c := strings.Compare(a.Path, b.Path); c != 0 {
@@ -198,7 +207,7 @@ func report(w io.Writer, name string, findings []Finding) error {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "%d %s finding(s)\n", len(sorted), name)
+	_, err := fmt.Fprintf(w, "%d %s(s)\n", len(sorted), noun)
 	return err
 }
 
