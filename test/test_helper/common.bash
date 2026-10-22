@@ -5,7 +5,8 @@
 #   load test_helper/common
 #
 # Exports REPO_DIR (the repo root) and loads bats-support and bats-assert.
-# make_repo creates a throwaway git repo for tests that need one.
+# make_repo creates a throwaway git repo for tests that need one, and
+# write_section hands a lint its config section the way the runner does.
 
 # Unset repo-scoped GIT_* variables first: a caller (e.g. the pre-push hook)
 # may carry GIT_DIR, which makes `git -C <fixture>` operate on the real repo.
@@ -38,4 +39,16 @@ function make_repo() {
   cd "${BATS_TEST_TMPDIR}/repo" || return 1
   FIXTURE_REPO="${BATS_TEST_TMPDIR}/repo"
   export FIXTURE_REPO
+}
+
+# @description Write stdin, a lint's config section as JSON, to a file under
+#              the per-test temp dir, outside any fixture repo, and export its
+#              path as TOOLBELT_SECTION, as the runner does before it runs a
+#              lint. Write `null` for a config file with no section.
+# @noargs
+function write_section() {
+  local -r section_file="${BATS_TEST_TMPDIR}/section.json"
+  cat > "${section_file}"
+  TOOLBELT_SECTION="${section_file}"
+  export TOOLBELT_SECTION
 }

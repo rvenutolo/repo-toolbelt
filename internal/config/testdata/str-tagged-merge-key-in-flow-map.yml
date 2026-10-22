@@ -1,0 +1,3 @@
+check-workflow-hermetic:
+  exempt:
+    - {step: a.yml::x, reason: r, !!str <<: {step: b.yml::y}}

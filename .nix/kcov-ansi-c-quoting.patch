@@ -1,0 +1,40 @@
+diff --git a/src/engines/bash-engine.cc b/src/engines/bash-engine.cc
+index 2f76e04..282e034 100644
+--- a/src/engines/bash-engine.cc
++++ b/src/engines/bash-engine.cc
+@@ -537,12 +537,32 @@ private:
+ 	enum InputType getInputType(const std::string &str)
+ 	{
+ 		enum InputType out = m_inputType;
++		// True while inside a $'...' ANSI-C quoted word, where a backslash escapes
++		// the next character - a single quote included. Bash's xtrace renders any
++		// value containing a newline that way, so a trace line can read
++		//
++		//   printf '%s\n' $'#!/usr/bin/env bash\necho \'x\''
++		//
++		// Counting those escaped quotes as toggles left the parser stuck in
++		// INPUT_SINGLE_QUOTE, and checkEvent() then silently discarded every
++		// later trace line: an empty report, no error, exit 0.
++		//
++		// ANSI-C quoting never spans lines - the newline is escaped - so this
++		// needs no state carried between calls.
++		bool ansiCQuote = false;
+ 
+ 		for(std::string::size_type i = 0; i < str.size(); ++i) {
+-			if (str[i] == '\\' && out == INPUT_NORMAL)
++			if (str[i] == '\\' && (out == INPUT_NORMAL || ansiCQuote))
+ 				i++;
+-			else if (str[i] == '\'')
+-				out = (out == INPUT_NORMAL ? INPUT_SINGLE_QUOTE : INPUT_NORMAL);
++			else if (str[i] == '\'') {
++				if (out == INPUT_NORMAL) {
++					out = INPUT_SINGLE_QUOTE;
++					ansiCQuote = (i >= 1 && str[i - 1] == '$');
++				} else {
++					out = INPUT_NORMAL;
++					ansiCQuote = false;
++				}
++			}
+ 		}
+ 
+ 		return out;

@@ -1,0 +1,6 @@
+check-workflow-hermetic:
+  exempt:
+    - step: .github/actions/setup/action.yml::root-devshell
+      reason: It roots the devShell closure for the Nix cache, using the nix the installer action put on PATH.
+    - step: .github/workflows/ci.yml::verdict
+      reason: It only compares the needed jobs' results, and its job installs no Nix.

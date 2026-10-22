@@ -1,1 +1,5 @@
-# no lints yet
+[[lint]]
+name = "check-workflow-hermetic"
+language = "bash"
+speed = "quick"
+description = "Every workflow run step goes through the devShell wrapper"
