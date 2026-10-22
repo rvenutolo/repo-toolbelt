@@ -1,6 +1,7 @@
 package refs_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -80,7 +81,20 @@ func (f *fixture) branch(name, from string, n int) string {
 }
 
 func resolve(f *fixture, in refs.Input) ([]refs.Target, error) {
-	return refs.Resolve(f.repo, in)
+	return refs.Resolve(f.t.Context(), f.repo, in)
+}
+
+// corrupt overwrites the loose object sha so git fails reading it, as opposed
+// to not finding it.
+func (f *fixture) corrupt(sha string) {
+	f.t.Helper()
+	path := filepath.Join(f.repo, ".git", "objects", sha[:2], sha[2:])
+	if err := os.Chmod(path, 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("garbage"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 func TestResolve_preCommitDiffsAgainstHead(t *testing.T) {
@@ -107,7 +121,7 @@ func TestResolve_prePushExistingBranchUsesMergeBaseWithRemoteSha(t *testing.T) {
 	}
 }
 
-func TestResolve_prePushRewrittenBranchUsesMergeBaseNotRemoteSha(t *testing.T) {
+func TestResolve_prePushRewrittenBranchRangeStartsAtRemoteShaBaseIsMergeBase(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f1 := f.branch("feature", f.c2, 1)
@@ -115,7 +129,7 @@ func TestResolve_prePushRewrittenBranchUsesMergeBaseNotRemoteSha(t *testing.T) {
 	g1 := f.branch("feature", f.c2, 1)
 	line := "refs/heads/feature " + g1 + " refs/heads/feature " + f1
 	got, err := resolve(f, refs.Input{Hook: "pre-push", Remote: "origin", PrePushLines: []string{line}})
-	want := []refs.Target{{Ref: "refs/heads/feature", Base: f.c2, Range: f.c2 + ".." + g1}}
+	want := []refs.Target{{Ref: "refs/heads/feature", Base: f.c2, Range: f1 + ".." + g1}}
 	if err != nil || !cmp.Equal(want, got) {
 		t.Errorf("Resolve = %v, %v; want %v", got, err, want)
 	}
@@ -396,5 +410,41 @@ func TestResolve_unknownHook(t *testing.T) {
 	_, err := resolve(f, refs.Input{Hook: "post-merge"})
 	if !errors.Is(err, refs.ErrUsage) {
 		t.Errorf("err = %v, want a usage error", err)
+	}
+}
+
+func TestResolve_prePushGitFailureReadingRemoteShaIsNotSwallowed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f1 := f.branch("feature", f.c2, 1)
+	g1 := f.branch("other", f.c2, 1)
+	f.corrupt(f1)
+	line := "refs/heads/other " + g1 + " refs/heads/feature " + f1
+	_, err := resolve(f, refs.Input{Hook: "pre-push", Remote: "origin", PrePushLines: []string{line}})
+	if err == nil || errors.Is(err, refs.ErrUsage) || !strings.Contains(err.Error(), "exit status 128") {
+		t.Errorf("err = %v, want git's own failure carrying git's exit status", err)
+	}
+}
+
+func TestResolve_ciGitFailureReadingBaseIsNotSwallowed(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f1 := f.branch("feature", f.c2, 1)
+	g1 := f.branch("other", f.c2, 1)
+	f.corrupt(f1)
+	_, err := resolve(f, refs.Input{Hook: "ci", Base: f1, Head: g1, DefaultBranch: "main"})
+	if err == nil || errors.Is(err, refs.ErrUsage) || !strings.Contains(err.Error(), "exit status 128") {
+		t.Errorf("err = %v, want git's own failure carrying git's exit status", err)
+	}
+}
+
+func TestResolve_cancelledContextStopsGit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := refs.Resolve(ctx, f.repo, refs.Input{Hook: "ci", Base: f.c1, Head: f.c2})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want it to wrap context.Canceled", err)
 	}
 }

@@ -101,7 +101,7 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	if err != nil {
 		return err
 	}
-	targets, err := resolveTargets(root, flags, cmd.InOrStdin())
+	targets, err := resolveTargets(ctx, root, flags, cmd.InOrStdin())
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 
 // resolveTargets turns the flags, and pre-push's stdin, into the targets the
 // lints judge. Each target is one full run of the lints.
-func resolveTargets(root string, flags runFlags, stdin io.Reader) ([]refs.Target, error) {
+func resolveTargets(ctx context.Context, root string, flags runFlags, stdin io.Reader) ([]refs.Target, error) {
 	in := refs.Input{
 		Hook:          flags.hook,
 		Base:          flags.base,
@@ -191,7 +191,7 @@ func resolveTargets(root string, flags runFlags, stdin io.Reader) ([]refs.Target
 			return nil, setupf("read pre-push input: %w", err)
 		}
 	}
-	targets, err := refs.Resolve(root, in)
+	targets, err := refs.Resolve(ctx, root, in)
 	if errors.Is(err, refs.ErrUsage) {
 		return nil, usageError{err}
 	}
