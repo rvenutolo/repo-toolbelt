@@ -12,9 +12,12 @@ bats_require_minimum_version 1.5.0
 # @arg $2 name the stub reports
 # @arg $3 exit_var name of the environment variable holding the exit status
 function write_stub() {
+  local -r path="$1"
+  local -r name="$2"
+  local -r exit_var="$3"
   # shellcheck disable=SC2016 # the stub's own expansions must stay literal in the file it writes
-  printf '#!/usr/bin/env bash\nprintf "%s-ran %%s\\n" "$*"\nexit "${%s:-0}"\n' "$2" "$3" >"$1"
-  chmod +x "$1"
+  printf '#!/usr/bin/env bash\nprintf "%s-ran %%s\\n" "$*"\nexit "${%s:-0}"\n' "${name}" "${exit_var}" > "${path}"
+  chmod +x "${path}"
 }
 
 function setup() {
