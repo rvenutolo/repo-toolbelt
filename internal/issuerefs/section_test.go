@@ -88,6 +88,12 @@ func TestParseSection_problems(t *testing.T) {
 			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path './a.md' must not start with ./; paths are relative to the repo root, as in 'a.md'")},
 		},
 		{
+			name:    "path with a leading dot slash before a dot directory",
+			section: `{"exempt":[{"path":"./.github/a.yml","reason":"r"}]}`,
+			want: []lintkit.Finding{lintkit.SectionError("exempt[0]",
+				"path './.github/a.yml' must not start with ./; paths are relative to the repo root, as in '.github/a.yml'")},
+		},
+		{
 			name:    "path with a leading slash",
 			section: `{"exempt":[{"path":"/a.md","reason":"r"}]}`,
 			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path '/a.md' must not start with /; paths are relative to the repo root, as in 'a.md'")},

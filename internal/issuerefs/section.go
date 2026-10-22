@@ -80,6 +80,8 @@ func parseEntry(index int, item any) (*exemption, []lintkit.Finding) {
 	switch {
 	case problem != "":
 		problems = append(problems, lintkit.SectionError(where, problem))
+	case pathSpellingProblem(pattern) != "":
+		problems = append(problems, lintkit.SectionError(where, pathSpellingProblem(pattern)))
 	case !validGlob(pattern):
 		problems = append(problems, lintkit.SectionError(where, fmt.Sprintf("path '%s' is not a valid glob", pattern)))
 	default:
@@ -143,6 +145,24 @@ func unknownKeys(where string, fields map[string]any, allowed ...string) []lintk
 		problems = append(problems, lintkit.SectionError(where, fmt.Sprintf("unknown key '%s'", key)))
 	}
 	return problems
+}
+
+// pathSpellingProblem says how to rewrite a path spelled so that it could
+// never match a repo-relative path, or returns "".
+func pathSpellingProblem(pattern string) string {
+	switch {
+	case strings.HasPrefix(pattern, "./"):
+		return fmt.Sprintf("path '%s' must not start with ./; paths are relative to the repo root, as in '%s'",
+			pattern, strings.TrimPrefix(pattern, "./"))
+	case strings.HasPrefix(pattern, "/"):
+		return fmt.Sprintf("path '%s' must not start with /; paths are relative to the repo root, as in '%s'",
+			pattern, strings.TrimLeft(pattern, "/"))
+	case strings.HasSuffix(pattern, "/"):
+		return fmt.Sprintf("path '%s' must not end in /; write '%s' to exempt everything under it",
+			pattern, strings.TrimRight(pattern, "/"))
+	default:
+		return ""
+	}
 }
 
 // validGlob reports whether every segment of pattern is a valid path.Match
