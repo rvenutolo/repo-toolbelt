@@ -75,13 +75,57 @@ func writeLint(t *testing.T, lintsDir, name, body string) {
 	}
 }
 
+// withRemote gives repo a bare "origin" holding its branch, and returns the
+// flags and standard input a pre-push of a new branch at HEAD carries.
+func withRemote(t *testing.T, repo string) (flags []string, stdin string) {
+	t.Helper()
+	remote := filepath.Join(t.TempDir(), "origin.git")
+	gitIn(t, repo, "init", "--quiet", "--bare", "--initial-branch=main", remote)
+	gitIn(t, repo, "remote", "add", "origin", remote)
+	gitIn(t, repo, "push", "--quiet", "origin", "main")
+	gitIn(t, repo, "remote", "set-head", "origin", "main")
+	sha := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	return []string{"--remote", "origin"}, "refs/heads/main " + sha + " refs/heads/new " + strings.Repeat("0", 40) + "\n"
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), gitEnv...)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
+}
+
+// runHook runs toolbelt with the flags and input a real run of hook carries.
+func runHook(ctx context.Context, t *testing.T, repo, lintsDir, hook string, lints ...string) result {
+	t.Helper()
+	args := []string{"run", "--hook", hook}
+	stdin := ""
+	if hook == "pre-push" {
+		var flags []string
+		flags, stdin = withRemote(t, repo)
+		args = append(args, flags...)
+	}
+	return runStdin(ctx, t, repo, lintsDir, stdin, append(args, lints...)...)
+}
+
 // runIn runs toolbelt from dir with lints from lintsDir, mirroring main.
 func runIn(ctx context.Context, t *testing.T, dir, lintsDir string, args ...string) result {
+	t.Helper()
+	return runStdin(ctx, t, dir, lintsDir, "", args...)
+}
+
+// runStdin is runIn with the given standard input.
+func runStdin(ctx context.Context, t *testing.T, dir, lintsDir, stdin string, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := map[string]string{"TOOLBELT_LINTS_DIR": lintsDir}
 	runner := cli.Runner{Lints: runLints, Version: "1.2.3", Dir: dir}
-	err := runner.Run(ctx, args, func(k string) string { return env[k] }, strings.NewReader(""), &stdout, &stderr)
+	err := runner.Run(ctx, args, func(k string) string { return env[k] }, strings.NewReader(stdin), &stdout, &stderr)
 	if err != nil {
 		stderr.WriteString("error: " + err.Error() + "\n")
 	}
@@ -97,7 +141,7 @@ func TestRun_runPrintsBlocksInNamedOrder(t *testing.T) {
 	writeLint(t, lintsDir, "b", `printf 'b-partial'; exit 1`)
 	writeLint(t, lintsDir, "c", `printf 'c-diag\n' >&2; touch '`+cDone+`'; exit 2`)
 
-	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a", "b", "c")
+	got := runHook(t.Context(), t, repo, lintsDir, "pre-push", "a", "b", "c")
 
 	wantStdout := "== a: pass ==\na-out\n" +
 		"== b: fail ==\nb-partial\n" +
@@ -135,7 +179,7 @@ func TestRun_runExitStatus(t *testing.T) {
 			repo, lintsDir := makeRepo(t), t.TempDir()
 			writeLint(t, lintsDir, "a", tc.a)
 			writeLint(t, lintsDir, "c", tc.c)
-			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a", "c")
+			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-commit", "a", "c")
 			if got.code != tc.wantCode {
 				t.Errorf("exit %d, want %d (stderr %q)", got.code, tc.wantCode, got.stderr)
 			}
@@ -150,7 +194,7 @@ func TestRun_runMissingExecutable(t *testing.T) {
 	t.Parallel()
 	repo, lintsDir := makeRepo(t), t.TempDir()
 	writeLint(t, lintsDir, "a", "exit 0")
-	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a", "c")
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-commit", "a", "c")
 	if got.code != 2 {
 		t.Errorf("exit %d, want 2", got.code)
 	}
@@ -167,13 +211,13 @@ func TestRun_runCallingConvention(t *testing.T) {
 	writeLint(t, lintsDir, "c", `printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`)
 
 	// Run from a subdirectory: lints still run at the repo root.
-	got := runIn(t.Context(), t, filepath.Join(repo, "src"), lintsDir, "run", "--hook", "pre-push", "--base", "abc123", "a", "c")
+	got := runIn(t.Context(), t, filepath.Join(repo, "src"), lintsDir, "run", "--hook", "pre-commit", "a", "c")
 
 	realRepo, err := filepath.EvalSymlinks(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "== a: pass ==\ncwd=" + realRepo + ` hook=pre-push base=abc123 range=[] section={"x":1}` + "\n" +
+	want := "== a: pass ==\ncwd=" + realRepo + ` hook=pre-commit base=HEAD range=[] section={"x":1}` + "\n" +
 		"== c: pass ==\nsection=null\n" +
 		"toolbelt: 2 passed, 0 failed, 0 errored\n"
 	if got.code != 0 {
@@ -202,7 +246,7 @@ func TestRun_runDefaultLintsDir(t *testing.T) {
 	repo := makeRepo(t)
 	var stdout, stderr bytes.Buffer
 	runner := cli.Runner{Lints: runLints, Dir: repo}
-	err := runner.Run(t.Context(), []string{"run", "--hook", "pre-push", "a"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
+	err := runner.Run(t.Context(), []string{"run", "--hook", "pre-commit", "a"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
 	if cli.ExitCode(err) != 2 || !strings.Contains(stderr.String(), "/opt/toolbelt/lints/a/a") {
 		t.Errorf("err = %v, stderr = %q, want exit 2 naming the default lint path", err, stderr.String())
 	}
@@ -225,7 +269,7 @@ func TestRun_runSlowLintWarning(t *testing.T) {
 			repo, lintsDir := makeRepo(t), t.TempDir()
 			writeLint(t, lintsDir, "a", "exit 0")
 			writeLint(t, lintsDir, "b", "echo b-ran")
-			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", tc.hook, "a", "b")
+			got := runHook(t.Context(), t, repo, lintsDir, tc.hook, "a", "b")
 			if got.code != 0 || !strings.Contains(got.stdout, "== b: pass ==\n") || !strings.Contains(got.stdout, "\nb-ran\n") {
 				t.Errorf("got %+v, want b to run and pass", got)
 			}
@@ -273,7 +317,7 @@ just a message
 		t.Parallel()
 		repo, lintsDir := makeRepo(t), t.TempDir()
 		writeLint(t, lintsDir, "a", body)
-		got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a")
+		got := runHook(t.Context(), t, repo, lintsDir, "pre-push", "a")
 		if strings.Contains(got.stdout, "::error") {
 			t.Errorf("stdout = %q, want no annotations outside ci", got.stdout)
 		}
@@ -400,7 +444,7 @@ func TestRun_runTreeWarnings(t *testing.T) {
 			repo, lintsDir := makeRepo(t), t.TempDir()
 			tc.change(t, repo)
 			writeLint(t, lintsDir, "a", "exit 0")
-			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", tc.hook, "a")
+			got := runHook(t.Context(), t, repo, lintsDir, tc.hook, "a")
 			if got.code != 0 {
 				t.Errorf("exit %d, want 0: a warning never changes the status", got.code)
 			}
@@ -526,10 +570,134 @@ func TestRun_runWarningGitFailure(t *testing.T) {
 			// rev-parse never reads the index; diff and status do.
 			writeFile(t, filepath.Join(repo, ".git", "index"), "not an index")
 			writeLint(t, lintsDir, "a", "exit 0")
-			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", hook, "a")
+			got := runHook(t.Context(), t, repo, lintsDir, hook, "a")
 			if got.code != 2 || !strings.Contains(got.stderr, "index file") {
 				t.Errorf("got %+v, want exit 2 carrying git's own message", got)
 			}
 		})
+	}
+}
+
+func TestRun_runPrePushRunsOncePerRefAndLabelsBlocks(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	flags, _ := withRemote(t, repo)
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	zeros := strings.Repeat("0", 40)
+	stdin := "refs/heads/one " + head + " refs/heads/one " + zeros + "\n" +
+		"refs/heads/two " + head + " refs/heads/two " + zeros + "\n"
+	writeLint(t, lintsDir, "a", `printf 'base=%s range=%s\n' "${TOOLBELT_BASE}" "${TOOLBELT_RANGE}"`)
+	writeLint(t, lintsDir, "c", "exit 1")
+
+	got := runStdin(t.Context(), t, repo, lintsDir, stdin, append([]string{"run", "--hook", "pre-push"}, append(flags, "a", "c")...)...)
+
+	rng := head + ".." + head
+	want := "== a (refs/heads/one): pass ==\nbase=" + head + " range=" + rng + "\n" +
+		"== c (refs/heads/one): fail ==\n" +
+		"== a (refs/heads/two): pass ==\nbase=" + head + " range=" + rng + "\n" +
+		"== c (refs/heads/two): fail ==\n" +
+		"toolbelt: 2 passed, 2 failed, 0 errored (2 lints x 2 refs)\n"
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+	if got.code != 1 {
+		t.Errorf("exit %d, want 1", got.code)
+	}
+}
+
+func TestRun_runPrePushExitIsTheWorstAcrossRefs(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		first, second string
+	}{
+		"error then pass":   {first: "exit 2", second: "exit 0"},
+		"pass then error":   {first: "exit 0", second: "exit 2"},
+		"finding then pass": {first: "exit 1", second: "exit 0"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			repo, lintsDir := makeRepo(t), t.TempDir()
+			flags, _ := withRemote(t, repo)
+			first := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+			writeFile(t, filepath.Join(repo, "more.txt"), "more\n")
+			gitIn(t, repo, "add", "--all")
+			gitIn(t, repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "--message=more")
+			second := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+			zeros := strings.Repeat("0", 40)
+			stdin := "refs/heads/one " + first + " refs/heads/one " + zeros + "\n" +
+				"refs/heads/two " + second + " refs/heads/two " + zeros + "\n"
+			// The second ref's range ends at the second commit.
+			writeLint(t, lintsDir, "a", `case "${TOOLBELT_RANGE}" in *..`+second+`) `+tc.second+`;; *) `+tc.first+`;; esac`)
+			got := runStdin(t.Context(), t, repo, lintsDir, stdin, append([]string{"run", "--hook", "pre-push"}, append(flags, "a")...)...)
+			want := 0
+			for _, c := range []string{tc.first, tc.second} {
+				want = max(want, map[string]int{"exit 0": 0, "exit 1": 1, "exit 2": 2}[c])
+			}
+			if got.code != want {
+				t.Errorf("exit %d, want %d", got.code, want)
+			}
+		})
+	}
+}
+
+func TestRun_runPrePushWithOnlyDeletionsRunsNothing(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	flags, _ := withRemote(t, repo)
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	marker := filepath.Join(t.TempDir(), "ran")
+	writeLint(t, lintsDir, "a", `touch '`+marker+`'`)
+	stdin := "(delete) " + strings.Repeat("0", 40) + " refs/heads/gone " + head + "\n"
+
+	got := runStdin(t.Context(), t, repo, lintsDir, stdin, append([]string{"run", "--hook", "pre-push"}, append(flags, "a")...)...)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("a lint ran for a push that only deletes")
+	}
+	if got.code != 0 || got.stdout != "toolbelt: 0 passed, 0 failed, 0 errored\n" {
+		t.Errorf("got %+v, want exit 0 and an empty summary", got)
+	}
+}
+
+func TestRun_runPrePushWithoutRemoteIsUsageError(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	writeLint(t, lintsDir, "a", "exit 0")
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a")
+	if got.code != 2 || !strings.Contains(got.stderr, "--remote") {
+		t.Errorf("got %+v, want exit 2 naming --remote", got)
+	}
+}
+
+func TestRun_runPrePushNewBranchWithoutRemoteHeadNamesTheFix(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	flags, stdin := withRemote(t, repo)
+	gitIn(t, repo, "remote", "set-head", "origin", "--delete")
+	writeLint(t, lintsDir, "a", "exit 0")
+	got := runStdin(t.Context(), t, repo, lintsDir, stdin, append([]string{"run", "--hook", "pre-push"}, append(flags, "a")...)...)
+	if got.code != 2 || !strings.Contains(got.stderr, "git remote set-head origin --auto") {
+		t.Errorf("got %+v, want exit 2 naming the set-head fix", got)
+	}
+}
+
+func TestRun_runCIResolvesBaseAndRange(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	writeLint(t, lintsDir, "a", `printf 'base=%s range=%s\n' "${TOOLBELT_BASE}" "${TOOLBELT_RANGE}"`)
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "--base", head, "--head", head, "a")
+	if !strings.Contains(got.stdout, "base="+head+" range="+head+".."+head+"\n") {
+		t.Errorf("got %+v, want the resolved base and range", got)
+	}
+}
+
+func TestRun_runCIBaseWithoutHeadIsUsageError(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	writeLint(t, lintsDir, "a", "exit 0")
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "--base", "abc", "a")
+	if got.code != 2 || !strings.Contains(got.stderr, "--head") {
+		t.Errorf("got %+v, want exit 2 naming --head", got)
 	}
 }

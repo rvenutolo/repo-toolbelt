@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/rvenutolo/repo-toolbelt/internal/config"
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
+	"github.com/rvenutolo/repo-toolbelt/internal/refs"
 	"github.com/rvenutolo/repo-toolbelt/internal/runner"
 )
 
@@ -39,20 +41,17 @@ var (
 
 // runFlags are run's flag values.
 type runFlags struct {
-	hook string
-	base string
+	hook, base, head, defaultBranch, remote string
 }
 
-// target is one TOOLBELT_BASE and TOOLBELT_RANGE pair the lints judge.
-type target struct {
-	base, rng string
-}
+// maxPrePushInput caps how much of pre-push's stdin is read.
+const maxPrePushInput = 16 << 20
 
 // newRunCmd runs the named lints concurrently against the checkout.
 func (r Runner) newRunCmd(getenv func(string) string) *cobra.Command {
 	var flags runFlags
 	cmd := &cobra.Command{
-		Use:   "run --hook pre-commit|pre-push|ci [--base <rev>] [<lint>...]",
+		Use:   "run --hook pre-commit|pre-push|ci [flags] [<lint>...]",
 		Short: "Run lints against the checkout",
 		Long: "Run lints concurrently against the checkout and print each one's output as\n" +
 			"one block, in the order named, then a summary.\n\n" +
@@ -60,7 +59,13 @@ func (r Runner) newRunCmd(getenv func(string) string) *cobra.Command {
 			"blank lines and # comments ignored. Lint executables are found under\n" +
 			"TOOLBELT_LINTS_DIR (default " + defaultLintsDir + ").\n\n" +
 			"Exit codes: 0 every lint passed, 1 a lint reported findings or the config\n" +
-			"file has problems, 2 a lint errored or a usage or setup error.",
+			"file has problems, 2 a lint errored or a usage or setup error.\n\n" +
+			"What the lints judge (TOOLBELT_BASE, TOOLBELT_RANGE) follows the hook:\n" +
+			"pre-commit diffs against HEAD; pre-push reads git's lines from stdin, needs\n" +
+			"--remote, and runs the lints once per pushed ref; ci takes the event's raw\n" +
+			"--base and --head (with --default-branch as the fallback) and computes the\n" +
+			"merge-base itself. ci with neither flag gives the lints an empty base and\n" +
+			"range.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := r.run(cmd.Context(), cmd, args, flags, getenv)
 			// An interrupted run fails in whatever step it reached; report it
@@ -72,7 +77,10 @@ func (r Runner) newRunCmd(getenv func(string) string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&flags.hook, "hook", "", "what is running the lints: pre-commit, pre-push or ci (required)")
-	cmd.Flags().StringVar(&flags.base, "base", "", "the commit diff-aware lints compare against (TOOLBELT_BASE)")
+	cmd.Flags().StringVar(&flags.base, "base", "", "ci: the pull request's base SHA, or a push's before SHA")
+	cmd.Flags().StringVar(&flags.head, "head", "", "ci: the pull request's head SHA, or a push's SHA")
+	cmd.Flags().StringVar(&flags.defaultBranch, "default-branch", "", "ci: the branch to compare with when --base is empty, all zeros or unknown")
+	cmd.Flags().StringVar(&flags.remote, "remote", "", "pre-push: the remote being pushed to (git passes it to the hook as $1)")
 	return cmd
 }
 
@@ -88,9 +96,12 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	if err != nil {
 		return err
 	}
-	targets := resolveTargets(flags)
 
 	root, err := r.repoRoot(ctx)
+	if err != nil {
+		return err
+	}
+	targets, err := resolveTargets(root, flags, cmd.InOrStdin())
 	if err != nil {
 		return err
 	}
@@ -132,34 +143,62 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	}
 	var tally tally
 	for _, t := range targets {
+		label := ""
+		if len(targets) > 1 {
+			label = t.Ref
+		}
 		results := runner.Run(ctx, lints, runner.Options{
 			LintsDir: lintsDir,
 			RepoRoot: root,
 			Hook:     flags.hook,
-			Base:     t.base,
-			Range:    t.rng,
+			Base:     t.Base,
+			Range:    t.Range,
 			Sections: sections,
 		})
 		for _, result := range results {
 			tally.add(result.Exit)
-			if err := printResult(stdout, stderr, root, stopToken, result); err != nil {
+			if err := printResult(stdout, stderr, root, stopToken, label, result); err != nil {
 				return err
 			}
 		}
 	}
-	if _, err := fmt.Fprintf(stdout, "toolbelt: %d passed, %d failed, %d errored\n", tally.passed, tally.failed, tally.errored); err != nil {
+	summary := fmt.Sprintf("toolbelt: %d passed, %d failed, %d errored", tally.passed, tally.failed, tally.errored)
+	if len(targets) > 1 {
+		summary += fmt.Sprintf(" (%d lints x %d refs)", len(lints), len(targets))
+	}
+	if _, err := fmt.Fprintln(stdout, summary); err != nil {
 		return fmt.Errorf("write summary: %w", err)
 	}
 	return tally.err()
 }
 
-// resolveTargets turns the revision flags into the targets the lints judge.
-// Each target is one full run of the lints.
-//
-// TODO: derive base and range per hook from --head, --default-branch, --remote
-// and pre-push's stdin; until then --base passes through with an empty range.
-func resolveTargets(flags runFlags) []target {
-	return []target{{base: flags.base}}
+// resolveTargets turns the flags, and pre-push's stdin, into the targets the
+// lints judge. Each target is one full run of the lints.
+func resolveTargets(root string, flags runFlags, stdin io.Reader) ([]refs.Target, error) {
+	in := refs.Input{
+		Hook:          flags.hook,
+		Base:          flags.base,
+		Head:          flags.head,
+		DefaultBranch: flags.defaultBranch,
+		Remote:        flags.remote,
+	}
+	if flags.hook == hookPrePush {
+		scanner := bufio.NewScanner(io.LimitReader(stdin, maxPrePushInput))
+		for scanner.Scan() {
+			in.PrePushLines = append(in.PrePushLines, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, setupf("read pre-push input: %w", err)
+		}
+	}
+	targets, err := refs.Resolve(root, in)
+	if errors.Is(err, refs.ErrUsage) {
+		return nil, usageError{err}
+	}
+	if err != nil {
+		return nil, setupf("%w", err)
+	}
+	return targets, nil
 }
 
 // repoRoot is the top of the git checkout containing r.Dir.
@@ -232,7 +271,8 @@ func porcelainEntries(out []byte) int {
 	return n
 }
 
-// printResult writes one lint's block: a header with its verdict, then its
+// printResult writes one lint's block: a header with its verdict (and, when
+// label is not empty, the ref the run judged), then its
 // stdout on stdout and its stderr on stderr, then in ci its annotations.
 //
 // In ci, a non-empty stopToken wraps the lint's output in GitHub's
@@ -240,9 +280,13 @@ func porcelainEntries(out []byte) int {
 // starts with "::") runs as a workflow command. The lint's stderr then goes to
 // stdout inside that region: GitHub reads commands from both streams, and only
 // one stream keeps the order that makes the region hold.
-func printResult(stdout, stderr io.Writer, root, stopToken string, result runner.Result) error {
+func printResult(stdout, stderr io.Writer, root, stopToken, label string, result runner.Result) error {
 	var block bytes.Buffer
-	fmt.Fprintf(&block, "== %s: %s ==\n", result.Lint, verdict(result.Exit))
+	name := result.Lint
+	if label != "" {
+		name += " (" + label + ")"
+	}
+	fmt.Fprintf(&block, "== %s: %s ==\n", name, verdict(result.Exit))
 	if stopToken != "" {
 		fmt.Fprintf(&block, "::stop-commands::%s\n", stopToken)
 		writeLines(&block, result.Output)
