@@ -314,6 +314,7 @@ src/x.go: whole file bad
 gone.go:3: line form needs no file
 gone.go: path form needs the file
 src/x.go:1: 100% wrong, a:b
+src/x.go:4-6: a block
 just a message
 2 problems`
 	body := "cat <<'EOF'\n" + lintOutput + "\nEOF\nexit 1"
@@ -329,6 +330,7 @@ just a message
 			"::error file=src/x.go::whole file bad\n" +
 			"::error file=gone.go,line=3::line form needs no file\n" +
 			"::error file=src/x.go,line=1::100%25 wrong, a:b\n" +
+			"::error file=src/x.go,line=4,endLine=6::a block\n" +
 			"toolbelt: 0 passed, 1 failed, 0 errored\n"
 		if diff := cmp.Diff(want, got.stdout); diff != "" {
 			t.Errorf("stdout (-want +got):\n%s", diff)

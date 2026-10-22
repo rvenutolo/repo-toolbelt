@@ -31,11 +31,11 @@ const (
 	speedSlow       = "slow"
 )
 
-// Finding lines GitHub can annotate: "<path>:<line>: <message>" and
-// "<path>: <message>". The lazy path takes the first separator, so a colon in
+// Finding lines GitHub can annotate: "<path>:<line>: <message>",
+// "<path>:<line>-<end>: <message>" and "<path>: <message>". The lazy path takes the first separator, so a colon in
 // the message stays in the message.
 var (
-	lineFinding = regexp.MustCompile(`^(.+?):([0-9]+): (.+)$`)
+	lineFinding = regexp.MustCompile(`^(.+?):([0-9]+)(?:-([0-9]+))?: (.+)$`)
 	fileFinding = regexp.MustCompile(`^(.+?): (.+)$`)
 )
 
@@ -308,13 +308,17 @@ func writeLines(w *bytes.Buffer, b []byte) {
 }
 
 // annotate writes a GitHub ::error command for each finding line that names a
-// line, and for each that names only a path when that path exists in the
+// line or a line range, and for each that names only a path when that path exists in the
 // checkout.
 func annotate(w *bytes.Buffer, root string, output []byte) {
 	for raw := range bytes.Lines(output) {
 		line := strings.TrimSuffix(string(raw), "\n")
 		if m := lineFinding.FindStringSubmatch(line); m != nil {
-			fmt.Fprintf(w, "::error file=%s,line=%s::%s\n", escapeProperty(m[1]), m[2], escapeData(m[3]))
+			end := ""
+			if m[3] != "" {
+				end = ",endLine=" + m[3]
+			}
+			fmt.Fprintf(w, "::error file=%s,line=%s%s::%s\n", escapeProperty(m[1]), m[2], end, escapeData(m[4]))
 			continue
 		}
 		if m := fileFinding.FindStringSubmatch(line); m != nil && inCheckout(root, m[1]) {

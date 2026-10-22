@@ -53,6 +53,9 @@ type Finding struct {
 	Path string
 	// Line is the 1-based line in Path; 0 for none.
 	Line int
+	// EndLine is the last line of a finding that spans lines from Line,
+	// printed as `<path>:<line>-<end>:`; ignored unless it is past Line.
+	EndLine int
 	// Message says what is wrong.
 	Message string
 	// section marks an error in the lint's config section, whose message Run
@@ -200,6 +203,8 @@ func report(w io.Writer, name, noun string, findings []Finding) error {
 			line = printable(message)
 		case f.Line == 0:
 			line = printable(f.Path) + ": " + printable(message)
+		case f.EndLine > f.Line:
+			line = printable(f.Path) + ":" + strconv.Itoa(f.Line) + "-" + strconv.Itoa(f.EndLine) + ": " + printable(message)
 		default:
 			line = printable(f.Path) + ":" + strconv.Itoa(f.Line) + ": " + printable(message)
 		}
