@@ -107,21 +107,9 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	}
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
-	known := make([]string, len(r.Lints))
-	for i, lint := range r.Lints {
-		known[i] = lint.Name
-	}
-	cfg, problems, err := config.Load(root, known)
+	cfg, err := r.loadConfig(root, stdout)
 	if err != nil {
-		return setupf("%w", err)
-	}
-	if len(problems) > 0 {
-		for _, problem := range problems {
-			if _, err := fmt.Fprintf(stdout, "%s: %s\n", config.FileName, problem); err != nil {
-				return fmt.Errorf("write config problems: %w", err)
-			}
-		}
-		return codeError{code: exitError, err: fmt.Errorf("%s has %d problem(s)", config.FileName, len(problems))}
+		return err
 	}
 
 	if err := warn(ctx, root, flags.hook, lints, stderr); err != nil {
@@ -410,6 +398,28 @@ func gitOutput(ctx context.Context, dir string, args ...string) ([]byte, error) 
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
+}
+
+// loadConfig loads root's config file, printing each file-level problem to
+// stdout; any problem is an error with exit code 1.
+func (r Runner) loadConfig(root string, stdout io.Writer) (config.Config, error) {
+	known := make([]string, len(r.Lints))
+	for i, lint := range r.Lints {
+		known[i] = lint.Name
+	}
+	cfg, problems, err := config.Load(root, known)
+	if err != nil {
+		return config.Config{}, setupf("%w", err)
+	}
+	if len(problems) > 0 {
+		for _, problem := range problems {
+			if _, err := fmt.Fprintf(stdout, "%s: %s\n", config.FileName, problem); err != nil {
+				return config.Config{}, fmt.Errorf("write config problems: %w", err)
+			}
+		}
+		return config.Config{}, codeError{code: exitError, err: fmt.Errorf("%s has %d problem(s)", config.FileName, len(problems))}
+	}
+	return cfg, nil
 }
 
 func firstLine(b []byte) string {
