@@ -180,3 +180,20 @@ func TestCheck_cancelledContextStopsGit(t *testing.T) {
 		t.Errorf("Check error = %v with findings %v, want context.Canceled", err, got)
 	}
 }
+
+func TestCheck_doesNotRecurseIntoSubmodules(t *testing.T) {
+	t.Parallel()
+	sub := makeRepo(t, map[string]string{"inner.md": "#1\n"})
+	gitIn(t, sub, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "--message=init")
+	repo := makeRepo(t, map[string]string{"a.md": "clean\n"})
+	gitIn(t, repo, "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, "sub")
+	// A consumer's repo config could ask every git command to recurse.
+	gitIn(t, repo, "config", "submodule.recurse", "true")
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Check = %v, want no findings from the submodule", got)
+	}
+}
