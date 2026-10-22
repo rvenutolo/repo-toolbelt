@@ -80,7 +80,12 @@ func (r Runner) updateBaseline(root string, stdout, stderr io.Writer) (string, e
 		}
 		return "", setupf("cannot read the coverage reports; run the tests that write them first")
 	}
-	if err := writeBaseline(root, section.Baseline, coverage.Tally(section.Reports, reports)); err != nil {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return "", setupf("write %s: %w", section.Baseline, err)
+	}
+	defer dir.Close()
+	if err := writeBaseline(dir, section.Baseline, coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))); err != nil {
 		return "", setupf("write %s: %w", section.Baseline, err)
 	}
 	return section.Baseline, nil
@@ -101,16 +106,11 @@ func printFindings(w io.Writer, prefix string, findings []lintkit.Finding) error
 
 // writeBaseline replaces the baseline file through a temporary file beside
 // it, so an interrupted write never leaves a truncated baseline.
-func writeBaseline(root, file string, baseline coverage.Baseline) error {
+func writeBaseline(dir *os.Root, file string, baseline coverage.Baseline) error {
 	var content bytes.Buffer
 	if err := baseline.Write(&content); err != nil {
 		return err
 	}
-	dir, err := os.OpenRoot(root)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
 	if err := dir.MkdirAll(path.Dir(file), 0o755); err != nil {
 		return err
 	}

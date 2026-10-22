@@ -117,7 +117,7 @@ func (m measured) missingFiles(root *os.Root) []lintkit.Finding {
 // fileMarker is a marker in a file.
 type fileMarker struct {
 	path string
-	Marker
+	coverage.Marker
 }
 
 // scanMarkers returns the markers in every tracked file that can hold them.
@@ -128,12 +128,12 @@ func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([
 	}
 	var markers []fileMarker
 	for file := range strings.SplitSeq(strings.TrimSuffix(tracked, "\x00"), "\x00") {
-		var scan func([]byte) []Marker
+		var scan func([]byte) []coverage.Marker
 		switch {
 		case path.Ext(file) == ".go":
-			scan = GoMarkers
+			scan = coverage.GoMarkers
 		case m.cobertura[file]:
-			scan = HashMarkers
+			scan = coverage.HashMarkers
 		default:
 			continue
 		}
@@ -188,7 +188,7 @@ func (m measured) judge(changed map[string][]Span, markers []fileMarker) []lintk
 			}
 			inside = true
 			uncovered = uncovered || !b.Covered
-			if marker.Reason != "" {
+			if coverage.Exempts(marker.Marker, *b) {
 				exempt[b] = true
 			}
 		}

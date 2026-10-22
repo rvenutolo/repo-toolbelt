@@ -134,6 +134,57 @@ func TestCheck_tree(t *testing.T) {
 	}
 }
 
+func TestCheck_markers(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		marker string
+		want   []lintkit.Finding
+	}{
+		{name: "an exempt uncovered line is not counted", marker: "echo # coverage-exempt: kcov scores this line"},
+		{
+			name:   "a reasonless marker still counts",
+			marker: "echo # coverage-exempt:",
+			want:   []lintkit.Finding{{Path: "lib", Message: "1 uncovered lines, baseline 0"}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeFile(t, filepath.Join(root, "lib", "t.sh"), "#!/bin/bash\n"+tc.marker+"\n")
+			writeFile(t, filepath.Join(root, "cov", "c.xml"), `<coverage><sources><source>`+root+`</source></sources>`+
+				`<packages><package name="p"><classes><class filename="lib/t.sh"><lines>`+
+				`<line number="1" hits="1"/><line number="2" hits="0"/>`+
+				`</lines></class></classes></package></packages></coverage>`)
+			writeFile(t, filepath.Join(root, ".coverage-baseline.txt"), baseline("cobertura lib 0"))
+			got, err := check(t, root, `{"reports":[{"format":"cobertura","path":"cov/c.xml"}]}`, "")
+			if err != nil {
+				t.Fatalf("Check error = %v", err)
+			}
+			diffFindings(t, tc.want, got)
+		})
+	}
+}
+
+func TestCheck_rootCannotBeOpened(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root opens directories whatever their mode")
+	}
+	root := t.TempDir()
+	writeReports(t, root)
+	// Searchable but not listable: the reports open by path, the root
+	// itself cannot be opened.
+	if err := os.Chmod(root, 0o311); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0o755) }) //nolint:errcheck // best effort: lets the temp dir be removed
+	if _, err := check(t, root, section, ""); err == nil {
+		t.Fatal("Check error = nil, want a failure to open the repository root")
+	}
+}
+
 func TestCheck_namedBaseline(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

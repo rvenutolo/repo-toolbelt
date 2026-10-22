@@ -82,9 +82,12 @@ restores it into the checkout at the same paths.
 
 - **Ratchet.** `check-coverage-drop` compares the count of uncovered statements (Go) or lines (Cobertura) per unit, a Go
   package or a directory, against the committed baseline, `.coverage-baseline.txt` by default. Any rise fails, and a
-  fall passes.
+  fall passes. It skips uncovered code that a `coverage-exempt` marker with a reason covers (see Patch coverage). The
+  ratchet does not police markers: only `check-patch-coverage` reports a marker with no reason, one on no measured
+  line, or a stale one, so a repo running only `check-coverage-drop` gets none of that.
 - **Updating the baseline.** The updater is the one command that mounts the checkout read-write. Run the tests first,
-  so the reports are current:
+  so the reports are current. A consumer may rerun it to lower its baseline when markers or new tests have cut the
+  count:
 
   ```bash
   root="$(git rev-parse --show-toplevel)"
