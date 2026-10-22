@@ -50,6 +50,9 @@ The workflow is one job that calls the shared lint workflow with the image and t
 - The repo's Actions allowlist must permit `actions/checkout`, `actions/download-artifact` and
   `step-security/harden-runner`.
 - `harden-runner: false` turns off harden-runner, whose free tier does not cover private repositories.
+- The calling workflow may run on `pull_request`, `push`, `workflow_dispatch` and `merge_group`. Do not call it on
+  `schedule`, whose payload has no repository default branch (the run exits 2), or on `pull_request_target`, which
+  checks out a tree without the pull request's head.
 
 ### Git hooks
 
@@ -70,7 +73,8 @@ A repo that already has a hook keeps it and adds the `docker run` lines shown in
 
 `check-coverage-drop` and `check-patch-coverage` read the coverage reports the repo's own tests write; the image never
 runs tests. Both sections of `.repo-toolbelt.yml` list the reports as `format: go` (a `go test -coverprofile` file) or
-`format: cobertura` (what kcov writes). A missing report is a finding.
+`format: cobertura` (what kcov writes). A missing report is a finding. A `go` report needs the Go module at the repo
+root: the lints read `go.mod` there to map the profile's import paths to files.
 
 In CI, the repo's test job uploads the reports as one artifact with paths relative to the workspace, the lint job
 declares `needs:` on the test job, and the workflow input `coverage-artifact:` names the artifact. The shared workflow
@@ -185,7 +189,7 @@ the image and uploads it as a workflow artifact, pushing and tagging nothing; ad
 which writes a public transparency-log entry that cannot be removed.
 
 A `publish` that fails after the push leaves the image tag and its attestation in place. Re-run it from the Actions page
-as that release commit's own workflow run; `release-publish` refuses a run of any other commit. The re-run pushes the
-same digest.
+as that release commit's own workflow run; `release-publish` refuses a run of any other commit. The re-run should push
+the same digest, since Nix builds the image reproducibly.
 
 After a release, update the consumers' pins, and fix any consumer a changed lint now fails before its pin moves.

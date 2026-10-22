@@ -6,6 +6,10 @@
 # The image here and in .githooks/ must be the same reference; Renovate updates
 # every copy in one PR.
 #
+# Triggers: pull_request, push, workflow_dispatch and merge_group work. Do not
+# use schedule (its payload has no repository default branch, so the run exits
+# 2) or pull_request_target (it checks out a tree without the PR's head).
+#
 # The repo's Actions policy must allow actions/checkout,
 # actions/download-artifact and step-security/harden-runner.
 #
