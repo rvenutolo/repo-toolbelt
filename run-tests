@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+# @description Run the test suites. With no arguments, runs the Go tests with a
+#              coverage profile under .coverage/go/ and then every BATS test
+#              under test/ beneath kcov, which writes its report under
+#              .coverage/bats/. With arguments, forwards them to bats verbatim
+#              and measures nothing.
+#
+#              Both suites always run and the exit codes aggregate, so one run
+#              surfaces every failing suite. Must run inside the devShell.
+# @arg $@ args Optional bats arguments or test paths.
+# @exitcode 0 every suite passed.
+# @exitcode 1 a required tool is not on PATH, or a suite failed.
+# @exitcode * with arguments, bats' exit status.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
+  exit 1
+fi
+shopt -s inherit_errexit
+
+readonly COVERAGE_DIR='.coverage'
+
+# Directories kcov measures, listed so that a directory that does not exist yet
+# is skipped: kcov errors on a missing directory. Extend this list when a new
+# tree of bash appears.
+readonly KCOV_DIRS=(lib lints .ci)
+
+# Root-level runners kcov measures. They are files, not a directory, so they are
+# named individually.
+readonly KCOV_ROOT_FILES=(run-all-checks run-tests)
+
+# @description Write a timestamped, levelled line to stderr.
+# @arg $1 level severity label
+# @arg $2 message text to print
+function log() {
+  local -r level="$1"
+  local -r message="$2"
+  printf '[%s] %-5s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${level}" "${message}" >&2
+}
+
+# @description Write an INFO line to stderr.
+# @arg $@ message text to print
+function log_info() {
+  log INFO "$*"
+}
+
+# @description Write an ERROR line to stderr.
+# @arg $@ message text to print
+function log_err() {
+  log ERROR "$*"
+}
+
+# @description Print the arguments joined by commas, the list format kcov takes.
+# @arg $@ items the items to join
+function join_comma() {
+  local IFS=','
+  printf '%s' "$*"
+}
+
+# @description Run the Go tests and write the coverage profile.
+# @noargs
+function run_go_tests() {
+  mkdir --parents "${COVERAGE_DIR}/go"
+  go test -short -race -count=1 -shuffle=on -timeout 10m \
+    -coverprofile="${COVERAGE_DIR}/go/coverage.out" ./...
+}
+
+# @description Run the BATS suite beneath kcov.
+#
+#              --bash-parser: kcov defaults to /bin/bash to parse the scripts it
+#              reports on, but the suite runs under the devShell's bash, so the
+#              parser and the executor must be the same binary.
+#              --bash-dont-parse-binary-dir: otherwise kcov also parses every
+#              script in bats' own bin/ and reports on it.
+#              --include-path: only the measured trees count; test/ is the suite.
+#              --bash-parse-files-in-dir: kcov only reports files it saw
+#              execute, so walking the directories makes a never-executed
+#              script score 0% instead of vanishing from the denominator. It
+#              takes a comma-separated list and does not recurse, which is why
+#              the root runners are named in --include-path only.
+# @noargs
+function run_bats_under_kcov() {
+  local repo_dir
+  repo_dir="$(pwd)"
+  local -a parse_dirs=()
+  local -a include_paths=()
+  local dir root_file
+  for dir in "${KCOV_DIRS[@]}"; do
+    if [[ -d "${dir}" ]]; then
+      parse_dirs+=("${repo_dir}/${dir}")
+    fi
+  done
+  include_paths=("${parse_dirs[@]}")
+  for root_file in "${KCOV_ROOT_FILES[@]}"; do
+    include_paths+=("${repo_dir}/${root_file}")
+  done
+  local include_list parse_list
+  include_list="$(join_comma "${include_paths[@]}")"
+  parse_list="$(join_comma "${repo_dir}" "${parse_dirs[@]}")"
+
+  # kcov creates only the last path component of its output directory.
+  mkdir --parents "${COVERAGE_DIR}"
+  kcov \
+    --bash-parser="$(type -P bash)" \
+    --bash-dont-parse-binary-dir \
+    --include-path="${include_list}" \
+    --bash-parse-files-in-dir="${parse_list}" \
+    "${COVERAGE_DIR}/bats" \
+    bats --recursive test/
+}
+
+# @description Run the suites, or forward the arguments to bats.
+# @arg $@ args Optional bats arguments or test paths.
+function main() {
+  if (($# > 0)); then
+    exec bats "$@"
+  fi
+  local rc=0
+  log_info 'running Go tests'
+  run_go_tests || rc=1
+  log_info 'running BATS tests under kcov'
+  run_bats_under_kcov || rc=1
+  if ((rc != 0)); then
+    log_err 'one or more test suites failed'
+  fi
+  # A runner reporting its own verdict is not a crash: drop the ERR trap so the
+  # diagnostics above are the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+for tool in bats go kcov; do
+  if ! command -v "${tool}" > '/dev/null' 2>&1; then
+    printf '%s: %s not found on PATH; run ./.ci/in-devshell ./run-tests\n' "${0##*/}" "${tool}" >&2
+    exit 1
+  fi
+done
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+cd "${REPO_DIR}" || exit 1
+
+main "$@"
