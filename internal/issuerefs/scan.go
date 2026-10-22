@@ -98,9 +98,13 @@ func reference(line string, hash, end int, style bool) (string, bool) {
 			// bash's `${#name}` length expansion.
 			return "", false
 		case isWord(prev):
-			// Only `owner/repo#N` reads as an issue reference after a word
-			// character; `C#N` and `foo#N` do not.
+			// After a word character, only `owner/repo#N` and the `PR#N`,
+			// `GH#N` and `issue#N` prefixes read as issue references;
+			// `C#N` and `foo#N` do not.
 			start, ok := ownerRepoStart(line, hash)
+			if !ok {
+				start, ok = prefixStart(line, hash)
+			}
 			if !ok {
 				return "", false
 			}
@@ -131,6 +135,22 @@ func ownerRepoStart(line string, hash int) (int, bool) {
 		return 0, false
 	}
 	return start, true
+}
+
+// prefixStart returns where a `PR`, `GH` or `issue` prefix, in any case and
+// as a whole word, starts before the `#` at hash.
+func prefixStart(line string, hash int) (int, bool) {
+	for _, prefix := range []string{"pr", "gh", "issue"} {
+		start := hash - len(prefix)
+		if start < 0 || !strings.EqualFold(line[start:hash], prefix) {
+			continue
+		}
+		if before, _ := utf8.DecodeLastRuneInString(line[:start]); start > 0 && isWord(before) {
+			continue
+		}
+		return start, true
+	}
+	return 0, false
 }
 
 // isColour reports whether a `#` and digits digits long, between before and
