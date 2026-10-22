@@ -13,9 +13,12 @@ function setup() {
   mkdir "${BATS_TEST_TMPDIR}/bin" .ci
   write_stub "${BATS_TEST_TMPDIR}/bin/nix" NIX_STATUS
   write_stub .ci/run-lint-checks LINT_STATUS
+  write_stub .ci/check-examples EXAMPLES_STATUS
+  mkdir --parents examples/consumer
   write_stub run-tests TESTS_STATUS
   # The build-dist stub lays out a runner that records its arguments and
-  # whether TOOLBELT_LINTS_DIR points at the lints directory beside it.
+  # whether TOOLBELT_LINTS_DIR points at the lints directory beside it, and a
+  # check-toolbelt-pins that records where it ran and what it was handed.
   cat > .ci/build-dist << 'STUB'
 #!/usr/bin/env bash
 printf 'build-dist %s\n' "$*" >> "${CALLS}"
@@ -32,6 +35,14 @@ fi
 exit "${RUNNER_STATUS:-0}"
 RUNNER
 chmod +x "$1/bin/toolbelt"
+mkdir --parents "$1/lints/check-toolbelt-pins"
+cat > "$1/lints/check-toolbelt-pins/check-toolbelt-pins" << 'PINS'
+#!/usr/bin/env bash
+printf 'check-toolbelt-pins in %s section %s hook %s\n' \
+  "$(git rev-parse --show-prefix)" "$(cat "${TOOLBELT_SECTION}")" "${TOOLBELT_HOOK}" >> "${CALLS}"
+exit "${PINS_STATUS:-0}"
+PINS
+chmod +x "$1/lints/check-toolbelt-pins/check-toolbelt-pins"
 STUB
   chmod +x .ci/build-dist
   # The stubs must shadow the real tools for this test only.
@@ -61,10 +72,12 @@ STUB
   run cat "${CALLS}"
   assert_line --index 0 "nix flake check --no-eval-cache ${FIXTURE_REPO}"
   assert_line --index 1 'run-lint-checks '
-  assert_line --index 2 'run-tests '
-  assert_line --index 3 --regexp '^build-dist /.+/dist$'
-  assert_line --index 4 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage'
-  assert_line --index 5 'lints dir ok'
+  assert_line --index 2 'check-examples '
+  assert_line --index 3 'run-tests '
+  assert_line --index 4 --regexp '^build-dist /.+/dist$'
+  assert_line --index 5 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage'
+  assert_line --index 6 'lints dir ok'
+  assert_line --index 7 'check-toolbelt-pins in examples/consumer/ section null hook ci'
 }
 
 @test 'leaves no scratch directory behind' {
@@ -78,13 +91,13 @@ STUB
 
 @test 'a failing check fails the gate and the later checks still run' {
   local step
-  for step in NIX_STATUS LINT_STATUS RUNNER_STATUS; do
+  for step in NIX_STATUS LINT_STATUS EXAMPLES_STATUS RUNNER_STATUS PINS_STATUS; do
     : > "${CALLS}"
     run env "${step}=1" "${REPO_DIR}/run-all-checks"
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
-    assert_output 6
+    assert_output 8
   done
 }
 
@@ -95,13 +108,15 @@ STUB
   assert_output --partial 'one or more checks failed'
   run grep '^toolbelt ' "${CALLS}"
   assert_output 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers'
+  run grep --count '^check-toolbelt-pins ' "${CALLS}"
+  assert_output 1
 }
 
 @test 'a layout that does not build fails the gate without running the runner' {
   BUILD_STATUS=1 run "${REPO_DIR}/run-all-checks"
   assert_failure 1
   assert_output --partial 'one or more checks failed'
-  run grep --count '^toolbelt ' "${CALLS}"
+  run grep --count '^toolbelt \|^check-toolbelt-pins ' "${CALLS}"
   assert_output 0
 }
 

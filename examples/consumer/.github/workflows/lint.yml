@@ -1,0 +1,41 @@
+# Runs repo-toolbelt's lints on every pull request and every push to main.
+# Copy this file to .github/workflows/lint.yml and delete the lints that do not
+# fit the repo. Require the check `lint / toolbelt-ok` in the repo's ruleset;
+# it stays the same whatever the mode or the lint list.
+#
+# The image here and in .githooks/ must be the same reference; Renovate updates
+# every copy in one PR.
+#
+# The repo's Actions policy must allow actions/checkout,
+# actions/download-artifact and step-security/harden-runner.
+#
+# Coverage lints: add the test job that writes the coverage reports, have it
+# upload them as one artifact with paths relative to the workspace (the shared
+# workflow restores them at those paths), add `needs: <that job>` here, and
+# pass the artifact's name as `coverage-artifact:`.
+name: lint
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions: {}
+jobs:
+  lint:
+    uses: rvenutolo/repo-toolbelt/.github/workflows/lint.yml@0000000000000000000000000000000000000000 # v0.0.0
+    permissions:
+      contents: read
+    with:
+      image: ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      # One lint per line; blank lines and # comments are ignored.
+      lints: |
+        check-workflow-hermetic
+        check-issue-numbers
+        check-coverage-drop
+        check-patch-coverage
+        check-toolbelt-pins
+      # split (the default): the quick lints share one job, each slow lint
+      # gets its own. parallel: one job for all. matrix: one job per lint.
+      # mode: split
+      # coverage-artifact: coverage
+      # harden-runner's free tier does not cover private repos.
+      # harden-runner: false

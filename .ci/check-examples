@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+
+# @description Check the example consumer files under examples/consumer/
+#              against lints.toml. The CI workflow's `lints` input and each
+#              hook's `LINTS=( ... )` list must name every lint in the
+#              manifest and no other; the pre-commit example must mark each
+#              slow lint, and only those, with `# slow`; the config example's
+#              commented sections must name known lints. The placeholder pin
+#              is accepted only while no `v*` tag exists: after the first
+#              release the examples must pin it. Whether the pins agree with
+#              each other is check-toolbelt-pins' job. Run it inside the repo;
+#              the repo is the one containing the working directory. Must run
+#              inside the devShell.
+# @noargs
+# @stdout One finding per line, as `<path>[:<line>]: <message>`, then a count
+#         line when there is any.
+# @stderr The reason for a setup failure.
+# @exitcode 0 the examples agree with the manifest.
+# @exitcode 1 one or more findings.
+# @exitcode 2 a usage error, or the manifest or the workflow example cannot be
+#             read.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
+  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
+fi
+shopt -s inherit_errexit
+
+readonly EXAMPLES_DIR='examples/consumer'
+readonly WORKFLOW="${EXAMPLES_DIR}/.github/workflows/lint.yml"
+readonly PRE_COMMIT="${EXAMPLES_DIR}/.githooks/pre-commit"
+readonly PRE_PUSH="${EXAMPLES_DIR}/.githooks/pre-push"
+readonly CONFIG="${EXAMPLES_DIR}/.repo-toolbelt.yml"
+readonly PLACEHOLDER_IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+readonly PLACEHOLDER_SHA='@0000000000000000000000000000000000000000'
+
+# Scratch file for command output (no process substitution). A script-level
+# variable, not a local: the single-quoted EXIT trap expands it at exit.
+TMP_FILE="$(mktemp)"
+readonly TMP_FILE
+trap 'rm --force -- "${TMP_FILE}"' EXIT
+
+# Lint name to speed, and the names in manifest order, from the manifest.
+declare -A SPEEDS=()
+MANIFEST_NAMES=()
+FINDINGS=0
+
+# @description Print a finding to stdout and count it.
+# @arg $1 location `<path>` or `<path>:<line>`
+# @arg $2 message what is wrong
+function finding() {
+  local -r location="$1"
+  local -r message="$2"
+  printf '%s: %s\n' "${location}" "${message}"
+  FINDINGS=$((FINDINGS + 1))
+}
+
+# @description Print a setup failure to stderr and exit 2.
+# @arg $1 message the reason
+function die() {
+  local -r message="$1"
+  printf '%s: %s\n' "${0##*/}" "${message}" >&2
+  exit 2
+}
+
+# @description Load lints.toml's lint names and speeds into SPEEDS.
+# @noargs
+function load_manifest() {
+  if ! yq --input-format toml --output-format tsv '.lint[] | [.name, .speed]' lints.toml > "${TMP_FILE}" 2>&1; then
+    die "cannot read lints.toml: $(< "${TMP_FILE}")"
+  fi
+  local name speed
+  while IFS=$'\t' read -r name speed; do
+    SPEEDS["${name}"]="${speed}"
+    MANIFEST_NAMES+=("${name}")
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description Report every manifest lint missing from a list.
+# @arg $1 path the example file
+# @arg $@ names the lints the file lists, from $2 on
+function report_omitted() {
+  local -r path="$1"
+  shift
+  local -A listed=()
+  local name
+  for name in "$@"; do
+    listed["${name}"]=1
+  done
+  for name in "${MANIFEST_NAMES[@]}"; do
+    if [[ -z "${listed[${name}]:-}" ]]; then
+      finding "${path}" "omits ${name}"
+    fi
+  done
+}
+
+# @description Report every line of a file that holds the placeholder pin,
+#              when a `v*` release tag exists.
+# @arg $1 path the example file
+function report_placeholder() {
+  local -r path="$1"
+  if [[ -z "${RELEASE_TAGS}" ]]; then
+    return 0
+  fi
+  local line_number=0 text
+  while IFS= read -r text || [[ -n "${text}" ]]; do
+    line_number=$((line_number + 1))
+    if [[ "${text}" == *"${PLACEHOLDER_IMAGE}"* || "${text}" == *"${PLACEHOLDER_SHA}"* ]]; then
+      finding "${path}:${line_number}" 'placeholder pin, but a v* release tag exists'
+    fi
+  done < "${path}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description Check the CI workflow example's `lints` input.
+# @noargs
+function check_workflow() {
+  if [[ ! -f "${WORKFLOW}" ]]; then
+    finding "${WORKFLOW}" 'missing'
+    return 0
+  fi
+  if ! yq '.jobs.lint.with.lints // ""' "${WORKFLOW}" > "${TMP_FILE}" 2>&1; then
+    die "cannot read ${WORKFLOW}: $(< "${TMP_FILE}")"
+  fi
+  local -a names=()
+  local text name
+  while IFS= read -r text; do
+    name="${text%%#*}"
+    name="${name//[[:space:]]/}"
+    if [[ -z "${name}" ]]; then
+      continue
+    fi
+    names+=("${name}")
+    if [[ -z "${SPEEDS[${name}]:-}" ]]; then
+      finding "${WORKFLOW}" "names unknown lint ${name}"
+    fi
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+  report_omitted "${WORKFLOW}" "${names[@]}"
+  report_placeholder "${WORKFLOW}"
+}
+
+# @description Check a hook example's `LINTS=( ... )` list, and in the
+#              pre-commit example each lint's `# slow` mark.
+# @arg $1 path the hook example
+# @arg $2 check_marks 1 to check `# slow` marks, 0 to ignore them
+function check_hook() {
+  local -r path="$1"
+  local -r check_marks="$2"
+  if [[ ! -f "${path}" ]]; then
+    finding "${path}" 'missing'
+    return 0
+  fi
+  local -r entry_re='^[[:space:]]*([^[:space:]#]+)[[:space:]]*(#[[:space:]]*(.*[^[:space:]])?[[:space:]]*)?$'
+  local -a names=()
+  local line_number=0 in_list=0 found_list=0 text name marked
+  while IFS= read -r text || [[ -n "${text}" ]]; do
+    line_number=$((line_number + 1))
+    if ((in_list == 0)); then
+      if [[ "${text}" =~ ^(readonly[[:space:]]+)?LINTS=\($ ]]; then
+        in_list=1
+        found_list=1
+      fi
+      continue
+    fi
+    if [[ "${text}" == ')' ]]; then
+      in_list=0
+      continue
+    fi
+    if [[ ! "${text}" =~ ${entry_re} ]]; then
+      continue
+    fi
+    name="${BASH_REMATCH[1]}"
+    marked=0
+    if [[ "${BASH_REMATCH[3]}" == 'slow' ]]; then
+      marked=1
+    fi
+    names+=("${name}")
+    case "${SPEEDS[${name}]:-}" in
+      '')
+        finding "${path}:${line_number}" "names unknown lint ${name}"
+        ;;
+      slow)
+        if ((check_marks == 1 && marked == 0)); then
+          finding "${path}:${line_number}" "${name} is slow but not marked # slow"
+        fi
+        ;;
+      *)
+        if ((check_marks == 1 && marked == 1)); then
+          finding "${path}:${line_number}" "${name} is marked # slow but is quick"
+        fi
+        ;;
+    esac
+  done < "${path}" # coverage-exempt: kcov scores this line; it never executes as bash
+  if ((found_list == 0)); then
+    finding "${path}" 'no LINTS=( list'
+  else
+    report_omitted "${path}" "${names[@]}"
+  fi
+  report_placeholder "${path}"
+}
+
+# @description Check that the config example's commented sections name known
+#              lints. Which lints take config is each lint's affair, so a lint
+#              with no section is not reported.
+# @noargs
+function check_config() {
+  if [[ ! -f "${CONFIG}" ]]; then
+    finding "${CONFIG}" 'missing'
+    return 0
+  fi
+  local -r section_re='^# ([A-Za-z0-9_-]+):[[:space:]]*$'
+  local line_number=0 text
+  while IFS= read -r text || [[ -n "${text}" ]]; do
+    line_number=$((line_number + 1))
+    if [[ "${text}" =~ ${section_re} && -z "${SPEEDS[${BASH_REMATCH[1]}]:-}" ]]; then
+      finding "${CONFIG}:${line_number}" "names unknown lint ${BASH_REMATCH[1]}"
+    fi
+  done < "${CONFIG}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description Check every example and print the count line.
+# @noargs
+function main() {
+  load_manifest
+  git tag --list 'v*' > "${TMP_FILE}"
+  RELEASE_TAGS="$(< "${TMP_FILE}")"
+  readonly RELEASE_TAGS
+
+  check_workflow
+  check_hook "${PRE_COMMIT}" 1
+  check_hook "${PRE_PUSH}" 0
+  check_config
+
+  if ((FINDINGS > 0)); then
+    local noun='example problem'
+    if ((FINDINGS > 1)); then
+      noun+='s'
+    fi
+    printf '%d %s\n' "${FINDINGS}" "${noun}"
+    # A check reporting its own verdict is not a crash.
+    trap - ERR
+    return 1
+  fi
+}
+
+if (($# != 0)); then
+  printf 'usage: %s\n' "${0##*/}" >&2
+  exit 2
+fi
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+cd "${REPO_DIR}" || exit 2
+
+main "$@"

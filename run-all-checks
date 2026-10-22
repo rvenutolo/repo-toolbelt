@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 # @description The full verification gate, verify-only: formatting (nix flake
-#              check), the lint suite, the Go and BATS test suites, then the
-#              coverage lints on the reports the tests wrote.
+#              check), the lint suite, the example consumer files' check, the
+#              Go and BATS test suites, then this repo's lints through the
+#              built runner, the coverage lints on the reports the tests
+#              wrote, and check-toolbelt-pins over the example files.
 #              Exit codes aggregate, so one run surfaces every failing
 #              category. Every caller (the pre-push hook, the .justfile and
 #              CI) runs it through .ci/in-devshell, so local and CI runs
@@ -24,7 +26,8 @@ fi
 shopt -s inherit_errexit
 
 # Every lint that fits this repo, run through the built runner as CI runs
-# them. check-toolbelt-pins is not among them: it checks consumers' pins.
+# them. check-toolbelt-pins is not among them: it checks consumers' pins, so it
+# runs over the example consumer files instead.
 readonly DOGFOOD_LINTS=(check-workflow-hermetic check-issue-numbers)
 readonly COVERAGE_LINTS=(check-coverage-drop check-patch-coverage)
 
@@ -35,6 +38,7 @@ TMP_DIR="$(mktemp --directory)"
 readonly TMP_DIR
 trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
 readonly TMP_FILE="${TMP_DIR}/output"
+readonly DIST_DIR="${TMP_DIR}/dist"
 
 # @description Write a timestamped, levelled line to stderr.
 # @arg $1 level severity label
@@ -79,18 +83,26 @@ function warn_untracked() {
   done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
-# @description Build the image layout from this commit and run the dogfooded
-#              lints through its runner, judging the change since the fork
-#              point from origin/main. The coverage lints read the reports the
-#              tests just wrote.
+# @description Run the dogfooded lints through the built runner, judging the
+#              change since the fork point from origin/main. The coverage
+#              lints read the reports the tests just wrote.
 # @arg $@ lints names of the lints to run
 function run_dogfood_lints() {
-  local -r dist_dir="${TMP_DIR}/dist"
-  "${REPO_DIR}/.ci/build-dist" "${dist_dir}" || return 1
   # Only --hook ci takes an explicit --base and --head; outside Actions its
   # ::stop-commands:: and ::error lines are expected noise.
-  TOOLBELT_LINTS_DIR="${dist_dir}/lints" "${dist_dir}/bin/toolbelt" run --hook ci \
+  TOOLBELT_LINTS_DIR="${DIST_DIR}/lints" "${DIST_DIR}/bin/toolbelt" run --hook ci \
     --base origin/main --head HEAD --default-branch main "$@"
+}
+
+# @description Run the built check-toolbelt-pins with examples/consumer as its
+#              repo root and no config section, as the runner would in a
+#              consumer. It reads files only, so it needs no repository there.
+# @noargs
+function run_pins_over_examples() {
+  local -r section_file="${TMP_DIR}/null-section.json"
+  printf 'null\n' > "${section_file}"
+  env --chdir="${REPO_DIR}/examples/consumer" TOOLBELT_SECTION="${section_file}" TOOLBELT_HOOK=ci \
+    "${DIST_DIR}/lints/check-toolbelt-pins/check-toolbelt-pins"
 }
 
 # @description Run every check and aggregate the exit codes.
@@ -105,19 +117,31 @@ function main() {
   log_info 'running lint checks'
   "${REPO_DIR}/.ci/run-lint-checks" || rc=1
 
+  log_info 'checking the example consumer files'
+  "${REPO_DIR}/.ci/check-examples" || rc=1
+
   log_info 'running tests'
   local tests_rc=0
   "${REPO_DIR}/run-tests" || tests_rc=1
 
-  # Reports from failed or partial tests would add findings that only
-  # repeat the test failure.
-  if ((tests_rc == 0)); then
-    log_info 'running the dogfooded lints, coverage lints included'
-    run_dogfood_lints "${DOGFOOD_LINTS[@]}" "${COVERAGE_LINTS[@]}" || rc=1
+  if ((tests_rc != 0)); then
+    rc=1
+  fi
+  log_info 'building the image layout from this commit'
+  if "${REPO_DIR}/.ci/build-dist" "${DIST_DIR}"; then
+    # Reports from failed or partial tests would add findings that only
+    # repeat the test failure.
+    if ((tests_rc == 0)); then
+      log_info 'running the dogfooded lints, coverage lints included'
+      run_dogfood_lints "${DOGFOOD_LINTS[@]}" "${COVERAGE_LINTS[@]}" || rc=1
+    else
+      log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
+      run_dogfood_lints "${DOGFOOD_LINTS[@]}" || rc=1
+    fi
+    log_info 'running check-toolbelt-pins over the example consumer files'
+    run_pins_over_examples || rc=1
   else
     rc=1
-    log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
-    run_dogfood_lints "${DOGFOOD_LINTS[@]}" || rc=1
   fi
 
   if ((rc != 0)); then
