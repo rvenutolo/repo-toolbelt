@@ -16,13 +16,14 @@ import (
 const (
 	exitError     = 1
 	exitUsage     = 2
+	exitSetup     = 2
 	exitCancelled = 130
 )
 
 const rootLong = `toolbelt runs the lints this image ships.
 
-Exit codes: 0 success, 1 findings or a runtime error, 2 usage or setup error,
-130 interrupted.`
+Exit codes: 0 success, 1 findings, a config problem or a runtime error, 2 a
+usage or setup error or a lint that errored, 130 interrupted.`
 
 // usageError is the caller's mistake: a bad argument, flag or lint selection.
 type usageError struct{ err error }
@@ -34,17 +35,36 @@ func usagef(format string, args ...any) error {
 	return usageError{fmt.Errorf(format, args...)}
 }
 
+// codeError is an error that sets its own exit code: a run whose lints
+// reported findings or errored, or a setup failure.
+type codeError struct {
+	code int
+	err  error
+}
+
+func (e codeError) Error() string { return e.err.Error() }
+func (e codeError) Unwrap() error { return e.err }
+
+// setupf is a setup failure: the run cannot start in this checkout.
+func setupf(format string, args ...any) error {
+	return codeError{code: exitSetup, err: fmt.Errorf(format, args...)}
+}
+
 // ExitCode maps an error returned by Run to a process exit code: 0 for nil,
-// 2 for a usage error, 130 when interrupted, 1 otherwise.
+// 130 when interrupted, 2 for a usage error, the code a run's outcome or setup
+// failure carries, 1 otherwise.
 func ExitCode(err error) int {
 	var usage usageError
+	var coded codeError
 	switch {
 	case err == nil:
 		return 0
-	case errors.As(err, &usage):
-		return exitUsage
 	case errors.Is(err, context.Canceled):
 		return exitCancelled
+	case errors.As(err, &usage):
+		return exitUsage
+	case errors.As(err, &coded):
+		return coded.code
 	default:
 		return exitError
 	}
@@ -56,6 +76,9 @@ type Runner struct {
 	Lints []manifest.Lint
 	// Version is the string --version prints.
 	Version string
+	// Dir is the directory run starts in; empty means the process's working
+	// directory.
+	Dir string
 }
 
 // Run runs toolbelt with the embedded manifest. Help and version requests

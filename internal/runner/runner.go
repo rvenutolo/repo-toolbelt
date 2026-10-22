@@ -1,0 +1,153 @@
+// Package runner runs lint executables concurrently, each with its own
+// buffered output, following the lint calling convention: the repo root as the
+// working directory, no arguments, and its inputs in TOOLBELT_* variables.
+package runner
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
+)
+
+// Verdict exit codes a Result carries.
+const (
+	ExitPass     = 0
+	ExitFindings = 1
+	ExitError    = 2
+)
+
+// waitDelay bounds how long a cancelled lint's process group may take to exit
+// after SIGTERM before it is killed and its pipes closed.
+const waitDelay = 5 * time.Second
+
+// Result is one lint's outcome.
+type Result struct {
+	// Lint is the lint's name.
+	Lint string
+	// Exit is the verdict: ExitPass, ExitFindings or ExitError. A lint that
+	// exits 3 or above, is killed by a signal or cannot be started is
+	// ExitError, with the reason appended to Stderr.
+	Exit int
+	// Output is everything the lint wrote to stdout, byte for byte.
+	Output []byte
+	// Stderr is everything the lint wrote to stderr, then any reason the
+	// runner adds.
+	Stderr []byte
+}
+
+// Options says where lints are and what they are told.
+type Options struct {
+	// LintsDir holds each lint's executable at <LintsDir>/<name>/<name>.
+	LintsDir string
+	// RepoRoot is every lint's working directory.
+	RepoRoot string
+	// Hook, Base and Range become TOOLBELT_HOOK, TOOLBELT_BASE and
+	// TOOLBELT_RANGE.
+	Hook, Base, Range string
+	// Sections maps a lint's name to its config section as JSON. A lint with
+	// no entry gets the JSON null.
+	Sections map[string][]byte
+	// Env holds extra NAME=value pairs for every lint, added after the
+	// process's own environment.
+	Env []string
+}
+
+// Run runs every lint at once and returns their results in the order of
+// lints. Cancelling ctx sends SIGTERM to each lint's process group, and
+// SIGKILL to any still running after a grace period.
+func Run(ctx context.Context, lints []manifest.Lint, opts Options) []Result {
+	results := make([]Result, len(lints))
+	sectionsDir, err := os.MkdirTemp("", "toolbelt-sections-")
+	if err != nil {
+		for i, lint := range lints {
+			results[i] = errored(lint.Name, nil, nil, fmt.Sprintf("cannot create a directory for config sections: %v", err))
+		}
+		return results
+	}
+	defer os.RemoveAll(sectionsDir)
+
+	// One goroutine per lint is bounded by the manifest: a run names each
+	// lint at most once.
+	var wg sync.WaitGroup
+	for i, lint := range lints {
+		wg.Go(func() {
+			results[i] = runOne(ctx, lint.Name, sectionsDir, opts)
+		})
+	}
+	wg.Wait()
+	return results
+}
+
+func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result {
+	section, ok := opts.Sections[name]
+	if !ok {
+		section = []byte("null")
+	}
+	sectionFile := filepath.Join(sectionsDir, name+".json")
+	if err := os.WriteFile(sectionFile, section, 0o600); err != nil {
+		return errored(name, nil, nil, fmt.Sprintf("cannot write config section: %v", err))
+	}
+
+	path := filepath.Join(opts.LintsDir, name, name)
+	cmd := exec.CommandContext(ctx, path) //nolint:gosec // running the named lint's executable is the purpose of this package
+	cmd.Dir = opts.RepoRoot
+	cmd.Env = append(append(os.Environ(), opts.Env...),
+		"TOOLBELT_SECTION="+sectionFile,
+		"TOOLBELT_HOOK="+opts.Hook,
+		"TOOLBELT_BASE="+opts.Base,
+		"TOOLBELT_RANGE="+opts.Range,
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	// Its own process group, so cancelling reaches the tools a lint starts,
+	// not only the lint.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	}
+	cmd.WaitDelay = waitDelay
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return Result{Lint: name, Exit: ExitPass, Output: stdout.Bytes(), Stderr: stderr.Bytes()}
+	case errors.As(err, &exitErr):
+		return fromExit(name, exitErr, stdout.Bytes(), stderr.Bytes())
+	case errors.Is(err, os.ErrNotExist):
+		return errored(name, nil, nil, "lint executable "+path+" not found")
+	default:
+		return errored(name, stdout.Bytes(), stderr.Bytes(), fmt.Sprintf("cannot run lint executable %s: %v", path, err))
+	}
+}
+
+func fromExit(name string, exitErr *exec.ExitError, stdout, stderr []byte) Result {
+	if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		return errored(name, stdout, stderr, "lint killed by signal: "+status.Signal().String())
+	}
+	code := exitErr.ExitCode()
+	if code == ExitFindings || code == ExitError {
+		return Result{Lint: name, Exit: code, Output: stdout, Stderr: stderr}
+	}
+	return errored(name, stdout, stderr, fmt.Sprintf("lint exited %d", code))
+}
+
+// errored is an ExitError result with reason added to stderr on a line of its
+// own.
+func errored(name string, stdout, stderr []byte, reason string) Result {
+	if len(stderr) > 0 && stderr[len(stderr)-1] != '\n' {
+		stderr = append(stderr, '\n')
+	}
+	stderr = append(stderr, "toolbelt: "+reason+"\n"...)
+	return Result{Lint: name, Exit: ExitError, Output: stdout, Stderr: stderr}
+}
