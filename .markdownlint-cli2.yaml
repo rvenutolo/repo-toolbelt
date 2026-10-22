@@ -2,3 +2,7 @@ config:
   # The repo wraps prose at 120 columns, matching its other files.
   MD013:
     line_length: 120
+  # CHANGELOG.md repeats `### Features` and the other group headings under
+  # every release; a heading need only differ from its siblings.
+  MD024:
+    siblings_only: true

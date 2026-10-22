@@ -20,6 +20,9 @@ check-issue-numbers:
   exempt:
     - path: internal/issuerefs/*_test.go
       reason: The lint's own tests hold issue references as the input they scan.
+    - path: test/release-version.bats
+      match: 'merge --quiet --no-ff --message'
+      reason: These fixtures are merge subjects as GitHub writes them, pull request number included, which the release tooling must drop.
 check-coverage-drop:
   reports:
     - format: go
