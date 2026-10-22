@@ -32,6 +32,9 @@ printf 'toolbelt %s\n' "$*" >> "${CALLS}"
 if [[ "$(realpath "${TOOLBELT_LINTS_DIR}")" == "$(realpath "$(dirname "$0")/../lints")" ]]; then
   printf 'lints dir ok\n' >> "${CALLS}"
 fi
+if [[ "$1" == update-coverage-baseline ]]; then
+  exit "${BASELINE_STATUS:-0}"
+fi
 exit "${RUNNER_STATUS:-0}"
 RUNNER
 chmod +x "$1/bin/toolbelt"
@@ -77,7 +80,8 @@ STUB
   assert_line --index 4 --regexp '^build-dist /.+/dist$'
   assert_line --index 5 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage'
   assert_line --index 6 'lints dir ok'
-  assert_line --index 7 'check-toolbelt-pins in examples/consumer/ section null hook ci'
+  assert_line --index 7 'toolbelt update-coverage-baseline --check'
+  assert_line --index 8 'check-toolbelt-pins in examples/consumer/ section null hook ci'
 }
 
 @test 'leaves no scratch directory behind' {
@@ -91,13 +95,13 @@ STUB
 
 @test 'a failing check fails the gate and the later checks still run' {
   local step
-  for step in NIX_STATUS LINT_STATUS EXAMPLES_STATUS RUNNER_STATUS PINS_STATUS; do
+  for step in NIX_STATUS LINT_STATUS EXAMPLES_STATUS RUNNER_STATUS BASELINE_STATUS PINS_STATUS; do
     : > "${CALLS}"
     run env "${step}=1" "${REPO_DIR}/run-all-checks"
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
-    assert_output 8
+    assert_output 9
   done
 }
 
@@ -110,6 +114,21 @@ STUB
   assert_output 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers'
   run grep --count '^check-toolbelt-pins ' "${CALLS}"
   assert_output 1
+}
+
+@test 'a stale baseline fails the gate' {
+  BASELINE_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  assert_failure 1
+  assert_output --partial 'one or more checks failed'
+  run grep '^toolbelt update-coverage-baseline' "${CALLS}"
+  assert_output 'toolbelt update-coverage-baseline --check'
+}
+
+@test 'the baseline check is skipped when the tests fail' {
+  TESTS_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  assert_failure 1
+  run grep --count '^toolbelt update-coverage-baseline' "${CALLS}"
+  assert_output 0
 }
 
 @test 'a layout that does not build fails the gate without running the runner' {

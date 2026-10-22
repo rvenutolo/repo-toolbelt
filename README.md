@@ -97,6 +97,10 @@ restores it into the checkout at the same paths.
     ghcr.io/rvenutolo/repo-toolbelt:<tag>@sha256:<digest> update-coverage-baseline
   ```
 
+  `update-coverage-baseline --check` writes nothing. It compares the committed baseline with the one the updater would
+  write, prints one `<format> <unit>: baseline <old>, current <new>` line per differing unit, and exits 1 on any
+  difference. A consumer can run it as a gate step to keep slack out of its baseline.
+
 - **Recording a rise.** A commit that raises a baseline line must carry `Coverage-Drop: <unit> - <reason>` on one line in
   the last paragraph of its message, with any other trailers (`Co-Authored-By:` and the like) directly under it and no
   blank line between them. Prefer a test to a raised baseline.

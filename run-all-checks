@@ -4,7 +4,7 @@
 #              check), the lint suite, the example consumer files' check, the
 #              Go and BATS test suites, then this repo's lints through the
 #              built runner, the coverage lints on the reports the tests
-#              wrote, and check-toolbelt-pins over the example files.
+#              wrote, the baseline-slack check, and check-toolbelt-pins over the example files.
 #              Exit codes aggregate, so one run surfaces every failing
 #              category. Every caller (the pre-push hook, the .justfile and
 #              CI) runs it through .ci/in-devshell, so local and CI runs
@@ -94,6 +94,15 @@ function run_dogfood_lints() {
     --base origin/main --head HEAD --default-branch main "$@"
 }
 
+# @description Fail when the committed coverage baseline differs from what the
+#              updater would write from the reports the tests just wrote, so
+#              slack left by new markers or tests cannot let untested code in.
+#              Reads only; the working tree is never modified.
+# @noargs
+function check_baseline_slack() {
+  "${DIST_DIR}/bin/toolbelt" update-coverage-baseline --check
+}
+
 # @description Run the built check-toolbelt-pins with examples/consumer as its
 #              repo root and no config section, as the runner would in a
 #              consumer. It reads files only, so it needs no repository there.
@@ -134,6 +143,8 @@ function main() {
     if ((tests_rc == 0)); then
       log_info 'running the dogfooded lints, coverage lints included'
       run_dogfood_lints "${DOGFOOD_LINTS[@]}" "${COVERAGE_LINTS[@]}" || rc=1
+      log_info 'checking the coverage baseline for slack'
+      check_baseline_slack || rc=1
     else
       log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
       run_dogfood_lints "${DOGFOOD_LINTS[@]}" || rc=1
