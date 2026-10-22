@@ -245,6 +245,14 @@ EOF
   assert_config_error "check-workflow-hermetic: exempt[0]: step 'a.yml::x::y' is not <file>::<id>"
 }
 
+@test 'fails: a digits-only string step is not <file>::<id>' {
+  write_section << 'EOF'
+{"exempt":[{"step":"5","reason":"r"}]}
+EOF
+  run --separate-stderr "${LINT_PATH}"
+  assert_config_error "check-workflow-hermetic: exempt[0]: step '5' is not <file>::<id>"
+}
+
 @test 'passes: step with a nested path and a space' {
   write_section << 'EOF'
 {"exempt":[{"step":".github/actions/my action/action.yml::x","reason":"Runs before Nix is installed."},{"step":".github/workflows/a/b.yml::x","reason":"Runs before Nix is installed."}]}
