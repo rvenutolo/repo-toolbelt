@@ -7,7 +7,7 @@ go cmd/check-coverage-drop 1
 go cmd/check-issue-numbers 1
 go cmd/check-patch-coverage 1
 go cmd/toolbelt 7
-go internal/cli 13
+go internal/cli 11
 go internal/config 3
 go internal/coverage 0
 go internal/coveragedrop 0
