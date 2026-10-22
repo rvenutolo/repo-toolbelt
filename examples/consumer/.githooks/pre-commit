@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+# @description Git pre-commit hook: runs repo-toolbelt's lints in Docker and fails
+#              the pre-commit when any reports a problem. Turn the hooks on with
+#              `git config core.hooksPath .githooks`. Delete the lints that do
+#              not fit the repo; each runs in the one container, concurrently.
+#
+#              The image here and in the CI workflow must be the same
+#              reference; Renovate updates every copy in one PR.
+#
+#              A repo that already has a pre-commit hook keeps it and adds these
+#              lines to it instead (no `exec`, so the rest of the hook still
+#              runs, and under `set -e` a failure fails the hook):
+#
+#                root="$(git rev-parse --show-toplevel)"
+#                common="$(git rev-parse --path-format=absolute --git-common-dir)"
+#                docker run --rm --interactive --network=none \
+#                  --user "$(id -u):$(id -g)" \
+#                  --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
+#                  --workdir "${root}" \
+#                  ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+#                  run --hook pre-commit \
+#                  check-workflow-hermetic check-issue-numbers
+# @noargs
+# @exitcode 0 every lint passed.
+# @exitcode 1 a lint reported a problem, or docker is not on PATH.
+# @exitcode 2 a usage or setup error in the runner.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+readonly LINTS=(
+  check-workflow-hermetic
+  check-issue-numbers
+  check-coverage-drop
+  check-patch-coverage
+  check-toolbelt-pins
+)
+
+if ! command -v docker > '/dev/null' 2>&1; then
+  printf 'pre-commit: docker is not on PATH; the repo-toolbelt lints run in Docker\n' >&2
+  exit 1
+fi
+root="$(git rev-parse --show-toplevel)"
+common="$(git rev-parse --path-format=absolute --git-common-dir)"
+exec docker run --rm --interactive --network=none \
+  --user "$(id -u):$(id -g)" \
+  --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
+  --workdir "${root}" \
+  "${IMAGE}" run --hook pre-commit "${LINTS[@]}"

@@ -1,0 +1,40 @@
+# repo-toolbelt's config file, at the repo root. A repo needs it only for
+# exemptions or for a lint that takes required settings; with neither, leave
+# it out. Copy the sections for the lints the repo runs and uncomment them.
+# Each section belongs to the lint it is named after, and a section for a lint
+# the run does not name is ignored. check-toolbelt-pins takes no config.
+
+# check-workflow-hermetic:
+#   # The devShell wrapper every run: step must go through.
+#   wrapper: .ci/in-devshell
+#   exempt:
+#     # <repo-relative workflow or action file>::<step id>
+#     - step: .github/workflows/ci.yml::verdict
+#       reason: It only compares the needed jobs' results.
+
+# check-issue-numbers:
+#   exempt:
+#     # A glob over repo-relative paths; match narrows it to lines matching a
+#     # regular expression.
+#     - path: CHANGELOG.md
+#       reason: Release tooling writes the PR links.
+#     - path: docs/upstream.md
+#       match: 'example/project#[0-9]+'
+#       reason: It cites another project's issues.
+
+# The coverage lints read the reports the repo's own tests write. reports is
+# required; baseline defaults to .coverage-baseline.txt.
+# check-coverage-drop:
+#   reports:
+#     - format: go
+#       path: coverage.out
+#     - format: cobertura
+#       path: .coverage/bats/cobertura.xml
+#   baseline: .coverage-baseline.txt
+
+# check-patch-coverage:
+#   reports:
+#     - format: go
+#       path: coverage.out
+#     - format: cobertura
+#       path: .coverage/bats/cobertura.xml

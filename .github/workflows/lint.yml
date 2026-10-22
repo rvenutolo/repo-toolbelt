@@ -1,0 +1,194 @@
+name: lint
+# The shared lint workflow. A consumer calls it from one job, passing the
+# pinned image and the lints to run; examples/consumer/.github/workflows/
+# lint.yml is the copyable caller. Every lint runs inside the image, the same
+# one the consumer's git hooks run, so CI and local runs cannot drift; this
+# workflow's own SHA pins only the plumbing around it.
+#
+# The caller's Actions policy must allow:
+#   actions/checkout
+#   actions/download-artifact
+#   step-security/harden-runner
+#
+# The run: steps do not go through .ci/in-devshell: they run on consumers'
+# runners, which have no Nix. Every expression reaches a script through env:,
+# never spliced into its text.
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: The image, as ghcr.io/rvenutolo/repo-toolbelt:<tag>@sha256:<digest>.
+        type: string
+        required: true
+      lints:
+        description: The lints to run, one per line; blank lines and # comments are ignored.
+        type: string
+        required: true
+      mode:
+        description: split (quick lints in one job, each slow lint in its own), parallel (one job) or matrix (one job per lint).
+        type: string
+        default: split
+      coverage-artifact:
+        description: The name of an artifact of this run holding the coverage reports, restored into the checkout.
+        type: string
+        default: ""
+      harden-runner:
+        description: Run step-security/harden-runner; its free tier does not cover private repositories.
+        type: boolean
+        default: true
+permissions: {}
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - if: inputs.harden-runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          # The image pull, and Sigstore's TUF root for the attestation check.
+          allowed-endpoints: >-
+            api.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 tuf-repo-cdn.sigstore.dev:443
+      - name: Check the image is pinned
+        id: check-pin
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          pin_re='^ghcr\.io/rvenutolo/repo-toolbelt:[^@[:space:]]+@sha256:[0-9a-f]{64}$'
+          if [[ ! "${IMAGE}" =~ ${pin_re} ]]; then
+            printf '::error::image must be ghcr.io/rvenutolo/repo-toolbelt:<tag>@sha256:<64 hex>, not %s\n' "${IMAGE}"
+            exit 1
+          fi
+      # The digest already fixes the bytes; this ties them to repo-toolbelt's
+      # release workflow run from main. The release pushes the attestation
+      # bundle to the registry, so no attestations API call is needed.
+      - name: Verify the image's build provenance
+        id: verify-provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          gh attestation verify "oci://${IMAGE}" \
+            --bundle-from-oci \
+            --repo rvenutolo/repo-toolbelt \
+            --signer-workflow rvenutolo/repo-toolbelt/.github/workflows/release.yml \
+            --source-ref refs/heads/main
+      # The runner splits the list and strips its comments, so that logic is
+      # in tested code, not here.
+      - name: Plan the lint jobs
+        id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+          MODE: ${{ inputs.mode }}
+          TOOLBELT_LINTS: ${{ inputs.lints }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          # Assigned before it is written out, so a failed plan fails the step.
+          matrix="$(docker run --rm --network=none --env TOOLBELT_LINTS "${IMAGE}" plan --mode "${MODE}")"
+          printf 'matrix=%s\n' "${matrix}" >> "${GITHUB_OUTPUT}"
+  lint:
+    name: lint (${{ join(matrix.group, ', ') }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.plan.outputs.matrix).groups }}
+    steps:
+      - if: inputs.harden-runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          # The checkout, the artifact download and the image pull.
+          allowed-endpoints: >-
+            api.github.com:443 codeload.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 results-receiver.actions.githubusercontent.com:443
+      # Full history, so history-aware lints have their range.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Restored at the paths it was uploaded with, relative to the workspace,
+      # which is where the coverage lints' config names the reports.
+      - if: inputs.coverage-artifact != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.coverage-artifact }}
+      # The raw event SHAs go to the runner, which computes the merge-base
+      # itself: a pull request's checkout is GitHub's merge commit, so the
+      # raw base would judge other people's changes.
+      - name: Run the lints
+        id: run-lints
+        env:
+          IMAGE: ${{ inputs.image }}
+          GROUP: ${{ join(matrix.group, ' ') }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          if [[ -n "${PR_HEAD_SHA}" ]]; then
+            base="${PR_BASE_SHA}"
+            head="${PR_HEAD_SHA}"
+          else
+            # Empty outside a push; the runner then falls back to the default branch.
+            base="${PUSH_BEFORE_SHA}"
+            head="${GITHUB_SHA}"
+          fi
+          IFS=' ' read -r -a lints <<< "${GROUP}"
+          root="$(git rev-parse --show-toplevel)"
+          common="$(git rev-parse --path-format=absolute --git-common-dir)"
+          docker run --rm --interactive --network=none \
+            --user "$(id -u):$(id -g)" \
+            --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
+            --workdir "${root}" \
+            "${IMAGE}" run --hook ci \
+            --base "${base}" --head "${head}" --default-branch "${DEFAULT_BRANCH}" \
+            "${lints[@]}"
+  # The one check a consumer's ruleset requires, as `<caller job> / toolbelt-ok`.
+  # always(): without it a failed plan would skip this job, and a skipped
+  # required check counts as passing. A skipped lint matrix fails it too.
+  toolbelt-ok:
+    name: toolbelt-ok
+    needs: [plan, lint]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - if: inputs.harden-runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          disable-sudo-and-containers: true
+          allowed-endpoints: >-
+            api.github.com:443 github.com:443
+      - name: Check every job succeeded
+        id: verdict
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          rc=0
+          for job_result in "plan=${PLAN_RESULT}" "lint=${LINT_RESULT}"; do
+            if [[ "${job_result#*=}" != 'success' ]]; then
+              printf '%s did not succeed (%s)\n' "${job_result%%=*}" "${job_result#*=}" >&2
+              rc=1
+            fi
+          done
+          exit "${rc}"

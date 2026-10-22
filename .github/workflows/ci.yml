@@ -98,6 +98,66 @@ jobs:
           else
             ./.ci/in-devshell commitlint --from "${from}" --to "${to}" --verbose
           fi
+  # Reads the image the examples pin, which is the latest release. While the
+  # examples hold the placeholder pin there is no release to call, so the
+  # output stays empty and shared-workflow is skipped. No Nix: it reads one
+  # line of one file.
+  shared-workflow-pin:
+    name: shared-workflow-pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.pin.outputs.image }}
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443 codeload.github.com:443 github.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: examples/consumer/.github/workflows/lint.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - id: pin
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          placeholder='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+          image_re='^[[:space:]]*image:[[:space:]]*(ghcr\.io/rvenutolo/repo-toolbelt:[^[:space:]]+)[[:space:]]*$'
+          image=''
+          while IFS= read -r line; do
+            if [[ "${line}" =~ ${image_re} ]]; then
+              image="${BASH_REMATCH[1]}"
+            fi
+          done < examples/consumer/.github/workflows/lint.yml
+          if [[ -z "${image}" ]]; then
+            printf 'no image: line in the example workflow\n' >&2
+            exit 1
+          fi
+          if [[ "${image}" == "${placeholder}" ]]; then
+            printf 'the examples hold the placeholder pin; skipping the shared workflow\n'
+            image=''
+          fi
+          printf 'image=%s\n' "${image}" >> "${GITHUB_OUTPUT}"
+  # Calls the shared workflow from this commit against the latest release's
+  # image, as consumers get it, with the lints that fit this repo. The
+  # coverage lints are left out: their reports come from the gate job.
+  shared-workflow:
+    name: shared-workflow
+    needs: shared-workflow-pin
+    if: needs.shared-workflow-pin.outputs.image != ''
+    # `$/` waits on actionlint support; the workflow under test is this commit's, so `./` is the same tree.
+    uses: ./.github/workflows/lint.yml # zizmor: ignore[self-repository]
+    permissions:
+      contents: read
+    with:
+      image: ${{ needs.shared-workflow-pin.outputs.image }}
+      lints: |
+        check-workflow-hermetic
+        check-issue-numbers
   # The one check the protect-main ruleset requires. Every other job feeds it
   # through `needs`, so jobs can be added, split or renamed here without
   # editing the ruleset. always(): without it a failed or cancelled dependency
@@ -105,7 +165,7 @@ jobs:
   # No Nix: it only reads the needed jobs' results.
   merge-gate:
     name: merge-gate
-    needs: [gate, image, commitlint]
+    needs: [gate, image, commitlint, shared-workflow-pin, shared-workflow]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -122,13 +182,16 @@ jobs:
           GATE_RESULT: ${{ needs.gate.result }}
           IMAGE_RESULT: ${{ needs.image.result }}
           COMMITLINT_RESULT: ${{ needs.commitlint.result }}
+          SHARED_WORKFLOW_PIN_RESULT: ${{ needs.shared-workflow-pin.result }}
+          SHARED_WORKFLOW_RESULT: ${{ needs.shared-workflow.result }}
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
           # Anything but success or skipped fails, an empty result included, so
           # a job renamed in `needs` but not here cannot pass unseen.
           rc=0
-          for job_result in "gate=${GATE_RESULT}" "image=${IMAGE_RESULT}" "commitlint=${COMMITLINT_RESULT}"; do
+          for job_result in "gate=${GATE_RESULT}" "image=${IMAGE_RESULT}" "commitlint=${COMMITLINT_RESULT}" \
+            "shared-workflow-pin=${SHARED_WORKFLOW_PIN_RESULT}" "shared-workflow=${SHARED_WORKFLOW_RESULT}"; do
             case "${job_result#*=}" in
               success | skipped) ;;
               *)
