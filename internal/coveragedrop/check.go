@@ -54,8 +54,13 @@ func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error)
 	if err != nil || len(findings) > 0 {
 		return findings, err
 	}
-	current := coverage.Tally(section.Reports, reports)
-	baseline, err := readBaseline(root, section.Baseline)
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open repository root: %w", err)
+	}
+	defer dir.Close()
+	current := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))
+	baseline, err := readBaseline(dir, section.Baseline)
 	if err != nil {
 		return nil, err
 	}
@@ -76,12 +81,7 @@ func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error)
 
 // readBaseline reads the baseline in the working tree. No file is an empty
 // baseline, so every unit is held to 0.
-func readBaseline(root, path string) (coverage.Baseline, error) {
-	dir, err := os.OpenRoot(root)
-	if err != nil {
-		return nil, fmt.Errorf("open repository root: %w", err)
-	}
-	defer dir.Close()
+func readBaseline(dir *os.Root, path string) (coverage.Baseline, error) {
 	f, err := dir.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return coverage.Baseline{}, nil

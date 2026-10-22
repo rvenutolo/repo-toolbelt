@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"go/scanner"
 	"go/token"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -73,4 +74,29 @@ func HashMarkers(src []byte) []Marker {
 // nothing.
 func Exempts(m Marker, b Block) bool {
 	return m.Reason != "" && b.StartLine <= m.Line && m.Line <= b.EndLine
+}
+
+// MarkerSource returns the markers in the file at a repo-relative path that a
+// report of the given format scores. It returns nil for a file it cannot
+// read.
+type MarkerSource func(path, format string) []Marker
+
+// SourceMarkers reads markers from the files under root: Go markers for
+// FormatGo and hash markers for FormatCobertura. A file that is missing, not
+// regular or unreadable has none, so nothing in it is ever exempted.
+func SourceMarkers(root *os.Root) MarkerSource {
+	return func(path, format string) []Marker {
+		info, err := root.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		src, err := root.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if format == FormatGo {
+			return GoMarkers(src)
+		}
+		return HashMarkers(src)
+	}
 }
