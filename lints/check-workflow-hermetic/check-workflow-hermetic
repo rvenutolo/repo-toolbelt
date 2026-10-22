@@ -440,11 +440,11 @@ function step_label() {
   toolbelt::printable shown_job "${job}"
   toolbelt::printable shown_index "${index}"
   if [[ -z "${name}" ]]; then
-    label_ref="job '${shown_job}' step #${shown_index}"
+    label_ref="job '${shown_job}' step ${shown_index}"
   else
     toolbelt::printable shown_name "${name}"
     # shellcheck disable=SC2034 # set through the nameref; the caller reads it
-    label_ref="job '${shown_job}' step #${shown_index} (${shown_name})"
+    label_ref="job '${shown_job}' step ${shown_index} (${shown_name})"
   fi
 }
 

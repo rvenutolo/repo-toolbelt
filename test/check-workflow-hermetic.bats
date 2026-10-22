@@ -658,7 +658,7 @@ EOF
   assert_failure 1
   local -r fix='has no YAML id:; add one (.repo-toolbelt.yml exemptions are keyed <file>::<id>)'
   assert_output - << EOF
-.github/workflows/a.yml: job 'build' step #0 (Run BATS) does not invoke .ci/in-devshell and ${fix}
+.github/workflows/a.yml: job 'build' step 0 (Run BATS) does not invoke .ci/in-devshell and ${fix}
 1 hermetic-boundary violation(s)
 EOF
   assert_stderr ''
@@ -675,7 +675,7 @@ jobs:
 EOF
   run --separate-stderr "${LINT_PATH}"
   assert_failure 1
-  assert_output --partial ".github/workflows/a.yml: job 'build' step #1 does not invoke .ci/in-devshell"
+  assert_output --partial ".github/workflows/a.yml: job 'build' step 1 does not invoke .ci/in-devshell"
 }
 
 @test 'fails: counts every offender and reports the total' {
@@ -1396,7 +1396,7 @@ EOF
   assert_failure 1
   local -r fix='has no YAML id:; add one (.repo-toolbelt.yml exemptions are keyed <file>::<id>)'
   assert_output - << EOF
-.github/workflows/a.yml: job 'a|b\nc' step #0 (x|y) does not invoke .ci/in-devshell and ${fix}
+.github/workflows/a.yml: job 'a|b\nc' step 0 (x|y) does not invoke .ci/in-devshell and ${fix}
 1 hermetic-boundary violation(s)
 EOF
   assert_stderr ''
