@@ -3,6 +3,7 @@ package runner_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,10 +31,33 @@ func writeLint(t *testing.T, dir, name, body string) {
 	if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	script := "#!" + bash + "\n" + body + "\n"
-	if err := os.WriteFile(filepath.Join(dir, name, name), []byte(script), 0o755); err != nil {
+	script := "#!" + bash + "\n" + `[[ -z "${TOOLBELT_FIXTURE_PROBE-}" ]] || exit 0` + "\n" + body + "\n"
+	path := filepath.Join(dir, name, name)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	waitExecutable(t, path)
+}
+
+// waitExecutable runs the fixture in probe mode (its first line exits at
+// once) until the exec stops failing with ETXTBSY. A fork running in parallel
+// can hold the write descriptor until it execs, and until then an exec of the
+// file fails; the first exec that succeeds proves no holder is left.
+func waitExecutable(t *testing.T, path string) {
+	t.Helper()
+	for range 500 {
+		cmd := exec.CommandContext(t.Context(), path)
+		cmd.Env = append(os.Environ(), "TOOLBELT_FIXTURE_PROBE=1")
+		err := cmd.Run()
+		if !errors.Is(err, syscall.ETXTBSY) {
+			if err != nil {
+				t.Fatalf("probe %s: %v", path, err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s stayed busy", path)
 }
 
 func lintsNamed(names ...string) []manifest.Lint {

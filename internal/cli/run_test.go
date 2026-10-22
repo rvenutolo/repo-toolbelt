@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -69,10 +71,32 @@ func writeLint(t *testing.T, lintsDir, name, body string) {
 		t.Fatalf("bash not on PATH: %v", err)
 	}
 	path := filepath.Join(lintsDir, name, name)
-	writeFile(t, path, "#!"+bash+"\n"+body+"\n")
+	writeFile(t, path, "#!"+bash+"\n"+`[[ -z "${TOOLBELT_FIXTURE_PROBE-}" ]] || exit 0`+"\n"+body+"\n")
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	waitExecutable(t, path)
+}
+
+// waitExecutable runs the fixture in probe mode (its first line exits at
+// once) until the exec stops failing with ETXTBSY. A fork running in parallel
+// can hold the write descriptor until it execs, and until then an exec of the
+// file fails; the first exec that succeeds proves no holder is left.
+func waitExecutable(t *testing.T, path string) {
+	t.Helper()
+	for range 500 {
+		cmd := exec.CommandContext(t.Context(), path)
+		cmd.Env = append(os.Environ(), "TOOLBELT_FIXTURE_PROBE=1")
+		err := cmd.Run()
+		if !errors.Is(err, syscall.ETXTBSY) {
+			if err != nil {
+				t.Fatalf("probe %s: %v", path, err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%s stayed busy", path)
 }
 
 // withRemote gives repo a bare "origin" holding its branch, and returns the
