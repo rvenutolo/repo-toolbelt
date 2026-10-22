@@ -65,6 +65,8 @@
             deadnix
             # runtime
             yq-go
+            # Reads govulncheck's JSON report in .ci/check-vulns.
+            jq
             git
             just
             commitlint
