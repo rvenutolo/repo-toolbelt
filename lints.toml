@@ -21,3 +21,9 @@ name = "check-patch-coverage"
 language = "go"
 speed = "quick"
 description = "Every changed block is covered or marked exempt"
+
+[[lint]]
+name = "check-toolbelt-pins"
+language = "go"
+speed = "quick"
+description = "Every repo-toolbelt pin agrees"
