@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -149,7 +150,7 @@ func TestRun_runMissingExecutable(t *testing.T) {
 	t.Parallel()
 	repo, lintsDir := makeRepo(t), t.TempDir()
 	writeLint(t, lintsDir, "a", "exit 0")
-	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "a", "c")
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "pre-push", "a", "c")
 	if got.code != 2 {
 		t.Errorf("exit %d, want 2", got.code)
 	}
@@ -191,7 +192,7 @@ func TestRun_runLintsFromEnvironment(t *testing.T) {
 	env := map[string]string{"TOOLBELT_LINTS_DIR": lintsDir, "TOOLBELT_LINTS": "# quick\nc\n"}
 	runner := cli.Runner{Lints: runLints, Dir: repo}
 	err := runner.Run(t.Context(), []string{"run", "--hook", "ci"}, func(k string) string { return env[k] }, strings.NewReader(""), &stdout, &stderr)
-	if err != nil || !strings.Contains(stdout.String(), "== c: pass ==\nc-ran\n") {
+	if err != nil || !strings.Contains(stdout.String(), "== c: pass ==\n") || !strings.Contains(stdout.String(), "\nc-ran\n") {
 		t.Errorf("err = %v, stdout = %q, want c to run and pass", err, stdout.String())
 	}
 }
@@ -201,7 +202,7 @@ func TestRun_runDefaultLintsDir(t *testing.T) {
 	repo := makeRepo(t)
 	var stdout, stderr bytes.Buffer
 	runner := cli.Runner{Lints: runLints, Dir: repo}
-	err := runner.Run(t.Context(), []string{"run", "--hook", "ci", "a"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
+	err := runner.Run(t.Context(), []string{"run", "--hook", "pre-push", "a"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
 	if cli.ExitCode(err) != 2 || !strings.Contains(stderr.String(), "/opt/toolbelt/lints/a/a") {
 		t.Errorf("err = %v, stderr = %q, want exit 2 naming the default lint path", err, stderr.String())
 	}
@@ -225,7 +226,7 @@ func TestRun_runSlowLintWarning(t *testing.T) {
 			writeLint(t, lintsDir, "a", "exit 0")
 			writeLint(t, lintsDir, "b", "echo b-ran")
 			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", tc.hook, "a", "b")
-			if got.code != 0 || !strings.Contains(got.stdout, "== b: pass ==\nb-ran\n") {
+			if got.code != 0 || !strings.Contains(got.stdout, "== b: pass ==\n") || !strings.Contains(got.stdout, "\nb-ran\n") {
 				t.Errorf("got %+v, want b to run and pass", got)
 			}
 			if gotWarning := strings.Contains(got.stderr, warning); gotWarning != tc.want {
@@ -254,7 +255,8 @@ just a message
 		repo, lintsDir := makeRepo(t), t.TempDir()
 		writeLint(t, lintsDir, "a", body)
 		got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "a")
-		want := "== a: fail ==\n" + lintOutput + "\n" +
+		token := stopToken(t, got.stdout)
+		want := "== a: fail ==\n::stop-commands::" + token + "\n" + lintOutput + "\n::" + token + "::\n" +
 			"::error file=src/x.go,line=12::bad thing\n" +
 			"::error file=src/x.go::whole file bad\n" +
 			"::error file=gone.go,line=3::line form needs no file\n" +
@@ -285,6 +287,48 @@ just a message
 			t.Errorf("stdout = %q, want no annotations for paths outside the repo", got.stdout)
 		}
 	})
+}
+
+// stopToken returns the token of the first ::stop-commands:: line in out.
+func stopToken(t *testing.T, out string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^::stop-commands::(.+)$`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("no ::stop-commands:: line in %q", out)
+	}
+	return m[1]
+}
+
+func TestRun_runCIStopsCommandsInLintOutput(t *testing.T) {
+	t.Parallel()
+	// A lint echoes file names from the tree it checks, so its output may hold
+	// workflow commands: a forged annotation, and an attempt to stop commands
+	// so the toolbelt's own annotations are ignored.
+	forged := "::error file=src/x.go,line=9::forged\n::stop-commands::hijack\nsrc/x.go:2: real finding"
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	writeLint(t, lintsDir, "a", "printf '%s\\n' '::warning::from stderr' >&2\ncat <<'EOF'\n"+forged+"\nEOF\nexit 1")
+	writeLint(t, lintsDir, "c", "echo '::error::from c'")
+
+	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "a", "c")
+
+	token := stopToken(t, got.stdout)
+	if !regexp.MustCompile(`^[A-Za-z0-9]{20,}$`).MatchString(token) {
+		t.Errorf("token %q, want a long random alphanumeric token", token)
+	}
+	stop, resume := "::stop-commands::"+token+"\n", "::"+token+"::\n"
+	want := "== a: fail ==\n" + stop + forged + "\n::warning::from stderr\n" + resume +
+		"::error file=src/x.go,line=2::real finding\n" +
+		"== c: pass ==\n" + stop + "::error::from c\n" + resume +
+		"toolbelt: 1 passed, 1 failed, 0 errored\n"
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+	if strings.Contains(got.stderr, "from stderr") {
+		t.Errorf("stderr = %q, want the lint's stderr inside the stopped region on stdout", got.stderr)
+	}
+	if again := stopToken(t, runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "a").stdout); again == token {
+		t.Errorf("two runs used the same token %q", token)
+	}
 }
 
 func TestRun_runTreeWarnings(t *testing.T) {

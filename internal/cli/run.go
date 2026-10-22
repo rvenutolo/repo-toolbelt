@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -125,6 +126,10 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 		lintsDir = defaultLintsDir
 	}
 
+	var stopToken string
+	if flags.hook == hookCI {
+		stopToken = rand.Text()
+	}
 	var tally tally
 	for _, t := range targets {
 		results := runner.Run(ctx, lints, runner.Options{
@@ -137,7 +142,7 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 		})
 		for _, result := range results {
 			tally.add(result.Exit)
-			if err := printResult(stdout, stderr, root, flags.hook, result); err != nil {
+			if err := printResult(stdout, stderr, root, stopToken, result); err != nil {
 				return err
 			}
 		}
@@ -227,46 +232,63 @@ func porcelainEntries(out []byte) int {
 	return n
 }
 
-// printResult writes one lint's block: a header with its verdict and its
-// stdout on stdout, its stderr on stderr, then in ci its annotations.
-func printResult(stdout, stderr io.Writer, root, hook string, result runner.Result) error {
+// printResult writes one lint's block: a header with its verdict, then its
+// stdout on stdout and its stderr on stderr, then in ci its annotations.
+//
+// In ci, a non-empty stopToken wraps the lint's output in GitHub's
+// ::stop-commands:: so nothing a lint echoes from the tree (a file name that
+// starts with "::") runs as a workflow command. The lint's stderr then goes to
+// stdout inside that region: GitHub reads commands from both streams, and only
+// one stream keeps the order that makes the region hold.
+func printResult(stdout, stderr io.Writer, root, stopToken string, result runner.Result) error {
 	var block bytes.Buffer
 	fmt.Fprintf(&block, "== %s: %s ==\n", result.Lint, verdict(result.Exit))
-	block.Write(result.Output)
-	if len(result.Output) > 0 && !bytes.HasSuffix(result.Output, []byte("\n")) {
-		block.WriteByte('\n')
+	if stopToken != "" {
+		fmt.Fprintf(&block, "::stop-commands::%s\n", stopToken)
+		writeLines(&block, result.Output)
+		writeLines(&block, result.Stderr)
+		fmt.Fprintf(&block, "::%s::\n", stopToken)
+		if result.Exit == runner.ExitFindings {
+			annotate(&block, root, result.Output)
+		}
+		if _, err := stdout.Write(block.Bytes()); err != nil {
+			return fmt.Errorf("write output of %s: %w", result.Lint, err)
+		}
+		return nil
 	}
+	writeLines(&block, result.Output)
 	if _, err := stdout.Write(block.Bytes()); err != nil {
 		return fmt.Errorf("write output of %s: %w", result.Lint, err)
 	}
 	if _, err := stderr.Write(result.Stderr); err != nil {
 		return fmt.Errorf("write stderr of %s: %w", result.Lint, err)
 	}
-	if hook != hookCI || result.Exit != runner.ExitFindings {
-		return nil
+	return nil
+}
+
+// writeLines writes b, ending it with a newline when it has content and lacks
+// one, so whatever follows starts on a line of its own.
+func writeLines(w *bytes.Buffer, b []byte) {
+	w.Write(b)
+	if len(b) > 0 && !bytes.HasSuffix(b, []byte("\n")) {
+		w.WriteByte('\n')
 	}
-	return annotate(stdout, root, result.Output)
 }
 
 // annotate writes a GitHub ::error command for each finding line that names a
 // line, and for each that names only a path when that path exists in the
 // checkout.
-func annotate(w io.Writer, root string, output []byte) error {
-	var annotations bytes.Buffer
+func annotate(w *bytes.Buffer, root string, output []byte) {
 	for raw := range bytes.Lines(output) {
 		line := strings.TrimSuffix(string(raw), "\n")
 		if m := lineFinding.FindStringSubmatch(line); m != nil {
-			fmt.Fprintf(&annotations, "::error file=%s,line=%s::%s\n", escapeProperty(m[1]), m[2], escapeData(m[3]))
+			fmt.Fprintf(w, "::error file=%s,line=%s::%s\n", escapeProperty(m[1]), m[2], escapeData(m[3]))
 			continue
 		}
 		if m := fileFinding.FindStringSubmatch(line); m != nil && inCheckout(root, m[1]) {
-			fmt.Fprintf(&annotations, "::error file=%s::%s\n", escapeProperty(m[1]), escapeData(m[2]))
+			fmt.Fprintf(w, "::error file=%s::%s\n", escapeProperty(m[1]), escapeData(m[2]))
 		}
 	}
-	if _, err := w.Write(annotations.Bytes()); err != nil {
-		return fmt.Errorf("write annotations: %w", err)
-	}
-	return nil
 }
 
 // inCheckout reports whether path is a repo-relative path to something that
