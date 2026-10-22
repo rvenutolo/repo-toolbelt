@@ -404,6 +404,39 @@ func TestResolve_ciUnrelatedHistoriesNameShallowClone(t *testing.T) {
 	}
 }
 
+func TestResolve_ciHeadUnrelatedToBaseNamesShallowClone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	git(t, f.repo, "checkout", "--quiet", "--orphan", "other")
+	other := f.commit()
+	git(t, f.repo, "checkout", "--quiet", "main")
+	_, err := resolve(f, refs.Input{Hook: "ci", Base: f.c2, Head: other})
+	if err == nil || !strings.Contains(err.Error(), "fetch-depth") {
+		t.Errorf("err = %v, want it to mention fetch-depth", err)
+	}
+}
+
+func TestResolve_ciFallbackHeadUnrelatedToDefaultBranchNamesShallowClone(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	git(t, f.repo, "checkout", "--quiet", "--orphan", "other")
+	other := f.commit()
+	_, err := resolve(f, refs.Input{Hook: "ci", Base: zeros, Head: other, DefaultBranch: "main"})
+	if err == nil || !strings.Contains(err.Error(), "fetch-depth") {
+		t.Errorf("err = %v, want it to mention fetch-depth", err)
+	}
+}
+
+func TestResolve_ciCheckoutWithoutCommitIsSetupError(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	git(t, f.repo, "checkout", "--quiet", "--orphan", "unborn")
+	_, err := resolve(f, refs.Input{Hook: "ci", Base: f.c1, Head: f.c2})
+	if err == nil || errors.Is(err, refs.ErrUsage) || !strings.Contains(err.Error(), "HEAD") {
+		t.Errorf("err = %v, want a setup error naming HEAD", err)
+	}
+}
+
 func TestResolve_ciWithoutRevisionsIsOneEmptyTarget(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

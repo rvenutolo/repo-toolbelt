@@ -125,9 +125,11 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.coverage-artifact }}
-      # The raw event SHAs go to the runner, which computes the merge-base
-      # itself: a pull request's checkout is GitHub's merge commit, so the
-      # raw base would judge other people's changes.
+      # The raw event SHAs go to the runner, which computes the merge-bases
+      # itself. A pull request's checkout is GitHub's merge of head into
+      # base, so the diff base is the merge-base of the base SHA and that
+      # checkout (the base SHA itself) and the history range runs from the
+      # base and head's merge-base to head, leaving out the merge commit.
       - name: Run the lints
         id: run-lints
         env:
