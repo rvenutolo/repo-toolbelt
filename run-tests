@@ -105,14 +105,22 @@ function run_bats_under_kcov() {
   include_list="$(join_comma "${include_paths[@]}")"
   parse_list="$(join_comma "${repo_dir}" "${parse_dirs[@]}")"
 
+  # kcov merges into whatever report its output directory already holds, so a
+  # stale report would add its hits to this run's and keep a line covered after
+  # the test that covered it is gone.
+  rm --recursive --force -- "${repo_dir:?}/${COVERAGE_DIR}/bats"
   # kcov creates only the last path component of its output directory.
   mkdir --parents "${COVERAGE_DIR}"
+  # The output directory must be absolute: kcov exports BASH_ENV pointing at a
+  # helper inside it, and a relative BASH_ENV stops resolving in every traced
+  # process that runs from another directory, as every test in a fixture repo
+  # does, so those processes are never traced.
   kcov \
     --bash-parser="$(type -P bash)" \
     --bash-dont-parse-binary-dir \
     --include-path="${include_list}" \
     --bash-parse-files-in-dir="${parse_list}" \
-    "${COVERAGE_DIR}/bats" \
+    "${repo_dir}/${COVERAGE_DIR}/bats" \
     bats --recursive test/
 }
 

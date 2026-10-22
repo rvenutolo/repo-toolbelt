@@ -47,77 +47,105 @@
         formatting = treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.check self;
       });
 
-      devShells = eachSystem (pkgs: {
-        default = pkgs.mkShellNoCC {
-          packages = with pkgs; [
-            # linters
-            shellcheck
-            shfmt
-            actionlint
-            # zizmor audits workflows for security where actionlint audits
-            # them for syntax; they overlap nowhere.
-            zizmor
-            yamllint
-            markdownlint-cli2
-            typos
-            # nix linters: statix for antipatterns, deadnix for unused bindings.
-            statix
-            deadnix
-            # runtime
-            yq-go
-            # Reads govulncheck's JSON report in .ci/check-vulns.
-            jq
-            git
-            just
-            commitlint
-            # nix.out, not bare `nix`: the default output is `dev`, which has
-            # no bin/, so a bare `nix` puts nothing on PATH.
-            nix.out
-            coreutils
-            findutils
-            gnugrep
-            # Go toolchain and its lint gate.
-            go
-            # `go test -race` needs cgo, and so a C compiler.
-            gcc
-            golangci-lint
-            # Bash coverage for the BATS suite.
-            kcov
-            # Image build and release tooling. The docker daemon is the
-            # host's; only the client lives here.
-            docker-client
-            skopeo
-            git-cliff
-            gh
-            # withLibraries, not bare bats: the wrapper exports BATS_LIB_PATH
-            # at its own share/bats, so test_helper/common.bash loads the
-            # libraries with `bats_load_library`, and a bats that is not this
-            # one fails loudly instead of silently missing them. Both libraries
-            # come from flake inputs pinned in flake.lock: the nixpkgs
-            # bats-assert release lacks assert_stderr.
-            (bats.withLibraries (l: [
-              (l.bats-support.overrideAttrs (_: {
-                src = bats-support;
-                version = unstableVersion bats-support;
-              }))
-              (l.bats-assert.overrideAttrs (_: {
-                src = bats-assert;
-                version = unstableVersion bats-assert;
-              }))
-            ]))
-          ];
+      devShells = eachSystem (
+        pkgs:
+        let
+          # kcov's xtrace parser tracks single-quote state across lines, but only
+          # honours backslash escapes outside a quote. Bash renders any value
+          # containing a newline with ANSI-C quoting, where \' is an escaped
+          # quote, so one such trace line leaves the parser latched in
+          # INPUT_SINGLE_QUOTE and every later line is silently discarded: an
+          # empty report, no error, exit 0. bats' own `run` traces its saved
+          # traps that way, so without the patch every hit after the suite's first
+          # `run` is lost and every measured file scores 0%.
+          #
+          # kcov's bash engine also sets PS4='kcov@${BASH_SOURCE}@${LINENO}@'
+          # with no default expansion, so a `bash -c '… set -u …'` string, which
+          # has no BASH_SOURCE, dies inside PS4 expansion and the test around it
+          # fails under kcov alone. The `:-` guard is the whole fix;
+          # --replace-fail makes a kcov bump that moves the line fail the build
+          # loudly instead of silently un-patching. The escaped `\$` is for
+          # bash, so substituteInPlace receives the literal `${BASH_SOURCE}`.
+          kcovPatched = pkgs.kcov.overrideAttrs (prev: {
+            patches = (prev.patches or [ ]) ++ [ ./.nix/kcov-ansi-c-quoting.patch ];
+            postPatch = (prev.postPatch or "") + ''
+              substituteInPlace src/engines/bash-helper.sh src/engines/bash-helper-debug-trap.sh \
+                --replace-fail "\''${BASH_SOURCE}" "\''${BASH_SOURCE:-}"
+            '';
+          });
+        in
+        {
+          default = pkgs.mkShellNoCC {
+            packages = with pkgs; [
+              # linters
+              shellcheck
+              shfmt
+              actionlint
+              # zizmor audits workflows for security where actionlint audits
+              # them for syntax; they overlap nowhere.
+              zizmor
+              yamllint
+              markdownlint-cli2
+              typos
+              # nix linters: statix for antipatterns, deadnix for unused bindings.
+              statix
+              deadnix
+              # runtime
+              yq-go
+              # Reads govulncheck's JSON report in .ci/check-vulns.
+              jq
+              git
+              just
+              commitlint
+              # nix.out, not bare `nix`: the default output is `dev`, which has
+              # no bin/, so a bare `nix` puts nothing on PATH.
+              nix.out
+              coreutils
+              findutils
+              gnugrep
+              # Go toolchain and its lint gate.
+              go
+              # `go test -race` needs cgo, and so a C compiler.
+              gcc
+              golangci-lint
+              # Bash coverage for the BATS suite, patched as described above.
+              kcovPatched
+              # Image build and release tooling. The docker daemon is the
+              # host's; only the client lives here.
+              docker-client
+              skopeo
+              git-cliff
+              gh
+              # withLibraries, not bare bats: the wrapper exports BATS_LIB_PATH
+              # at its own share/bats, so test_helper/common.bash loads the
+              # libraries with `bats_load_library`, and a bats that is not this
+              # one fails loudly instead of silently missing them. Both libraries
+              # come from flake inputs pinned in flake.lock: the nixpkgs
+              # bats-assert release lacks assert_stderr.
+              (bats.withLibraries (l: [
+                (l.bats-support.overrideAttrs (_: {
+                  src = bats-support;
+                  version = unstableVersion bats-support;
+                }))
+                (l.bats-assert.overrideAttrs (_: {
+                  src = bats-assert;
+                  version = unstableVersion bats-assert;
+                }))
+              ]))
+            ];
 
-          # Activate the tracked git hooks for this clone. Tolerant of failure
-          # on purpose: a devShell that aborts on hook setup is worse than
-          # inert hooks. Resolved via git rather than the flake's store path so
-          # it configures the working clone, not a read-only copy.
-          shellHook = ''
-            if hooks_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-              "$hooks_repo_root/.ci/activate-githooks" \
-                || echo 'warning: could not activate tracked git hooks' >&2
-            fi
-          '';
-        };
-      });
+            # Activate the tracked git hooks for this clone. Tolerant of failure
+            # on purpose: a devShell that aborts on hook setup is worse than
+            # inert hooks. Resolved via git rather than the flake's store path so
+            # it configures the working clone, not a read-only copy.
+            shellHook = ''
+              if hooks_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+                "$hooks_repo_root/.ci/activate-githooks" \
+                  || echo 'warning: could not activate tracked git hooks' >&2
+              fi
+            '';
+          };
+        }
+      );
     };
 }

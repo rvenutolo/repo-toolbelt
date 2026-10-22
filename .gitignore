@@ -2,3 +2,6 @@ result
 result-*
 .direnv/
 .coverage/
+# Vendored source patches applied by flake.nix. These are source, not stray
+# diffs, and a *.patch rule in a global ignore file would otherwise hide them.
+!.nix/*.patch
