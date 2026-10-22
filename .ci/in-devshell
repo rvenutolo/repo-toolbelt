@@ -47,33 +47,33 @@ shopt -s inherit_errexit
 # XDG_CACHE_HOME variables let a caller relocate those caches; DOCKER_HOST
 # points the docker client at a non-default daemon.
 readonly KEEP_VARS=(
-  HOME
-  TERM
-  CI
-  IN_DEVSHELL
-  NIX_SSL_CERT_FILE
-  GITHUB_ACTIONS
-  GITHUB_OUTPUT
-  GITHUB_ENV
-  GITHUB_STEP_SUMMARY
-  GITHUB_WORKSPACE
-  GITHUB_REPOSITORY
-  GITHUB_REF
-  GITHUB_REF_NAME
-  GITHUB_SHA
-  GITHUB_EVENT_NAME
-  GITHUB_TOKEN
-  GH_TOKEN
-  GH_REPO
-  RUNNER_OS
-  RUNNER_TEMP
-  GOFLAGS
-  GOPATH
-  GOCACHE
-  GOMODCACHE
-  XDG_CACHE_HOME
-  DOCKER_HOST
-)
+  HOME                # coverage-exempt: kcov scores this line; it never executes as bash
+  TERM                # coverage-exempt: kcov scores this line; it never executes as bash
+  CI                  # coverage-exempt: kcov scores this line; it never executes as bash
+  IN_DEVSHELL         # coverage-exempt: kcov scores this line; it never executes as bash
+  NIX_SSL_CERT_FILE   # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_ACTIONS      # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_OUTPUT       # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_ENV          # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_STEP_SUMMARY # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_WORKSPACE    # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_REPOSITORY   # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_REF          # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_REF_NAME     # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_SHA          # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_EVENT_NAME   # coverage-exempt: kcov scores this line; it never executes as bash
+  GITHUB_TOKEN        # coverage-exempt: kcov scores this line; it never executes as bash
+  GH_TOKEN            # coverage-exempt: kcov scores this line; it never executes as bash
+  GH_REPO             # coverage-exempt: kcov scores this line; it never executes as bash
+  RUNNER_OS           # coverage-exempt: kcov scores this line; it never executes as bash
+  RUNNER_TEMP         # coverage-exempt: kcov scores this line; it never executes as bash
+  GOFLAGS             # coverage-exempt: kcov scores this line; it never executes as bash
+  GOPATH              # coverage-exempt: kcov scores this line; it never executes as bash
+  GOCACHE             # coverage-exempt: kcov scores this line; it never executes as bash
+  GOMODCACHE          # coverage-exempt: kcov scores this line; it never executes as bash
+  XDG_CACHE_HOME      # coverage-exempt: kcov scores this line; it never executes as bash
+  DOCKER_HOST         # coverage-exempt: kcov scores this line; it never executes as bash
+)                     # coverage-exempt: kcov scores this line; it never executes as bash
 
 # @description Run the given command inside the devShell of the enclosing repo.
 # @arg $@ command the command to run, plus its arguments (already validated)

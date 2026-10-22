@@ -11,3 +11,15 @@ check-issue-numbers:
     - path: test/check-workflow-hermetic.bats
       match: 'step #[0-9]'
       reason: check-workflow-hermetic names an unnamed step by its index, and these lines assert that output.
+check-coverage-drop:
+  reports:
+    - format: go
+      path: .coverage/go/coverage.out
+    - format: cobertura
+      path: .coverage/bats/bats/cobertura.xml
+check-patch-coverage:
+  reports:
+    - format: go
+      path: .coverage/go/coverage.out
+    - format: cobertura
+      path: .coverage/bats/bats/cobertura.xml

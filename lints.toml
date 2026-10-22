@@ -9,3 +9,15 @@ name = "check-issue-numbers"
 language = "go"
 speed = "quick"
 description = "No local issue or PR number in tracked files"
+
+[[lint]]
+name = "check-coverage-drop"
+language = "go"
+speed = "quick"
+description = "Uncovered code never rises without a recorded reason"
+
+[[lint]]
+name = "check-patch-coverage"
+language = "go"
+speed = "quick"
+description = "Every changed block is covered or marked exempt"

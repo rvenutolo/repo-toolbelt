@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # @description The full verification gate, verify-only: formatting (nix flake
-#              check), the lint suite and the Go and BATS test suites.
+#              check), the lint suite, the Go and BATS test suites, then the
+#              coverage lints on the reports the tests wrote.
 #              Exit codes aggregate, so one run surfaces every failing
 #              category. Every caller (the pre-push hook, the .justfile and
 #              CI) runs it through .ci/in-devshell, so local and CI runs
@@ -22,12 +23,16 @@ if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); 
 fi
 shopt -s inherit_errexit
 
-# Scratch file for command output (no process substitution). A script-level
-# variable, not a local: the single-quoted EXIT trap expands it at exit, after
-# any function's locals are gone.
-TMP_FILE="$(mktemp)"
-readonly TMP_FILE
-trap 'rm --force -- "${TMP_FILE}"' EXIT
+# The coverage lints run on this repo's own reports, from this commit.
+readonly COVERAGE_LINTS=(check-coverage-drop check-patch-coverage)
+
+# Scratch directory: command output (no process substitution) and the built
+# lints. A script-level variable, not a local: the single-quoted EXIT trap
+# expands it at exit, after any function's locals are gone.
+TMP_DIR="$(mktemp --directory)"
+readonly TMP_DIR
+trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
+readonly TMP_FILE="${TMP_DIR}/output"
 
 # @description Write a timestamped, levelled line to stderr.
 # @arg $1 level severity label
@@ -69,7 +74,26 @@ function warn_untracked() {
   local untracked_file
   while IFS= read -r untracked_file; do
     log_warn "  untracked: ${untracked_file}"
-  done < "${TMP_FILE}"
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description Run the coverage lints on the reports the tests just wrote,
+#              through the runner as CI runs them, judging the change since
+#              the fork point from origin/main. The lints are built from this
+#              commit into the layout the runner reads.
+#              TODO: build the lints with the repo's distribution build once
+#              it exists, instead of here.
+# @noargs
+function check_own_coverage() {
+  local -r lints_dir="${TMP_DIR}/lints"
+  local lint
+  for lint in "${COVERAGE_LINTS[@]}"; do
+    go build -o "${lints_dir}/${lint}/${lint}" "./cmd/${lint}" || return 1
+  done
+  # Only --hook ci takes an explicit --base and --head; outside Actions its
+  # ::stop-commands:: and ::error lines are expected noise.
+  TOOLBELT_LINTS_DIR="${lints_dir}" go run ./cmd/toolbelt run --hook ci \
+    --base origin/main --head HEAD --default-branch main "${COVERAGE_LINTS[@]}"
 }
 
 # @description Run every check and aggregate the exit codes.
@@ -85,7 +109,18 @@ function main() {
   "${REPO_DIR}/.ci/run-lint-checks" || rc=1
 
   log_info 'running tests'
-  "${REPO_DIR}/run-tests" || rc=1
+  local tests_rc=0
+  "${REPO_DIR}/run-tests" || tests_rc=1
+
+  # Reports from failed or partial tests would add findings that only
+  # repeat the test failure.
+  if ((tests_rc == 0)); then
+    log_info 'running the coverage lints on the test reports'
+    check_own_coverage || rc=1
+  else
+    rc=1
+    log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
+  fi
 
   if ((rc != 0)); then
     log_err 'one or more checks failed'

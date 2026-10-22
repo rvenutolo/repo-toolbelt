@@ -31,11 +31,11 @@ const (
 	speedSlow       = "slow"
 )
 
-// Finding lines GitHub can annotate: "<path>:<line>: <message>" and
-// "<path>: <message>". The lazy path takes the first separator, so a colon in
-// the message stays in the message.
+// Finding lines GitHub can annotate: "<path>:<line>: <message>",
+// "<path>:<line>-<end>: <message>" and "<path>: <message>". The lazy path
+// takes the first separator, so a colon in the message stays in the message.
 var (
-	lineFinding = regexp.MustCompile(`^(.+?):([0-9]+): (.+)$`)
+	lineFinding = regexp.MustCompile(`^(.+?):([0-9]+)(?:-([0-9]+))?: (.+)$`)
 	fileFinding = regexp.MustCompile(`^(.+?): (.+)$`)
 )
 
@@ -107,21 +107,9 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	}
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
-	known := make([]string, len(r.Lints))
-	for i, lint := range r.Lints {
-		known[i] = lint.Name
-	}
-	cfg, problems, err := config.Load(root, known)
+	cfg, err := r.loadConfig(root, stdout)
 	if err != nil {
-		return setupf("%w", err)
-	}
-	if len(problems) > 0 {
-		for _, problem := range problems {
-			if _, err := fmt.Fprintf(stdout, "%s: %s\n", config.FileName, problem); err != nil {
-				return fmt.Errorf("write config problems: %w", err)
-			}
-		}
-		return codeError{code: exitError, err: fmt.Errorf("%s has %d problem(s)", config.FileName, len(problems))}
+		return err
 	}
 
 	if err := warn(ctx, root, flags.hook, lints, stderr); err != nil {
@@ -320,13 +308,17 @@ func writeLines(w *bytes.Buffer, b []byte) {
 }
 
 // annotate writes a GitHub ::error command for each finding line that names a
-// line, and for each that names only a path when that path exists in the
-// checkout.
+// line or a line range, and for each that names only a path when that path
+// exists in the checkout.
 func annotate(w *bytes.Buffer, root string, output []byte) {
 	for raw := range bytes.Lines(output) {
 		line := strings.TrimSuffix(string(raw), "\n")
 		if m := lineFinding.FindStringSubmatch(line); m != nil {
-			fmt.Fprintf(w, "::error file=%s,line=%s::%s\n", escapeProperty(m[1]), m[2], escapeData(m[3]))
+			end := ""
+			if m[3] != "" {
+				end = ",endLine=" + m[3]
+			}
+			fmt.Fprintf(w, "::error file=%s,line=%s%s::%s\n", escapeProperty(m[1]), m[2], end, escapeData(m[4]))
 			continue
 		}
 		if m := fileFinding.FindStringSubmatch(line); m != nil && inCheckout(root, m[1]) {
@@ -410,6 +402,28 @@ func gitOutput(ctx context.Context, dir string, args ...string) ([]byte, error) 
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
+}
+
+// loadConfig loads root's config file, printing each file-level problem to
+// stdout; any problem is an error with exit code 1.
+func (r Runner) loadConfig(root string, stdout io.Writer) (config.Config, error) {
+	known := make([]string, len(r.Lints))
+	for i, lint := range r.Lints {
+		known[i] = lint.Name
+	}
+	cfg, problems, err := config.Load(root, known)
+	if err != nil {
+		return config.Config{}, setupf("%w", err)
+	}
+	if len(problems) > 0 {
+		for _, problem := range problems {
+			if _, err := fmt.Fprintf(stdout, "%s: %s\n", config.FileName, problem); err != nil {
+				return config.Config{}, fmt.Errorf("write config problems: %w", err)
+			}
+		}
+		return config.Config{}, codeError{code: exitError, err: fmt.Errorf("%s has %d problem(s)", config.FileName, len(problems))}
+	}
+	return cfg, nil
 }
 
 func firstLine(b []byte) string {

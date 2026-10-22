@@ -37,6 +37,6 @@ func (r Runner) newRootCmd(getenv func(string) string, stdin io.Reader, stdout, 
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
-	root.AddCommand(r.newRunCmd(getenv), r.newPlanCmd(getenv), r.newListCmd())
+	root.AddCommand(r.newRunCmd(getenv), r.newPlanCmd(getenv), r.newListCmd(), r.newBaselineCmd())
 	return root
 }

@@ -44,12 +44,12 @@ readonly TOOLBELT_ESCAPE_EXPR='(tostring | @json | sub("^.", "") | sub(".$", "")
 # yq fragment turning a path array into a `where`: `section.key[index]`, with
 # keys escaped, or `top level` for the root.
 readonly TOOLBELT_WHERE_EXPR='(map(select(tag == "!!str") |= "." + '"${TOOLBELT_ESCAPE_EXPR}"')
-  | map(select(tag == "!!int") |= "[" + tostring + "]") | join("") | sub("^\.", "") | sub("^$", "top level"))'
+  | map(select(tag == "!!int") |= "[" + tostring + "]") | join("") | sub("^\.", "") | sub("^$", "top level"))' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # yq fragment, applied to a tag string, that is true for a YAML core tag. Any
 # other tag changes what a node means to each parser that reads it.
 readonly TOOLBELT_CORE_TAG_EXPR='(. == "!!map" or . == "!!seq" or . == "!!str" or . == "!!null" or . == "!!int"
-  or . == "!!bool" or . == "!!float")'
+  or . == "!!bool" or . == "!!float")' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # yq expression listing every tag other than the core ones, on keys or on
 # values, anywhere in the file, one message each. A read that tests a node's
@@ -57,34 +57,34 @@ readonly TOOLBELT_CORE_TAG_EXPR='(. == "!!map" or . == "!!seq" or . == "!!str" o
 # read as neither.
 # shellcheck disable=SC2016,SC2034 # $p is a yq variable; the lints that source this file read it
 readonly TOOLBELT_UNSUPPORTED_TAGS_EXPR='
-([.. | select(kind == "map") | {"path": path, "tags": [keys | .[] | tag
-    | select(. != "!!merge") | select('"${TOOLBELT_CORE_TAG_EXPR}"' | not)]}]
-  | map(.path as $p | .tags | map({"path": $p, "tag": .})) | flatten(1) | .[]
-  | "YAML tag '"'"'" + (.tag | '"${TOOLBELT_ESCAPE_EXPR}"') + "'"'"' is not supported (in "
-    + (.path | '"${TOOLBELT_WHERE_EXPR}"') + "); quote the value or drop the tag"),
-(.. | select(kind != "alias") | select(tag | '"${TOOLBELT_CORE_TAG_EXPR}"' | not)
-  | "YAML tag '"'"'" + (tag | '"${TOOLBELT_ESCAPE_EXPR}"') + "'"'"' is not supported (in "
-    + (path | '"${TOOLBELT_WHERE_EXPR}"') + "); quote the value or drop the tag")
-'
+([.. | select(kind == "map") | {"path": path, "tags": [keys | .[] | tag # coverage-exempt: kcov scores this line; it never executes as bash
+    | select(. != "!!merge") | select('"${TOOLBELT_CORE_TAG_EXPR}"' | not)]}] # coverage-exempt: kcov scores this line; it never executes as bash
+  | map(.path as $p | .tags | map({"path": $p, "tag": .})) | flatten(1) | .[] # coverage-exempt: kcov scores this line; it never executes as bash
+  | "YAML tag '"'"'" + (.tag | '"${TOOLBELT_ESCAPE_EXPR}"') + "'"'"' is not supported (in " # coverage-exempt: kcov scores this line; it never executes as bash
+    + (.path | '"${TOOLBELT_WHERE_EXPR}"') + "); quote the value or drop the tag"), # coverage-exempt: kcov scores this line; it never executes as bash
+(.. | select(kind != "alias") | select(tag | '"${TOOLBELT_CORE_TAG_EXPR}"' | not) # coverage-exempt: kcov scores this line; it never executes as bash
+  | "YAML tag '"'"'" + (tag | '"${TOOLBELT_ESCAPE_EXPR}"') + "'"'"' is not supported (in " # coverage-exempt: kcov scores this line; it never executes as bash
+    + (path | '"${TOOLBELT_WHERE_EXPR}"') + "); quote the value or drop the tag") # coverage-exempt: kcov scores this line; it never executes as bash
+' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # yq expression listing, escaped and one per line, every key of the map it is
 # given that is not in the comma-separated TOOLBELT_ALLOWED environment
 # variable. The comparison happens inside yq, on the keys themselves.
 # shellcheck disable=SC2034 # read by the lints that source this file
 readonly TOOLBELT_UNKNOWN_KEYS_EXPR='(keys | unique) - (strenv(TOOLBELT_ALLOWED) | split(","))
-  | .[] | '"${TOOLBELT_ESCAPE_EXPR}"
+  | .[] | '"${TOOLBELT_ESCAPE_EXPR}" # coverage-exempt: kcov scores this line; it never executes as bash
 
 # yq fragment, applied to a stream of nodes, listing every duplicate mapping key
 # among them, one message per key. yq-go keeps only the last of a duplicated
 # key, so the duplicate is invisible to every later read.
 # shellcheck disable=SC2016,SC2034 # $where is a yq variable; the lints that source this file read it
 readonly TOOLBELT_DUPLICATE_KEYS_FRAGMENT='
-select(kind == "map")
-| select((keys | length) > (keys | unique | length))
-| (path | '"${TOOLBELT_WHERE_EXPR}"') as $where
-| keys | group_by(.) | map(select(length > 1) | .[0]) | .[]
-| "duplicate key '"'"'" + '"${TOOLBELT_ESCAPE_EXPR}"' + "'"'"' in " + $where
-'
+select(kind == "map") # coverage-exempt: kcov scores this line; it never executes as bash
+| select((keys | length) > (keys | unique | length)) # coverage-exempt: kcov scores this line; it never executes as bash
+| (path | '"${TOOLBELT_WHERE_EXPR}"') as $where # coverage-exempt: kcov scores this line; it never executes as bash
+| keys | group_by(.) | map(select(length > 1) | .[0]) | .[] # coverage-exempt: kcov scores this line; it never executes as bash
+| "duplicate key '"'"'" + '"${TOOLBELT_ESCAPE_EXPR}"' + "'"'"' in " + $where # coverage-exempt: kcov scores this line; it never executes as bash
+' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # @description Print `<script-name>: <message>` to stderr and exit with the
 #              setup-failure status. Inside a command substitution it exits

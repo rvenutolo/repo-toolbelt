@@ -98,6 +98,20 @@ func TestRun_equalLocationsKeepCheckOrder(t *testing.T) {
 	}
 }
 
+func TestRun_lineRange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, "null")
+	h.run(t, returning(
+		lintkit.Finding{Path: "a", Line: 5, EndLine: 7, Message: "a range"},
+		lintkit.Finding{Path: "a", Line: 2, EndLine: 2, Message: "a one-line range"},
+		lintkit.Finding{Path: "a", Line: 3, EndLine: 1, Message: "an end before the start"},
+	))
+	want := "a:2: a one-line range\na:3: an end before the start\na:5-7: a range\n3 widget(s)\n"
+	if diff := cmp.Diff(want, h.stdout.String()); diff != "" {
+		t.Errorf("stdout mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestRun_escapesUserValuesOntoOneLine(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, "null")
