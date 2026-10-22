@@ -1,0 +1,434 @@
+#!/usr/bin/env bash
+
+# @description Keep one release pull request open: work out the next version
+#              from the commits since the last release, put its section at
+#              the top of CHANGELOG.md, commit that file to the release
+#              branch and open, or update, the pull request that carries it.
+#              Merging that pull request is what publishes the release; this
+#              script never merges it.
+#
+#              Run from a clean, full-history checkout of the default
+#              branch's head. The version, the section and the changelog come
+#              from .ci/release-version; cliff.toml, CHANGELOG.md and
+#              .markdownlint-cli2.yaml are read from the repository the
+#              current directory is in. CHANGELOG.md must be as HEAD holds
+#              it: an uncommitted edit would be committed to the release
+#              branch along with the new section. The working tree is only
+#              read: the new changelog is assembled in a temporary directory
+#              and sent through the API.
+#
+#              The commit goes through the GraphQL createCommitOnBranch
+#              mutation and not `git push`, because the protect-main ruleset
+#              requires signed commits and GitHub refuses to merge a pull
+#              request carrying unsigned ones; commits made through the API
+#              are GitHub-signed.
+#
+#              The commit is made on a staging branch, set to the default
+#              branch's head first, and the release branch is then moved
+#              onto the new commit in one ref update. The release branch is
+#              never reset onto the default branch itself: GitHub closes a
+#              pull request whose branch equals its base, asynchronously, so
+#              a reset there can close the open release pull request after
+#              any check of its state has already read OPEN. No pull request
+#              uses the staging branch, so nothing is closed when it equals
+#              the base. expectedHeadOid gives optimistic concurrency: if the
+#              staging branch moved between being set and the write, the
+#              mutation fails and clobbers nothing.
+#
+#              Everything is decided before the first write. A run that has
+#              nothing to do, or refuses, leaves GitHub as it found it. The
+#              writes themselves are several calls and not one transaction;
+#              see exit code 1.
+# @option --version <version> release this vMAJOR.MINOR.PATCH and not the
+#                             version the commits call for, nor the one an
+#                             open release pull request proposes
+# @option --skip-if-stale do nothing, and exit 0, when the checkout is not
+#                         the default branch's head. For a run a push
+#                         starts: a newer push leaves it behind through no
+#                         fault of its own, and has a run of its own that
+#                         proposes the release. Without the option a stale
+#                         checkout is a failure, which is what a run started
+#                         by hand wants to hear.
+# @exitcode 0 the pull request is open and carries the changelog, or there
+#             is nothing to do: nothing to release, a release is being
+#             published, or --skip-if-stale met a stale checkout
+# @exitcode 1 something went wrong, or the release is refused: the checkout
+#             is not the default branch's head and --skip-if-stale was not
+#             given, CHANGELOG.md is not as committed, markdownlint rejects
+#             the assembled changelog, the version is not above
+#             the last release, or its tag exists. A refusal writes nothing.
+#             A failure part way through the writes can leave the staging
+#             branch behind, or the release branch moved without its pull
+#             request's title and body updated; the next run sets the
+#             staging branch afresh and repeats every write.
+# @exitcode 2 a usage error: an unknown argument, --version with no value,
+#             or a version that is not vMAJOR.MINOR.PATCH
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
+  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
+fi
+shopt -s inherit_errexit
+
+# From beside this script, not from the repository it is run in: its tests
+# run it inside throwaway repositories, which carry no .ci/ of their own.
+SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"
+readonly SCRIPT_DIR
+readonly RELEASE_VERSION="${SCRIPT_DIR}/release-version"
+
+readonly BRANCH='chore/release'
+# Where the commit is made before the release branch is moved onto it.
+readonly STAGING='chore/release-staging'
+readonly TITLE_PREFIX='chore(release): '
+
+# What a section says when it has nothing to list. A section is never left
+# empty: a heading directly above the next heading reads as a mistake in
+# the file.
+readonly EMPTY_SECTION='No user-facing changes.'
+
+# The open pull request from this repository's own release branch, out of
+# `gh pr list --json number,isCrossRepository`. `== false`, so that an answer
+# without the field counts as a stranger's and not as ours.
+readonly OWN_PULL_REQUEST_FILTER='[.[] | select(.isCrossRepository == false)][0].number // empty'
+
+# The createCommitOnBranch mutation described above. One line, so kcov reads it
+# as one statement.
+# shellcheck disable=SC2016 # every $name in the query is GraphQL, not shell
+readonly COMMIT_MUTATION='mutation($repo: String!, $branch: String!, $oid: GitObjectID!, $changelog: Base64String!, $headline: String!) { createCommitOnBranch(input: { branch: { repositoryNameWithOwner: $repo, branchName: $branch }, expectedHeadOid: $oid, message: { headline: $headline }, fileChanges: { additions: [{ path: "CHANGELOG.md", contents: $changelog }] } }) { commit { oid } } }'
+
+# work is global so the EXIT trap can still read it once main has returned.
+work=''
+trap 'rm --recursive --force -- "${work}"' EXIT
+
+# @description Write a timestamped, levelled line to stderr.
+# @arg $1 level severity label
+# @arg $2 message text to print
+function log() {
+  local -r level="$1" message="$2"
+  printf '[%s] %-5s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${level}" "${message}" >&2
+}
+
+# @description Write an INFO line to stderr.
+# @arg $@ message text to print
+function log_info() {
+  log INFO "$*"
+}
+
+# @description Print a usage error and exit 2.
+# @arg $1 message what was wrong
+function usage_error() {
+  local -r message="$1"
+  printf '%s: %s\n' "${0##*/}" "${message}" >&2
+  exit 2
+}
+
+# @description Print a runtime failure and exit 1. `exit`, not `return`, so
+#              the ERR trap stays quiet: a refusal is a verdict, not a crash.
+# @arg $1 message what went wrong
+function fail() {
+  local -r message="$1"
+  printf '%s: %s\n' "${0##*/}" "${message}" >&2
+  exit 1
+}
+
+# @description Succeed when a release tag of that name exists anywhere in the
+#              repository, reachable from HEAD or not: a tag name is taken
+#              once it is used at all.
+# @arg $1 version
+function tag_exists() {
+  local -r version="$1"
+  git rev-parse --verify --quiet "refs/tags/${version}" > '/dev/null'
+}
+
+# @description Point a branch at a commit through the API: move it there,
+#              forced, when it exists, or create it there when it does not.
+#              Existence is read from the single-ref endpoint, which matches
+#              exactly: a branch whose name only starts with this one's
+#              (chore/release-staging for chore/release) is not taken for it.
+# @arg $1 repo owner/name
+# @arg $2 branch
+# @arg $3 sha the commit to point it at
+function point_branch() {
+  local -r repo="$1" branch="$2" sha="$3"
+  if gh api "repos/${repo}/git/ref/heads/${branch}" > '/dev/null' 2>&1; then
+    log_info "moving ${branch} to ${sha}"
+    gh api --method PATCH "repos/${repo}/git/refs/heads/${branch}" \
+      --field "sha=${sha}" --field 'force=true' > '/dev/null'
+  else
+    log_info "creating ${branch} at ${sha}"
+    gh api --method POST "repos/${repo}/git/refs" \
+      --field "ref=refs/heads/${branch}" --field "sha=${sha}" > '/dev/null'
+  fi
+}
+
+# @description Delete a branch through the API.
+# @arg $1 repo owner/name
+# @arg $2 branch
+function delete_branch() {
+  local -r repo="$1" branch="$2"
+  log_info "deleting ${branch}"
+  gh api --method DELETE "repos/${repo}/git/refs/heads/${branch}" > '/dev/null'
+}
+
+# @description Print the version a release pull request's title names, or
+#              nothing when the title is not `chore(release): vX.Y.Z`.
+# @arg $1 title
+# @stdout the version, or nothing
+function title_version() {
+  local -r title="$1"
+  if [[ "${title}" != "${TITLE_PREFIX}"* ]]; then
+    return 0
+  fi
+  local -r version="${title#"${TITLE_PREFIX}"}"
+  if "${RELEASE_VERSION}" validate "${version}" 2> /dev/null; then
+    printf '%s\n' "${version}"
+  fi
+}
+
+# @description Write the changelog section for a version.
+# @arg $1 version
+# @arg $2 file where to write the section
+function write_section() {
+  local -r version="$1" file="$2"
+  local section
+  section="$("${RELEASE_VERSION}" section "${version}")"
+  # A version given by hand over commits that release nothing has a heading
+  # and no entries.
+  if [[ "${section}" != *$'\n'* ]]; then
+    section+=$'\n\n'"${EMPTY_SECTION}"
+  fi
+  printf '%s\n' "${section}" > "${file}"
+}
+
+# @description Print the release pull request's body: the section as it is
+#              committed, then what merging does.
+# @arg $1 version
+# @arg $2 notes the section's body
+# @stdout the body
+function pull_request_body() {
+  local -r version="$1" notes="$2"
+  printf '## %s\n\n%s\n' "${version}" "${notes}"
+  printf '\nMerging this pull request publishes %s: the release workflow builds the image from the merge commit, pushes it to GHCR, attests it and publishes the release, which creates the tag.\n' "${version}"
+}
+
+# @description Decide the version, assemble the changelog, commit it through
+#              the API onto the default branch's head, move the release
+#              branch onto that commit and open or update the pull request.
+# @arg $@ optionally --version <version> and --skip-if-stale
+function main() {
+  local explicit='' skip_if_stale=0
+  while (($# > 0)); do
+    case "$1" in
+      --skip-if-stale)
+        skip_if_stale=1
+        shift
+        ;;
+      --version)
+        # A plain usage error (exit 2), not the "${2:?...}" form: that form
+        # faults through set -u into an unhandled "unbound variable" exit 1,
+        # which is indistinguishable from the runtime-failure path below.
+        if (($# < 2)); then
+          usage_error '--version needs a version'
+        fi
+        # Checked here, before anything is asked of GitHub. release-version
+        # says what is wrong with it.
+        if ! "${RELEASE_VERSION}" validate "$2"; then
+          exit 2
+        fi
+        explicit="$2"
+        shift 2
+        ;;
+      *)
+        usage_error "unknown argument $(printf '%q' "$1")"
+        ;;
+    esac
+  done
+
+  local top repo last base_branch base_sha head
+  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
+    fail 'not inside a git repository'
+  fi
+  local -r changelog="${top}/CHANGELOG.md"
+  repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
+
+  last="$("${RELEASE_VERSION}" last-tag)"
+  base_branch="$(gh api "repos/${repo}" --jq '.default_branch')"
+  base_sha="$(gh api "repos/${repo}/git/ref/heads/${base_branch}" --jq '.object.sha')"
+  log_info "base ${base_branch} at ${base_sha}; last release ${last:-none}"
+
+  # The changelog is generated from the local history and committed onto
+  # base_sha. If the two differ, the section describes one set of commits
+  # and lands on top of another.
+  head="$(git rev-parse HEAD)"
+  if [[ "${head}" != "${base_sha}" ]]; then
+    if ((skip_if_stale == 1)); then
+      log_info "HEAD is ${head}, but ${base_branch} is at ${base_sha}; a newer push supersedes this run, and its own run proposes the release"
+      return 0
+    fi
+    fail "HEAD is ${head}, but ${base_branch} is at ${base_sha}; run from a checkout of ${base_branch}'s head"
+  fi
+
+  # The section is spliced into the file as it is on disk and committed
+  # onto base_sha, so an edit nobody committed would ride along with it.
+  if ! git diff --quiet HEAD -- "${changelog}"; then
+    fail 'CHANGELOG.md is not as it was committed; commit or discard the edit first'
+  fi
+
+  # A version given by hand is judged before the run can end for having
+  # nothing to do: one that can never be released is an error to report,
+  # not something to pass over. Only a stale checkout under --skip-if-stale
+  # ends the run sooner, above: nothing is judged on a checkout the
+  # default branch has left behind.
+  # Whether or not HEAD reaches the tag: a tag name is taken once it is
+  # used at all, and last-tag only sees the tags HEAD reaches.
+  if [[ -n "${explicit}" ]]; then
+    if [[ -n "${last}" ]] && ! "${RELEASE_VERSION}" greater "${explicit}" "${last}"; then
+      fail "${explicit} is not above the last release, ${last}"
+    fi
+    if tag_exists "${explicit}"; then
+      fail "the tag ${explicit} already exists"
+    fi
+  fi
+
+  # A changelog whose newest version has no tag is a merged release pull
+  # request whose release is still being built. Proposing the next one now
+  # would put a second untagged version on top of it, and the publisher
+  # reads the top heading to learn what to publish.
+  local pending
+  pending="$("${RELEASE_VERSION}" top "${changelog}")"
+  if [[ -n "${pending}" ]] && ! tag_exists "${pending}"; then
+    log_info "release ${pending} is being published; nothing to do until its tag exists"
+    return 0
+  fi
+
+  # The open pull request, if any, is updated rather than replaced: at most
+  # one release pull request is open at a time.
+  #
+  # Only a pull request from this repository's own branch counts. --head
+  # matches by branch name alone, and anyone may open a pull request from a
+  # fork whose branch is named the same; adopting it would let a stranger's
+  # title set the version and would rewrite a pull request that is not ours.
+  local existing existing_version='' existing_title
+  #
+  # --limit, because the filter runs over what gh fetched and gh fetches
+  # thirty pull requests unless told otherwise: enough forks with a branch
+  # of this name would push our own off the list.
+  local -a list_args=(--repo "${repo}" --head "${BRANCH}" --state open --limit 1000)
+  existing="$(gh pr list "${list_args[@]}" --json number,isCrossRepository --jq "${OWN_PULL_REQUEST_FILTER}")"
+  if [[ -n "${existing}" ]]; then
+    existing_title="$(gh pr view "${existing}" --repo "${repo}" --json title --jq '.title')"
+    existing_version="$(title_version "${existing_title}")"
+    # A version at or below the last release is one that has shipped, or
+    # been passed, since the title was written. It is nothing to keep.
+    if [[ -n "${existing_version}" && -n "${last}" ]] \
+      && ! "${RELEASE_VERSION}" greater "${existing_version}" "${last}"; then
+      existing_version=''
+    fi
+  fi
+
+  local version
+  if [[ -n "${explicit}" ]]; then
+    # Given on this run, so it is the newest decision there is: it wins
+    # over the open pull request's version, higher or lower.
+    version="${explicit}"
+  else
+    version="$("${RELEASE_VERSION}" next)"
+    if [[ -z "${version}" ]]; then
+      # Nothing since the last release calls for a version. An open pull
+      # request, whose version was given by hand, is refreshed all the
+      # same: the default branch requires a pull request to be up to date
+      # with it before it merges, so one left behind on an older base could
+      # not be merged.
+      if [[ -z "${existing_version}" ]]; then
+        log_info 'nothing to release'
+        return 0
+      fi
+      version="${existing_version}"
+    fi
+    # A version chosen by hand on an earlier run is kept against what the
+    # commits call for: the next push to the default branch must not
+    # quietly take it back. Only a version given on this run replaces it.
+    if [[ -n "${existing_version}" ]] && "${RELEASE_VERSION}" greater "${existing_version}" "${version}"; then
+      log_info "keeping ${existing_version} from pull request #${existing}, which is above ${version}"
+      version="${existing_version}"
+    fi
+  fi
+  # An explicit version passed this check above; a computed or kept one is
+  # held to it here.
+  if tag_exists "${version}"; then
+    fail "the tag ${version} already exists"
+  fi
+  log_info "releasing ${version}"
+
+  work="$(mktemp --directory)"
+  local -r section="${work}/section.md" new="${work}/CHANGELOG.md" body="${work}/body.md"
+  local -r encoded="${work}/CHANGELOG.md.base64"
+  write_section "${version}" "${section}"
+  "${RELEASE_VERSION}" prepend "${changelog}" "${section}" > "${new}"
+  # A generated section is lint-clean only for ordinary subjects, and the
+  # gate judges the committed file, so markdownlint fixes what it can before
+  # the file is committed, and a file it still rejects is not committed.
+  # --config, because markdownlint-cli2 looks for its configuration beside
+  # the file, which is outside the repository; the leading `:` makes the path
+  # a literal and not a glob.
+  if ! markdownlint-cli2 --config "${top}/.markdownlint-cli2.yaml" --fix ":${new}" >&2; then
+    fail 'markdownlint rejects the assembled changelog, and cannot fix it; see its report above'
+  fi
+  # The publisher reads the version from the top heading. Refuse to commit
+  # a changelog that does not say what the pull request's title says.
+  local written
+  written="$("${RELEASE_VERSION}" top "${new}")"
+  if [[ "${written}" != "${version}" ]]; then
+    fail "the assembled changelog's first section is ${written:-missing}, not ${version}" # coverage-exempt: prepend puts the section first and markdownlint's fixes keep headings, so no test can reach it
+  fi
+  # The body shows the section as it is committed, after the formatter, so
+  # what is reviewed in the pull request is what the release notes say.
+  local notes
+  notes="$("${RELEASE_VERSION}" notes "${new}" "${version}")"
+  pull_request_body "${version}" "${notes}" > "${body}"
+  # The mutation reads the changelog from this file. As an argument it
+  # would be one string holding the whole file, and a single argument has a
+  # size limit; hitting it at the commit would be after the first write.
+  base64 --wrap=0 < "${new}" > "${encoded}"
+  local -r title="${TITLE_PREFIX}${version}"
+
+  # Everything above only reads. Everything below writes.
+
+  # The commit's parent is the current base, never the last run's commit,
+  # so the pull request's diff is always the changelog against the current
+  # default branch and nothing else.
+  point_branch "${repo}" "${STAGING}" "${base_sha}"
+
+  log_info "committing CHANGELOG.md as ${title}"
+  local commit
+  local -a fields=(--field "repo=${repo}" --field "branch=${STAGING}" --field "oid=${base_sha}")
+  fields+=(--field "changelog=@${encoded}" --field "headline=${title}")
+  commit="$(gh api graphql "${fields[@]}" --jq '.data.createCommitOnBranch.commit.oid' --raw-field "query=${COMMIT_MUTATION}")"
+  if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "createCommitOnBranch returned no commit: '${commit}'"
+  fi
+
+  point_branch "${repo}" "${BRANCH}" "${commit}"
+  delete_branch "${repo}" "${STAGING}"
+
+  # No auto-merge, here or anywhere in this script: merging the pull request
+  # is the decision to release, and it stays with whoever reads the
+  # changelog and presses the button.
+  if [[ -n "${existing}" ]]; then
+    gh pr edit "${existing}" --repo "${repo}" --title "${title}" --body-file "${body}" > '/dev/null'
+    log_info "pull request #${existing} now proposes ${version}"
+    return 0
+  fi
+
+  log_info 'opening the pull request'
+  gh pr create --repo "${repo}" --base "${base_branch}" --head "${BRANCH}" \
+    --title "${title}" --body-file "${body}"
+}
+
+main "$@"

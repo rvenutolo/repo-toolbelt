@@ -39,11 +39,41 @@
           d = input.lastModifiedDate;
         in
         "0-unstable-${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}";
-      # The version the runner reports and the image is tagged with: the
-      # commit it was built from, so two builds of different trees never
-      # share a tag.
-      # TODO: derive this from the release tag once the release tooling exists.
-      version = "0.0.0-${self.shortRev or self.dirtyShortRev or "unknown"}";
+      inherit (nixpkgs) lib;
+      # The version a development build reports and its image is tagged
+      # with: the commit it was built from, so two builds of different trees
+      # never share a tag.
+      devVersion = "0.0.0-${self.shortRev or self.dirtyShortRev or "unknown"}";
+      # The version of a release build: the one CHANGELOG.md's first `## `
+      # heading names, without its `v`, read the way .ci/release-version's
+      # `top` reads it. Pure evaluation sees no tags, so whether this commit
+      # is a release is not decided here: the release workflow builds
+      # release-image only on the commit `.ci/release-publish pending` names,
+      # where that heading is the version being published. A changelog with
+      # no release heading falls back to devVersion, so evaluating the flake
+      # never fails on it.
+      releaseVersion =
+        let
+          lines = lib.splitString "\n" (builtins.readFile ./CHANGELOG.md);
+          heading = lib.findFirst (lib.hasPrefix "## ") null lines;
+          versionMatch =
+            if heading == null then
+              null
+            else
+              builtins.match "## v((0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*))([[:blank:]].*)?" heading;
+        in
+        if versionMatch == null then devVersion else builtins.head versionMatch;
+      # The runner, the dist layout and the image, all reporting one version.
+      imageFor =
+        pkgs: version:
+        let
+          toolbelt = pkgs.callPackage ./nix/toolbelt.nix { inherit version; };
+          dist = pkgs.callPackage ./nix/dist.nix { inherit toolbelt; };
+        in
+        {
+          inherit toolbelt dist;
+          image = pkgs.callPackage ./nix/image.nix { inherit dist version; };
+        };
     in
     {
       # x86_64-linux only: the image is linux/amd64, and every CI runner and
@@ -51,12 +81,11 @@
       packages.x86_64-linux =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
-          toolbelt = pkgs.callPackage ./nix/toolbelt.nix { inherit version; };
-          dist = pkgs.callPackage ./nix/dist.nix { inherit toolbelt; };
         in
-        {
-          inherit toolbelt dist;
-          image = pkgs.callPackage ./nix/image.nix { inherit dist version; };
+        imageFor pkgs devVersion
+        // {
+          # What the release workflow pushes to GHCR; see releaseVersion.
+          release-image = (imageFor pkgs releaseVersion).image;
         };
 
       formatter = eachSystem (pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper);

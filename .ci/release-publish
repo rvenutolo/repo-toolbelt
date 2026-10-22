@@ -1,0 +1,713 @@
+#!/usr/bin/env bash
+
+# @description Publish a release: say whether one is waiting, push its image
+#              to GHCR, and publish the GitHub release under a new tag. The
+#              release workflow calls one subcommand per step.
+#
+#              A tag in this repository can never be deleted or moved, so
+#              the tag is the last thing `release` creates. Everything
+#              before it is a draft release, which has no tag and can be
+#              deleted. Publishing the draft is what creates the tag, at the
+#              commit the draft targets. A run that fails before that leaves
+#              at most a draft, which the next run replaces, and an image
+#              under the version's tag, which the next run pushes again.
+#
+#              Run from a checkout of the commit being released; CHANGELOG.md
+#              is read from the top of the repository the current directory
+#              is in. GITHUB_REPOSITORY names the repository on GitHub and
+#              gh reads its token from GH_TOKEN. skopeo reads the registry
+#              credentials from the auth files it always reads.
+#
+#              Subcommands:
+#
+#              - pending: print `publish=true`, `version=vX.Y.Z` and
+#                `sha=<commit>`, in the syntax of $GITHUB_OUTPUT, when the
+#                changelog's newest version has no tag, locally or on
+#                GitHub, and no published release on GitHub, and HEAD is
+#                that version's release commit; print `publish=false` when
+#                the version is tagged or released. A draft release does
+#                not count: it is what a failed run leaves behind. A first
+#                heading that is not a version is a warning and
+#                `publish=false`, so a hand edit to the changelog does not
+#                fail every push. Reads only.
+#
+#                The release commit is the oldest commit on the default
+#                branch's first-parent history whose CHANGELOG.md names the
+#                version at its top, counting back from the branch's head
+#                for as long as it does: the merge of the release pull
+#                request. A later edit to the changelog under the same
+#                version does not move it. <commit> is that commit, and it
+#                is always HEAD.
+#
+#                The head is the one GitHub holds when the question is
+#                asked, not a local ref: the checkout of a run that is run
+#                again is as old as the run. A head the checkout does not
+#                hold is exit 1, since its history cannot be walked; a new
+#                attempt of the run checks out again and holds it.
+#
+#                An unpublished version seen from any other commit is exit
+#                1, with nothing on stdout. A release is published by the
+#                workflow run of its own commit and by no other: the
+#                provenance attestation records the commit the run started
+#                from, for good, and it is true of the tag only when that
+#                commit is the one tagged. The message names the release
+#                commit; its run, cancelled or failed, is run again from the
+#                Actions page.
+#
+#                Walking from the default branch's head is what keeps an
+#                old run from publishing. A version the default branch has
+#                given up, by withdrawing its section or renaming its
+#                heading, is exit 1 from every commit. A version withdrawn
+#                and proposed again has a new release commit, the merge
+#                that proposed it again, and the run of the commit that
+#                first brought it in is refused like that of any other.
+#
+#                When the release commit's run cannot succeed, the version
+#                has no tag: the tag is the last thing a release creates.
+#                Fix the defect, merge a change that takes the version's
+#                section out of CHANGELOG.md, and propose the same version
+#                again. Only when the tag exists already is the next
+#                version the way out.
+#
+#                A full clone is needed to find the release commit.
+#              - push-image --version <vX.Y.Z> --image <stream>: run <stream>,
+#                the script Nix builds for the image, and copy what it
+#                writes to ghcr.io/rvenutolo/repo-toolbelt:<version>. Read
+#                the tag's digest back from the registry, require it to be
+#                the digest skopeo pushed, and print `digest=sha256:<hex>`
+#                in the syntax of $GITHUB_OUTPUT.
+#              - release --version <vX.Y.Z> --digest <sha256:hex> --sha
+#                <commit>: publish the release <version>, tagged at <commit>,
+#                with notes that start with the image reference
+#                `ghcr.io/rvenutolo/repo-toolbelt:<version>@<digest>` and the
+#                commit. A draft of that name is replaced; a published
+#                release of that name is refused, and so is a tag of that
+#                name that exists on GitHub already: publishing would attach
+#                the release to that tag, wherever it points, and ignore
+#                <commit>.
+#
+#              `release` decides everything it can before its first write:
+#              a usage error, a changelog with no section for the version, a
+#              tag that exists and a published release all leave GitHub as it
+#              was.
+# @arg $1 subcommand pending, push-image or release
+# @arg $@ the subcommand's options
+# @exitcode 0 done; for pending, the answer was printed
+# @exitcode 1 something went wrong, or the release is refused: `pending`
+#             runs in a shallow clone, finds a CHANGELOG.md that differs
+#             from the committed one or that no commit holds, cannot walk
+#             the default branch's history from this checkout, or finds an
+#             unpublished version from a commit other than its release
+#             commit or one the default branch does not propose;
+#             `push-image` is not handed an executable stream, the push
+#             fails, or the registry does not hold the pushed digest;
+#             `release` finds no section for the version, GITHUB_REPOSITORY
+#             is not set, GitHub cannot be asked, the tag or a published
+#             release of that name exists, or the tag is not at the commit
+#             after the publish. The tag is read a few times, a couple of
+#             seconds apart, because a tag just created is not always
+#             visible at once. Only that last failure leaves something that
+#             cannot be taken back.
+# @exitcode 2 a usage error: an unknown subcommand or argument, a missing
+#             option or value, a version that is not vMAJOR.MINOR.PATCH, a
+#             --sha that is not a full commit id, or a --digest that is not
+#             a sha256 digest
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
+  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
+fi
+shopt -s inherit_errexit
+
+# From beside this script, not from the repository it is run in: its tests
+# run it inside throwaway repositories, which carry no .ci/ of their own.
+SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"
+readonly SCRIPT_DIR
+readonly RELEASE_VERSION="${SCRIPT_DIR}/release-version"
+
+# Where the image is published. Consumers pin it as
+# <IMAGE_REPOSITORY>:<version>@<digest>.
+readonly IMAGE_REPOSITORY='ghcr.io/rvenutolo/repo-toolbelt'
+readonly DIGEST_PATTERN='^sha256:[0-9a-f]{64}$'
+# A registry that drops a connection mid-push is retried by skopeo itself.
+readonly SKOPEO_RETRIES=3
+
+# How many drafts of one name are deleted before giving up. One is the
+# expected number; the bound only keeps a GitHub that goes on answering
+# "draft" from holding the run forever.
+readonly MAX_DRAFTS=5
+
+# How often the tag is read after the publish, and how many seconds lie
+# between two reads. A tag a publish just created can be missing from a read
+# for a moment; a handful of reads a couple of seconds apart outlasts that and
+# still ends.
+readonly TAG_READS=5
+readonly TAG_WAIT_SECONDS=2
+
+# work is global so the EXIT trap can still read it once main has returned.
+work=''
+trap 'rm --recursive --force -- "${work}"' EXIT
+
+# @description Write a timestamped, levelled line to stderr.
+# @arg $1 level severity label
+# @arg $2 message text to print
+function log() {
+  local -r level="$1" message="$2"
+  printf '[%s] %-5s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${level}" "${message}" >&2
+}
+
+# @description Write an INFO line to stderr.
+# @arg $@ message text to print
+function log_info() {
+  log INFO "$*"
+}
+
+# @description Write a WARN line to stderr.
+# @arg $@ message text to print
+function log_warn() {
+  log WARN "$*"
+}
+
+# @description Print a usage error and exit 2.
+# @arg $1 message what was wrong
+function usage_error() {
+  local -r message="$1"
+  printf '%s: %s\n' "${0##*/}" "${message}" >&2
+  exit 2
+}
+
+# @description Print a runtime failure and exit 1. `exit`, not `return`, so
+#              the ERR trap stays quiet: a refusal is a verdict, not a crash.
+#              Inside a command substitution that ends only the
+#              substitution, so every `$(...)` around a function that can
+#              fail is followed by `|| exit 1`.
+# @arg $1 message what went wrong
+function fail() {
+  local -r message="$1"
+  printf '%s: %s\n' "${0##*/}" "${message}" >&2
+  exit 1
+}
+
+# @description Succeed when a tag of that name exists in the local
+#              repository, reachable from HEAD or not.
+# @arg $1 version
+function tag_exists() {
+  local -r version="$1"
+  git rev-parse --verify --quiet "refs/tags/${version}" > '/dev/null'
+}
+
+# @description Print the path of the changelog at the top of the repository
+#              the current directory is in, or exit 1 when there is none.
+# @stdout the path
+function changelog_path() {
+  local top
+  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
+    fail 'not inside a git repository'
+  fi
+  if [[ ! -f "${top}/CHANGELOG.md" ]]; then
+    fail "no CHANGELOG.md at the top of ${top}"
+  fi
+  printf '%s\n' "${top}/CHANGELOG.md"
+}
+
+# @description Exit 1 in a shallow clone. Its history ends at a commit
+#              that seems to add every file, so the commit that brought a
+#              version into the changelog would be named wrong, with
+#              nothing to show for it.
+function require_full_clone() {
+  local shallow
+  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+    fail 'cannot tell whether the repository is a shallow clone' # coverage-exempt: git answered --show-toplevel just before, so this read cannot fail in a test
+  fi
+  if [[ "${shallow}" != 'false' ]]; then
+    fail 'this is a shallow clone, so the commit that brought the version into the changelog cannot be found; fetch the full history first (git fetch --unshallow --tags)'
+  fi
+}
+
+# @description Exit 1 unless the changelog in the working tree is the one
+#              HEAD holds. The version is read from the file, and a release
+#              is cut from a commit: an edit nobody committed, or a file no
+#              commit holds, would make the two disagree.
+# @arg $1 changelog the changelog's path, at the top of the repository
+function require_committed() {
+  local -r changelog="$1"
+  local -r top="${changelog%/*}" file="${changelog##*/}"
+  if ! git -C "${top}" cat-file -e "HEAD:${file}" 2> /dev/null; then
+    fail "HEAD holds no ${file}: the one read here is in no commit, so there is no commit to cut the release from"
+  fi
+  if ! git -C "${top}" diff --quiet HEAD -- "${file}"; then
+    fail "${file} is not as it was committed; a release is cut from a commit, not from an edit"
+  fi
+}
+
+# @description Print the version at the top of the changelog a commit holds,
+#              or nothing when it holds none or names no version there.
+# @arg $1 changelog the changelog's path, at the top of the repository
+# @arg $2 commit
+# @arg $3 scratch a directory to write the commit's changelog into
+# @stdout the version, or nothing
+function version_at() {
+  local -r changelog="$1" commit="$2" scratch="$3"
+  local -r top="${changelog%/*}" file="${changelog##*/}"
+  if ! git -C "${top}" show "${commit}:${file}" > "${scratch}/${file}" 2> /dev/null; then
+    return 0
+  fi
+  # A first heading that is no version names no version.
+  "${RELEASE_VERSION}" top "${scratch}/${file}" 2> /dev/null || true
+}
+
+# @description Print a version's release commit: going back from a commit
+#              along its first-parent history, over the commits that changed
+#              the changelog, the last one whose changelog still names the
+#              version at its top. First-parent, because the default
+#              branch's own line of history is the commits that were pushed
+#              to it: the commit a pull request's branch carried is not one
+#              of them, and its merge is. The oldest and not the newest,
+#              because a later correction to the changelog must not move
+#              the release to another commit. The walk ends at the first
+#              commit that does not name the version, so a version that
+#              was withdrawn and proposed again is found where it was
+#              proposed again. Exits 1 when no commit names the version.
+# @arg $1 changelog the changelog's path, at the top of the repository
+# @arg $2 version
+# @arg $3 scratch a directory to write each commit's changelog into
+# @arg $4 from the commit to go back from
+# @stdout the commit id
+function release_commit() {
+  local -r changelog="$1" version="$2" scratch="$3" from="$4"
+  local -r top="${changelog%/*}" file="${changelog##*/}"
+  local commits
+  if ! commits="$(git -C "${top}" log --no-show-signature --first-parent --format='%H' "${from}" -- "${file}")"; then
+    fail "cannot read the history of ${file}" # coverage-exempt: the caller checked that the commit is in this checkout, so git log cannot fail in a test
+  fi
+  local commit found='' named
+  while IFS= read -r commit; do
+    [[ -n "${commit}" ]] || continue
+    # A commit that removed the file, or left it with a first heading that
+    # is no version, ends the run of commits that name the version.
+    named="$(version_at "${changelog}" "${commit}" "${scratch}")"
+    if [[ "${named}" != "${version}" ]]; then
+      break
+    fi
+    found="${commit}"
+  done <<< "${commits}"
+  if [[ -z "${found}" ]]; then
+    fail "no commit in the history of ${from} holds a ${file} that names ${version} at its top; there is no commit to cut the release from" # coverage-exempt: the caller checked that ${from} itself names the version, so no test can reach it
+  fi
+  printf '%s\n' "${found}"
+}
+
+# @description Print the repository on GitHub, owner/name, or exit 1 when
+#              the environment does not name one.
+# @stdout owner/name
+function repository() {
+  if [[ -z "${GITHUB_REPOSITORY:-}" ]]; then
+    fail 'GITHUB_REPOSITORY is not set; it names the repository to publish to, as owner/name'
+  fi
+  printf '%s\n' "${GITHUB_REPOSITORY}"
+}
+
+# @description Print what a tag on GitHub points at, or nothing when GitHub
+#              has no tag of that name. The singular `git/ref` endpoint
+#              matches the one name exactly; `git/refs` would also answer
+#              for every tag the name is a prefix of. A 404 is the answer
+#              "no such tag". Any other failure is not an answer, and is
+#              never taken for "no such tag".
+# @arg $1 repo owner/name
+# @arg $2 version
+# @stdout the object the tag points at, or nothing
+function remote_tag() {
+  local -r repo="$1" version="$2"
+  local answer status=0
+  answer="$(gh api "repos/${repo}/git/ref/tags/${version}" --jq '.object.sha' 2>&1)" || status=$?
+  if ((status != 0)); then
+    if [[ "${answer}" == *'(HTTP 404)'* ]]; then
+      return 0
+    fi
+    fail "cannot tell whether the tag ${version} exists on GitHub: ${answer}"
+  fi
+  if [[ ! "${answer}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "cannot tell what the tag ${version} points at on GitHub: ${answer}"
+  fi
+  printf '%s\n' "${answer}"
+}
+
+# @description Print the commit the default branch is at, as GitHub holds
+#              it now. GitHub is asked, and no local ref is read: the
+#              checkout of a run that is run again is as old as the run.
+#              The commits endpoint resolves HEAD to the default branch. A
+#              read that fails, or answers with something that is no commit
+#              id, is exit 1 and never an answer.
+# @arg $1 repo owner/name
+# @stdout the commit id
+function default_branch_head() {
+  local -r repo="$1"
+  local answer
+  if ! answer="$(gh api "repos/${repo}/commits/HEAD" --jq '.sha' 2>&1)"; then
+    fail "cannot read the head of the default branch of ${repo}: ${answer}"
+  fi
+  if [[ ! "${answer}" =~ ^[0-9a-f]{40}$ ]]; then
+    fail "cannot read the head of the default branch of ${repo}: GitHub answered ${answer:-nothing}"
+  fi
+  printf '%s\n' "${answer}"
+}
+
+# @description Print what GitHub holds under a release name: `none`, `draft`
+#              or `published`. One read answers all three: gh prints whether
+#              the release is a draft, and says "release not found" when
+#              there is neither. Any other failure is not an answer, and is
+#              never taken for "none": a publish must not go ahead, nor be
+#              called unnecessary, because GitHub could not be asked.
+# @arg $1 repo owner/name
+# @arg $2 version
+# @stdout none, draft or published
+function release_state() {
+  local -r repo="$1" version="$2"
+  local answer status=0
+  answer="$(gh release view "${version}" --repo "${repo}" --json isDraft --jq '.isDraft' 2>&1)" || status=$?
+  if ((status != 0)); then
+    if [[ "${answer}" == *'release not found'* ]]; then
+      printf 'none\n'
+      return 0
+    fi
+    fail "cannot tell whether a release ${version} exists: ${answer}"
+  fi
+  case "${answer}" in
+    true) printf 'draft\n' ;;
+    false) printf 'published\n' ;;
+    *) fail "cannot tell whether the release ${version} is a draft: ${answer}" ;;
+  esac
+}
+
+# @description Say whether the changelog's newest version is waiting to be
+#              published.
+# @arg $@ none
+# @stdout publish=true, version=<version> and sha=<commit>, or publish=false
+function pending() {
+  if (($# > 0)); then
+    usage_error "pending takes no argument, got $(printf '%q' "$1")"
+  fi
+  local changelog version
+  changelog="$(changelog_path)"
+  # Before any answer, not only before a release: a checkout that cannot
+  # name the commit is found on the first push, not on the day of a release.
+  require_full_clone
+  # release-version names the heading it could not read, on stderr.
+  if ! version="$("${RELEASE_VERSION}" top "${changelog}")"; then
+    log_warn "${changelog} does not say which version is newest; nothing is published until its first section heading is a version"
+    printf 'publish=false\n'
+    return 0
+  fi
+  if [[ -z "${version}" ]]; then
+    log_info 'the changelog holds no release; nothing to publish'
+    printf 'publish=false\n'
+    return 0
+  fi
+  if tag_exists "${version}"; then
+    log_info "${version} is tagged; nothing to publish"
+    printf 'publish=false\n'
+    return 0
+  fi
+  # The checkout may hold no tags at all, or not the one a publish created
+  # moments ago, so GitHub is asked as well. A tag there settles it, with a
+  # release or without: publishing onto a tag that exists attaches the
+  # release to it, wherever it points.
+  local repo tagged state
+  repo="$(repository)"
+  tagged="$(remote_tag "${repo}" "${version}")"
+  if [[ -n "${tagged}" ]]; then
+    log_info "the tag ${version} exists on GitHub, at ${tagged}; nothing to publish"
+    printf 'publish=false\n'
+    return 0
+  fi
+  state="$(release_state "${repo}" "${version}")"
+  if [[ "${state}" == 'published' ]]; then
+    log_info "a release ${version} is published on GitHub; nothing to publish"
+    printf 'publish=false\n'
+    return 0
+  fi
+  require_committed "${changelog}"
+  # A run can be run again long after its push, so the release commit is
+  # looked for from where the default branch is now, not from this
+  # checkout: what this run would publish must still be what the default
+  # branch proposes, from the commit it proposes it from.
+  local default_head
+  default_head="$(default_branch_head "${repo}")"
+  if ! git cat-file -e "${default_head}^{commit}" 2> /dev/null; then
+    fail "the default branch is at ${default_head}, and ${default_head} is not in this checkout: the branch moved on after the checkout was made, so its history cannot be walked from here. Run this workflow run again; a new attempt checks out again"
+  fi
+  # Made here and not in the functions that write to it: they run in
+  # subshells, whose assignment the EXIT trap would never see.
+  work="$(mktemp --directory)"
+  local proposed
+  proposed="$(version_at "${changelog}" "${default_head}" "${work}")"
+  if [[ "${proposed}" != "${version}" ]]; then
+    fail "the default branch no longer proposes ${version}: at ${default_head}, its CHANGELOG.md names ${proposed:-no version} at its top. The version was given up there, and this run does not publish it"
+  fi
+  local sha head
+  sha="$(release_commit "${changelog}" "${version}" "${work}" "${default_head}")"
+  head="$(git rev-parse HEAD)"
+  # Not a release to make from here, and not something to pass over
+  # either: the run that should have published it did not.
+  if [[ "${sha}" != "${head}" ]]; then
+    fail "the release ${version} is not published, and this is not its commit: HEAD is ${head}, the release commit is ${sha}. A release is published by its own commit's run, so that its attestation names the commit that is tagged: re-run the workflow run of that commit from the Actions page"
+  fi
+  log_info "${version} has no tag and no published release (GitHub holds: ${state}); it is to be published from ${sha}"
+  printf 'publish=true\nversion=%s\nsha=%s\n' "${version}" "${sha}"
+}
+
+# @description Push the image to GHCR under the version's tag and print the
+#              digest the registry holds for it.
+# @arg $@ --version <vX.Y.Z> --image <stream>, both required
+# @stdout digest=sha256:<hex>
+function push_image() {
+  local version='' image=''
+  while (($# > 0)); do
+    case "$1" in
+      --version | --image)
+        if (($# < 2)); then
+          usage_error "$1 needs a value"
+        fi
+        case "$1" in
+          --version) version="$2" ;;
+          *) image="$2" ;;
+        esac
+        shift 2
+        ;;
+      *)
+        usage_error "unknown argument $(printf '%q' "$1")"
+        ;;
+    esac
+  done
+  if [[ -z "${version}" ]]; then
+    usage_error '--version is required'
+  fi
+  if [[ -z "${image}" ]]; then
+    usage_error '--image is required'
+  fi
+  # release-version says what is wrong with it.
+  if ! "${RELEASE_VERSION}" validate "${version}"; then
+    exit 2
+  fi
+  if [[ ! -f "${image}" || ! -x "${image}" ]]; then
+    fail "${image} is not an executable image stream; build it with nix build first"
+  fi
+  local -r ref="${IMAGE_REPOSITORY}:${version}"
+  work="$(mktemp --directory)"
+  local -r digest_file="${work}/digest"
+
+  # The stream script writes the image as a docker archive; nothing of
+  # image size lands on disk or in the Nix store. pipefail makes a stream
+  # that fails half way fail the push.
+  log_info "pushing ${ref}"
+  if ! "${image}" | skopeo copy --retry-times "${SKOPEO_RETRIES}" --digestfile "${digest_file}" \
+    docker-archive:/dev/stdin "docker://${ref}" >&2; then
+    fail "could not push the image to ${ref}"
+  fi
+  local pushed
+  pushed="$(< "${digest_file}")"
+  if [[ ! "${pushed}" =~ ${DIGEST_PATTERN} ]]; then
+    fail "skopeo reported the pushed digest as ${pushed:-nothing}, which is not a sha256 digest"
+  fi
+
+  # Read back, so what is pinned is what the registry serves under the tag,
+  # not only what this run believes it sent.
+  local held
+  if ! held="$(skopeo inspect --retry-times "${SKOPEO_RETRIES}" --format '{{.Digest}}' "docker://${ref}")"; then
+    fail "could not read ${ref} back from the registry"
+  fi
+  if [[ "${held}" != "${pushed}" ]]; then
+    fail "the registry holds ${ref} at ${held:-nothing}, not at ${pushed}"
+  fi
+  log_info "pushed ${ref}@${held}"
+  printf 'digest=%s\n' "${held}"
+}
+
+# @description Print the release's notes: the full image reference and the
+#              commit, ready to paste; the version's changelog section; then
+#              how a consumer pins this release and verifies its provenance.
+# @arg $1 repo owner/name
+# @arg $2 version
+# @arg $3 digest the image's sha256 digest
+# @arg $4 sha the commit the release is tagged at
+# @arg $5 body the version's changelog section, without its heading
+# @stdout the notes
+function notes_text() {
+  local -r repo="$1" version="$2" digest="$3" sha="$4" body="$5"
+  local -r pinned="${IMAGE_REPOSITORY}:${version}@${digest}"
+  # shellcheck disable=SC2016 # the backticks are Markdown code spans
+  printf '`%s`\n\nCommit: `%s`\n\n' "${pinned}" "${sha}"
+  printf '%s\n\n' "${body}"
+  printf '### Pin this release\n\n'
+  printf 'A consumer calls the shared lint workflow at this commit and passes it the image; each hook file names the same image:\n\n'
+  # shellcheck disable=SC2016 # the backticks are a Markdown fence
+  printf '```yaml\nuses: %s/.github/workflows/lint.yml@%s # %s\nwith:\n  image: %s\n```\n\n' \
+    "${repo}" "${sha}" "${version}" "${pinned}"
+  printf 'The image carries a build provenance attestation:\n\n'
+  # shellcheck disable=SC2016 # the backticks are a Markdown fence
+  printf '```sh\ngh attestation verify oci://%s@%s --repo %s\n```\n' "${IMAGE_REPOSITORY}" "${digest}" "${repo}"
+}
+
+# @description Write the release's notes, as notes_text prints them.
+# @arg $1 repo owner/name
+# @arg $2 version
+# @arg $3 digest the image's sha256 digest
+# @arg $4 sha the commit the release is tagged at
+# @arg $5 file where to write the notes
+function write_notes() {
+  local -r repo="$1" version="$2" digest="$3" sha="$4" file="$5"
+  local changelog body
+  changelog="$(changelog_path)"
+  # release-version says what is wrong when the section is missing.
+  body="$("${RELEASE_VERSION}" notes "${changelog}" "${version}")"
+  notes_text "${repo}" "${version}" "${digest}" "${sha}" "${body}" > "${file}"
+}
+
+# @description Publish the release, creating its tag last.
+# @arg $@ --version <vX.Y.Z> --digest <sha256:hex> --sha <commit>, all required
+function release() {
+  local version='' digest='' sha=''
+  while (($# > 0)); do
+    case "$1" in
+      --version | --digest | --sha)
+        # A usage error (exit 2), not the "${2:?...}" form: that form faults
+        # through set -u into an unhandled exit 1, which is indistinguishable
+        # from a runtime failure.
+        if (($# < 2)); then
+          usage_error "$1 needs a value"
+        fi
+        case "$1" in
+          --version) version="$2" ;;
+          --digest) digest="$2" ;;
+          *) sha="$2" ;;
+        esac
+        shift 2
+        ;;
+      *)
+        usage_error "unknown argument $(printf '%q' "$1")"
+        ;;
+    esac
+  done
+  if [[ -z "${version}" ]]; then
+    usage_error '--version is required'
+  fi
+  if [[ -z "${digest}" ]]; then
+    usage_error '--digest is required'
+  fi
+  if [[ -z "${sha}" ]]; then
+    usage_error '--sha is required'
+  fi
+  # release-version says what is wrong with it.
+  if ! "${RELEASE_VERSION}" validate "${version}"; then
+    exit 2
+  fi
+  if [[ ! "${digest}" =~ ${DIGEST_PATTERN} ]]; then
+    usage_error "--digest $(printf '%q' "${digest}") is not a sha256 digest"
+  fi
+  # A full commit id and nothing else. gh takes a branch name for --target
+  # just as readily, and the tag would then land wherever that branch is
+  # when the draft is published, not on the commit the image was built from.
+  if [[ ! "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+    usage_error "--sha $(printf '%q' "${sha}") is not a full commit id"
+  fi
+  local repo
+  repo="$(repository)"
+
+  work="$(mktemp --directory)"
+  local -r notes="${work}/notes.md"
+  write_notes "${repo}" "${version}" "${digest}" "${sha}" "${notes}"
+
+  # Everything above reads the local machine only. From here GitHub is
+  # asked, and the tag comes first. Publishing a draft creates the tag only
+  # when there is none: GitHub attaches the release to a tag that exists
+  # and ignores the commit the draft targets.
+  local existing
+  existing="$(remote_tag "${repo}" "${version}")"
+  if [[ -n "${existing}" ]]; then
+    fail "the tag ${version} exists on GitHub, at ${existing}; a release is never published onto a tag that is already there"
+  fi
+
+  # A draft is the only thing deleted: it has no tag, so nothing permanent
+  # goes with it. The state is read again after each delete, because draft
+  # releases are not unique by name.
+  local state deleted=0
+  while true; do
+    state="$(release_state "${repo}" "${version}")"
+    case "${state}" in
+      none)
+        break
+        ;;
+      published)
+        fail "the release ${version} is published; a published release is never replaced"
+        ;;
+    esac
+    if ((deleted == MAX_DRAFTS)); then
+      fail "a draft release ${version} is still there after ${deleted} deletes"
+    fi
+    log_info "deleting the draft release ${version} an earlier run left behind"
+    if ! gh release delete "${version}" --repo "${repo}" --yes >&2; then
+      fail "could not delete the draft release ${version}"
+    fi
+    deleted=$((deleted + 1))
+  done
+
+  log_info "creating the draft release ${version} at ${sha}"
+  if ! gh release create "${version}" --repo "${repo}" --draft --target "${sha}" \
+    --title "${version}" --notes-file "${notes}" >&2; then
+    fail "could not create the draft release ${version}; no tag was created, and a draft left behind is replaced by the next run"
+  fi
+
+  # The one step that cannot be taken back: publishing the draft creates
+  # the tag, at the commit the draft targets.
+  log_info "publishing ${version}, which creates the tag"
+  if ! gh release edit "${version}" --repo "${repo}" --draft=false >&2; then
+    fail "could not publish the draft release ${version}; check whether the tag ${version} exists before running this again"
+  fi
+
+  # Read until the tag is there. A read that fails outright has said why on
+  # stderr and is tried again like a missing tag: only an answer settles
+  # anything.
+  local tagged='' attempt
+  for ((attempt = 1; attempt <= TAG_READS; attempt++)); do
+    if ((attempt > 1)); then
+      sleep "${TAG_WAIT_SECONDS}"
+    fi
+    tagged="$(remote_tag "${repo}" "${version}")" || tagged=''
+    if [[ -n "${tagged}" ]]; then
+      break
+    fi
+    log_info "the tag ${version} cannot be read yet (read ${attempt} of ${TAG_READS})"
+  done
+  if [[ -z "${tagged}" ]]; then
+    fail "the release ${version} is published, but GitHub shows no tag ${version} after ${TAG_READS} reads; it must point at ${sha}"
+  fi
+  # A tag at another commit is an answer, and waiting does not change it.
+  if [[ "${tagged}" != "${sha}" ]]; then
+    fail "the release ${version} is published and its tag points at ${tagged}, not at ${sha}; the tag cannot be moved, so this needs a person"
+  fi
+  log_info "released ${version}, tagged at ${sha}"
+}
+
+# @description Dispatch one subcommand.
+# @arg $@ the subcommand and its options
+function main() {
+  if (($# == 0)); then
+    usage_error 'a subcommand is required: pending, push-image or release'
+  fi
+  local -r subcommand="$1"
+  shift
+  case "${subcommand}" in
+    pending) pending "$@" ;;
+    push-image) push_image "$@" ;;
+    release) release "$@" ;;
+    *) usage_error "unknown subcommand $(printf '%q' "${subcommand}")" ;;
+  esac
+}
+
+main "$@"
