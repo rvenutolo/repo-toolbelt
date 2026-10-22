@@ -193,12 +193,12 @@ func warn(ctx context.Context, root, hook string, lints []manifest.Lint, stderr 
 			lines = append(lines, fmt.Sprintf("toolbelt: %d tracked file(s) have unstaged changes; lints saw the working tree", n))
 		}
 	case hookPrePush:
-		out, err := gitOutput(ctx, root, "status", "--porcelain")
+		out, err := gitOutput(ctx, root, "status", "--porcelain", "-z")
 		if err != nil {
 			return setupf("list uncommitted changes: %w", err)
 		}
-		if len(out) > 0 {
-			lines = append(lines, "toolbelt: the working tree has uncommitted changes; lints saw them")
+		if n := porcelainEntries(out); n > 0 {
+			lines = append(lines, fmt.Sprintf("toolbelt: %d file(s) have uncommitted changes; lints saw them", n))
 		}
 	}
 	for _, line := range lines {
@@ -207,6 +207,24 @@ func warn(ctx context.Context, root, hook string, lints []manifest.Lint, stderr 
 		}
 	}
 	return nil
+}
+
+// porcelainEntries counts the entries of `git status --porcelain -z` output.
+// Each entry is "XY <path>" ending in NUL; a rename or copy is followed by one
+// more NUL-terminated field, its original path.
+func porcelainEntries(out []byte) int {
+	n := 0
+	fields := bytes.Split(bytes.TrimSuffix(out, []byte{0}), []byte{0})
+	for i := 0; i < len(fields); i++ {
+		if len(fields[i]) == 0 {
+			continue
+		}
+		n++
+		if status := fields[i][:min(2, len(fields[i]))]; bytes.ContainsAny(status, "RC") {
+			i++
+		}
+	}
+	return n
 }
 
 // printResult writes one lint's block: a header with its verdict and its

@@ -291,7 +291,6 @@ func TestRun_runTreeWarnings(t *testing.T) {
 	t.Parallel()
 	const (
 		unstaged = "toolbelt: 2 tracked file(s) have unstaged changes; lints saw the working tree\n"
-		dirty    = "toolbelt: the working tree has uncommitted changes; lints saw them\n"
 	)
 	tests := []struct {
 		name   string
@@ -328,7 +327,19 @@ func TestRun_runTreeWarnings(t *testing.T) {
 				t.Helper()
 				writeFile(t, filepath.Join(repo, "new.txt"), "new\n")
 			},
-			want: dirty,
+			want: "toolbelt: 1 file(s) have uncommitted changes; lints saw them\n",
+		},
+		{
+			// A rename is one entry, though porcelain -z gives it two paths.
+			name: "pre-push rename, edit and untracked file",
+			hook: "pre-push",
+			change: func(t *testing.T, repo string) {
+				t.Helper()
+				gitIn(t, repo, "mv", "tracked.txt", "moved.txt")
+				writeFile(t, filepath.Join(repo, "src", "x.go"), "package y\n")
+				writeFile(t, filepath.Join(repo, "new.txt"), "new\n")
+			},
+			want: "toolbelt: 3 file(s) have uncommitted changes; lints saw them\n",
 		},
 		{
 			name: "ci dirty tree",
