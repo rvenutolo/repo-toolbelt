@@ -29,7 +29,8 @@ type Ref struct {
 //nolint:gochecknoglobals // immutable lookup table
 var styleExtensions = map[string]bool{
 	".css": true, ".scss": true, ".sass": true, ".less": true,
-	".svg": true, ".html": true, ".htm": true,
+	".svg": true, ".html": true, ".htm": true, ".xml": true,
+	".vue": true, ".jsx": true, ".tsx": true,
 }
 
 // urlBoundaries end the token a URL is looked for in: whitespace and the
@@ -106,7 +107,7 @@ func reference(line string, hash, end int, style bool) (string, bool) {
 			text = line[start:end]
 		}
 	}
-	if isColour(line[:hash], end-hash-1, style) {
+	if isColour(line[:hash], line[end:], end-hash-1, style) {
 		return "", false
 	}
 	return text, true
@@ -132,18 +133,26 @@ func ownerRepoStart(line string, hash int) (int, bool) {
 	return start, true
 }
 
-// isColour reports whether a `#` and digits digits long is a hex colour: any
-// colour length in a stylesheet or markup file, and a full six- or
-// eight-digit colour as the value of a declaration (`color: #123456`)
-// anywhere. Shorter all-digit values outside stylesheets read as issue
-// numbers.
-func isColour(before string, digits int, style bool) bool {
+// isColour reports whether a `#` and digits digits long, between before and
+// after on its line, is a hex colour. Any colour length is one in a
+// stylesheet or markup file, and so is a value that is the whole of a quoted
+// string after a `:` or `=` (`"color": "#000000"`, `fill='#333'`). A full
+// six- or eight-digit colour is also one as a declaration's bare value
+// (`color: #123456`) or as the whole text of an element (`>#000000<`).
+// Other all-digit values read as issue numbers.
+func isColour(before, after string, digits int, style bool) bool {
 	colourLength := digits == 3 || digits == 4 || digits == 6 || digits == 8
-	if style && colourLength {
+	if !colourLength {
+		return false
+	}
+	if style || quotedValue(before, after) {
 		return true
 	}
 	if digits != 6 && digits != 8 {
 		return false
+	}
+	if strings.HasSuffix(before, ">") && strings.HasPrefix(after, "<") {
+		return true
 	}
 	property, found := strings.CutSuffix(strings.TrimRight(before, " \t"), ":")
 	if !found || property == "" {
@@ -151,6 +160,23 @@ func isColour(before string, digits int, style bool) bool {
 	}
 	last := property[len(property)-1]
 	return isLetter(last) || last == '-'
+}
+
+// quotedValue reports whether the text between before and after is the whole
+// of a quoted string assigned with `:` or `=`.
+func quotedValue(before, after string) bool {
+	if before == "" {
+		return false
+	}
+	quote := before[len(before)-1]
+	if quote != '"' && quote != '\'' {
+		return false
+	}
+	if !strings.HasPrefix(after, string(quote)) {
+		return false
+	}
+	assign := strings.TrimRight(before[:len(before)-1], " \t")
+	return strings.HasSuffix(assign, ":") || strings.HasSuffix(assign, "=")
 }
 
 func isDigit(b byte) bool {

@@ -56,6 +56,7 @@ func TestScan(t *testing.T) {
 		{name: "unclosed quote after a colon", path: "x.yml", line: `x: "#540`, want: []string{"#540"}},
 		{name: "mismatched quotes after a colon", path: "x.yml", line: `x: "#540'`, want: []string{"#540"}},
 		{name: "three digits as element text in markdown", path: "x.md", line: "<td>#123</td>", want: []string{"#123"}},
+		{name: "three digits at line start in markdown", path: "x.md", line: "#123 is open", want: []string{"#123"}},
 		{name: "letter hex colour", line: "#fff"},
 		{name: "mixed hex colour", line: "#1a2b3c"},
 		{name: "three digit colour in css", path: "a.css", line: "a { color: #123 }"},
