@@ -1,0 +1,6 @@
+check-workflow-hermetic:
+  wrapper: .ci/in-devshell
+  exempt:
+    - step: .github/workflows/ci.yml::verdict
+      reason: It only compares results.
+check-issue-numbers:

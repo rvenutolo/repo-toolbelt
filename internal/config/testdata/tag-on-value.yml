@@ -1,0 +1,2 @@
+check-workflow-hermetic:
+  wrapper: !custom .ci/x

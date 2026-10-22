@@ -1,0 +1,4 @@
+check-workflow-hermetic:
+  exempt:
+    - step: a.yml::x
+      step: b.yml::y

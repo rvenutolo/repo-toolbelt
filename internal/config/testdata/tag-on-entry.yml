@@ -1,0 +1,3 @@
+check-workflow-hermetic:
+  exempt:
+    - !foo {step: a.yml::x, reason: r}
