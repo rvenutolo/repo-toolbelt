@@ -84,8 +84,9 @@ restores it into the checkout at the same paths.
 
   ```bash
   root="$(git rev-parse --show-toplevel)"
+  common="$(git rev-parse --path-format=absolute --git-common-dir)"
   docker run --rm --network=none --user "$(id -u):$(id -g)" \
-    --volume "${root}:${root}" --workdir "${root}" \
+    --volume "${root}:${root}" --volume "${common}:${common}:ro" --workdir "${root}" \
     ghcr.io/rvenutolo/repo-toolbelt:<tag>@sha256:<digest> update-coverage-baseline
   ```
 
@@ -114,8 +115,9 @@ narrow it, a `match` regular expression.
 
 ## The calling convention
 
-Every lint is an executable at `lints/<name>/<name>` in the source tree and `/opt/toolbelt/lints/<name>/<name>` in the
-image, whatever its language: bash for lints that mostly wrap a tool, Go for those that need real parsing.
+Every lint is an executable at `/opt/toolbelt/lints/<name>/<name>` in the image, whatever its language: bash for lints
+that mostly wrap a tool, Go for those that need real parsing. A bash lint's source is `lints/<name>/<name>`; a Go lint is
+built from `cmd/<name>`.
 
 - It runs with the repo root as its working directory and takes no arguments except `--help`.
 - Its environment carries `TOOLBELT_SECTION`, the path to a JSON file holding the lint's config section (JSON `null`
@@ -182,7 +184,8 @@ The workflow runs only on `workflow_dispatch` until a `REFRESH_TOKEN` secret exi
 the image and uploads it as a workflow artifact, pushing and tagging nothing; adding `sign` also attests that archive,
 which writes a public transparency-log entry that cannot be removed.
 
-A `publish` that fails after the push leaves the image tag and its attestation in place. Re-running it pushes the same
-digest.
+A `publish` that fails after the push leaves the image tag and its attestation in place. Re-run it from the Actions page
+as that release commit's own workflow run; `release-publish` refuses a run of any other commit. The re-run pushes the
+same digest.
 
 After a release, update the consumers' pins, and fix any consumer a changed lint now fails before its pin moves.
