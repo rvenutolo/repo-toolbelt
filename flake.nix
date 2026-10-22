@@ -135,7 +135,7 @@
               deadnix
               # runtime
               yq-go
-              # Reads govulncheck's JSON report in .ci/check-vulns.
+              # Reads govulncheck's JSON report in .ci/vuln.
               jq
               git
               just
