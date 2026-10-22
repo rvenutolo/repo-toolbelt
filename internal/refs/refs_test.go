@@ -278,15 +278,37 @@ func TestResolve_prePushIgnoresBlankLines(t *testing.T) {
 	}
 }
 
-func TestResolve_ciPullRequestBaseIsBranchPointNotMovedBase(t *testing.T) {
+func TestResolve_ciPullRequestHeadCheckoutBaseIsBranchPointNotMovedBase(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	p1 := f.branch("pr", f.c2, 1)
 	moved := f.branch("moved", f.c2, 1)
+	git(t, f.repo, "checkout", "--quiet", "--detach", p1)
 	got, err := resolve(f, refs.Input{Hook: "ci", Base: moved, Head: p1, DefaultBranch: "main"})
 	want := []refs.Target{{Base: f.c2, Range: f.c2 + ".." + p1}}
 	if err != nil || !cmp.Equal(want, got) {
 		t.Errorf("Resolve = %v, %v; want %v", got, err, want)
+	}
+}
+
+func TestResolve_ciPullRequestMergeCheckoutDiffsOnlyThePullRequest(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	p1 := f.branch("pr", f.c2, 1)
+	prFile := git(t, f.repo, "diff", "--name-only", f.c2, p1)
+	moved := f.branch("moved", f.c2, 1)
+	// actions/checkout on pull_request checks out the merge of head into base.
+	git(t, f.repo, "checkout", "--quiet", "--detach", moved)
+	git(t, f.repo, "merge", "--quiet", "--no-ff", "--no-edit", p1)
+	got, err := resolve(f, refs.Input{Hook: "ci", Base: moved, Head: p1, DefaultBranch: "main"})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Resolve = %v, %v; want one target", got, err)
+	}
+	if diff := git(t, f.repo, "diff", "--name-only", got[0].Base); diff != prFile {
+		t.Errorf("git diff %s = %q, want only the pull request's change %q", got[0].Base, diff, prFile)
+	}
+	if want := f.c2 + ".." + p1; got[0].Range != want {
+		t.Errorf("Range = %q, want %q", got[0].Range, want)
 	}
 }
 
