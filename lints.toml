@@ -3,3 +3,9 @@ name = "check-workflow-hermetic"
 language = "bash"
 speed = "quick"
 description = "Every workflow run step goes through the devShell wrapper"
+
+[[lint]]
+name = "check-issue-numbers"
+language = "go"
+speed = "quick"
+description = "No local issue or PR number in tracked files"
