@@ -25,8 +25,9 @@ const (
 	ExitError    = 2
 )
 
-// waitDelay bounds how long a cancelled lint's process group may take to exit
-// after SIGTERM before it is killed and its pipes closed.
+// waitDelay is the grace period: how long a cancelled lint may take to exit
+// after SIGTERM, and how long a process a lint started may hold its output
+// open after the lint exits, before the run ends.
 const waitDelay = 5 * time.Second
 
 // Result is one lint's outcome.
@@ -62,8 +63,11 @@ type Options struct {
 }
 
 // Run runs every lint at once and returns their results in the order of
-// lints. Cancelling ctx sends SIGTERM to each lint's process group, and
-// SIGKILL to any still running after a grace period.
+// lints. Cancelling ctx sends SIGTERM to each lint's process group. When a
+// lint is still running a grace period later, or has exited while a process
+// it started still holds its output open, the grace period ends its run. Once
+// a lint's run ends, SIGKILL goes to its whole process group, so nothing it
+// started outlives it.
 func Run(ctx context.Context, lints []manifest.Lint, opts Options) []Result {
 	results := make([]Result, len(lints))
 	sectionsDir, err := os.MkdirTemp("", "toolbelt-sections-")
@@ -118,6 +122,9 @@ func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result 
 	cmd.WaitDelay = waitDelay
 
 	err := cmd.Run()
+	if cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) //nolint:errcheck // ESRCH: the group has already exited
+	}
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:

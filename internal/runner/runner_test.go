@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -267,5 +268,80 @@ func TestRun_noTempDir(t *testing.T) {
 	}
 	if got := string(results[0].Stderr); !strings.Contains(got, "toolbelt: cannot create a directory for config sections") {
 		t.Errorf("Stderr = %q, want the reason", got)
+	}
+}
+
+// waitGone reports whether process pid is gone (exited, or a zombie awaiting
+// its reaper) within a few seconds. SIGKILL is delivered asynchronously, so a
+// killed process may linger briefly.
+func waitGone(t *testing.T, pid int) bool {
+	t.Helper()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+		if err != nil {
+			return true
+		}
+		if i := bytes.LastIndexByte(stat, ')'); i >= 0 && i+2 < len(stat) && stat[i+2] == 'Z' {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		<-ticker.C
+	}
+}
+
+func readPID(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read pid file: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parse pid %q: %v", data, err)
+	}
+	return pid
+}
+
+func TestRun_cancelKillsGroupThatIgnoresSIGTERM(t *testing.T) {
+	t.Parallel()
+	lintsDir, dir := t.TempDir(), t.TempDir()
+	fifo, pidFile := filepath.Join(dir, "started"), filepath.Join(dir, "child.pid")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The lint and the child it starts both ignore SIGTERM; only SIGKILL to
+	// the whole group after the grace period ends the child.
+	writeLint(t, lintsDir, "stubborn", `trap '' TERM
+sleep 60 &
+echo "$!" > '`+pidFile+`'
+echo started > '`+fifo+`'
+wait`)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started := make(chan error, 1)
+	go func() {
+		_, err := os.ReadFile(fifo)
+		started <- err
+		cancel()
+	}()
+	results := runner.Run(ctx, lintsNamed("stubborn"), runner.Options{LintsDir: lintsDir, RepoRoot: t.TempDir()})
+	if w, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+		w.Close()
+	}
+	if err := <-started; err != nil {
+		t.Fatalf("read start marker: %v", err)
+	}
+
+	if len(results) != 1 || results[0].Exit != 2 {
+		t.Errorf("got %+v, want one result with exit 2", results)
+	}
+	if pid := readPID(t, pidFile); !waitGone(t, pid) {
+		t.Errorf("child %d outlived the run", pid)
 	}
 }
