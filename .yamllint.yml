@@ -10,3 +10,7 @@ rules:
     check-keys: false
   comments:
     min-spaces-from-content: 1
+# The config loader's fixtures are deliberately invalid YAML (duplicate keys,
+# syntax errors) that the loader must reject.
+ignore: |
+  internal/config/testdata/
