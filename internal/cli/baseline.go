@@ -61,7 +61,7 @@ func (r Runner) updateBaseline(root string, stdout, stderr io.Writer) (string, e
 		return "", setupf("%s has no %s section; it names the coverage reports to read", config.FileName, coverageDropLint)
 	}
 	section, problems, err := coverage.ParseSection(raw)
-	if err != nil {
+	if err != nil { // coverage-exempt: the config loader only hands over sections it parsed, so raw is always JSON
 		return "", setupf("%w", err)
 	}
 	if len(problems) > 0 {
@@ -120,10 +120,10 @@ func writeBaseline(root, file string, baseline coverage.Baseline) (err error) {
 			err = errors.Join(err, dir.Remove(tmp))
 		}
 	}()
-	if err := baseline.Write(f); err != nil {
+	if err := baseline.Write(f); err != nil { // coverage-exempt: writing a new local file fails only on a full or failing disk
 		return errors.Join(err, f.Close())
 	}
-	if err := f.Close(); err != nil {
+	if err := f.Close(); err != nil { // coverage-exempt: closing a new local file fails only on a full or failing disk
 		return err
 	}
 	return dir.Rename(tmp, file)

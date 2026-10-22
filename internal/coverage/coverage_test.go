@@ -96,6 +96,29 @@ func TestReadFile(t *testing.T) {
 			t.Errorf("ReadFile error = %v, want an error that is not ErrNotFound", err)
 		}
 	})
+	t.Run("a symlink loop", func(t *testing.T) {
+		t.Parallel()
+		if err := os.Symlink("loop.out", filepath.Join(root, "cov", "loop.out")); err != nil {
+			t.Fatal(err)
+		}
+		_, err := coverage.ReadFile(root, coverage.ReportSpec{Format: coverage.FormatGo, Path: "cov/loop.out"})
+		if err == nil || errors.Is(err, coverage.ErrNotFound) {
+			t.Errorf("ReadFile error = %v, want an error that is not ErrNotFound", err)
+		}
+	})
+	t.Run("an unreadable report", func(t *testing.T) {
+		t.Parallel()
+		if os.Geteuid() == 0 {
+			t.Skip("root reads files whatever their mode")
+		}
+		if err := os.WriteFile(filepath.Join(root, "cov", "locked.out"), []byte("mode: set\n"), 0); err != nil {
+			t.Fatal(err)
+		}
+		_, err := coverage.ReadFile(root, coverage.ReportSpec{Format: coverage.FormatGo, Path: "cov/locked.out"})
+		if err == nil || errors.Is(err, coverage.ErrNotFound) {
+			t.Errorf("ReadFile error = %v, want an error that is not ErrNotFound", err)
+		}
+	})
 	t.Run("unknown format", func(t *testing.T) {
 		t.Parallel()
 		_, err := coverage.ReadFile(root, coverage.ReportSpec{Format: "lcov", Path: "cov/go.out"})

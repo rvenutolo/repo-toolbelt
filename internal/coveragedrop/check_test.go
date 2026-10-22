@@ -482,3 +482,62 @@ func TestCheck_historySetupFailures(t *testing.T) {
 		}
 	})
 }
+
+// TestCheck_historyGitFails has no t.Parallel: it puts a fake git first on
+// PATH, which fails one subcommand and runs the real git for the rest.
+func TestCheck_historyGitFails(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, subcommand := range []string{"log", "interpret-trailers", "ls-tree", "cat-file"} {
+		t.Run(subcommand, func(t *testing.T) {
+			h := newHistory(t, startBaseline)
+			h.setBaseline("cobertura lib 3", "go a 6")
+			h.commit("refactor: drop the retry path")
+			bin := t.TempDir()
+			writeFile(t, filepath.Join(bin, "git"), "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"${arg}\" = '"+subcommand+
+				"' ]; then echo 'fake failure' >&2; exit 3; fi\ndone\nexec '"+realGit+"' \"$@\"\n")
+			if err := os.Chmod(filepath.Join(bin, "git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			if got, err := h.check(); err == nil || !strings.Contains(err.Error(), "fake failure") {
+				t.Errorf("Check = %+v, %v; want the git failure", got, err)
+			}
+		})
+	}
+}
+
+func TestCheck_unreadableBaseline(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads files whatever their mode")
+	}
+	tests := []struct {
+		name   string
+		locked string // made unreadable, relative to the root
+		mode   os.FileMode
+	}{
+		{name: "an unreadable baseline", locked: ".coverage-baseline.txt", mode: 0},
+		// Searchable but not listable: the reports open by path, the root
+		// itself cannot be opened.
+		{name: "a root that cannot be opened", locked: ".", mode: 0o311},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeReports(t, root)
+			writeFile(t, filepath.Join(root, ".coverage-baseline.txt"), baseline("cobertura lib 2", "go . 0", "go a 3"))
+			target := filepath.Join(root, tc.locked)
+			if err := os.Chmod(target, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(target, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
+			if got, err := check(t, root, section, ""); err == nil {
+				t.Errorf("Check = %+v, want an error", got)
+			}
+		})
+	}
+}

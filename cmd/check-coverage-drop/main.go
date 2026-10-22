@@ -10,6 +10,6 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-func main() {
+func main() { // coverage-exempt: go test cannot run main; lintkit.Main and the check it runs are tested
 	os.Exit(lintkit.Main("check-coverage-drop", "coverage problem", coveragedrop.Check))
 }

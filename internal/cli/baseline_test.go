@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,4 +207,95 @@ func TestRun_updateCoverageBaselineRejectsArguments(t *testing.T) {
 	if cli.ExitCode(err) != 2 {
 		t.Errorf("exit = %d, want 2 (usage)", cli.ExitCode(err))
 	}
+}
+
+func TestRun_updateCoverageBaselineWriteFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		config         string
+		setup          func(t *testing.T, repo string)
+		stdout, stderr io.Writer
+	}{
+		{name: "the result line", config: coverageConfig, stdout: failingWriter{}, stderr: &bytes.Buffer{}},
+		{name: "a config file problem", config: coverageConfig + "unknown-lint: {}\n", stdout: failingWriter{}, stderr: &bytes.Buffer{}},
+		{name: "a section problem", config: "check-coverage-drop:\n  reports: []\n", stdout: failingWriter{}, stderr: &bytes.Buffer{}},
+		{
+			name:   "a missing report",
+			config: coverageConfig,
+			setup: func(t *testing.T, repo string) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(repo, "cov", "c.xml")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			stdout: &bytes.Buffer{}, stderr: failingWriter{},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := coverageRepo(t, tc.config)
+			if tc.setup != nil {
+				tc.setup(t, repo)
+			}
+			runner := cli.Runner{Lints: baselineLints, Version: "1.2.3", Dir: repo}
+			err := runner.Run(t.Context(), []string{"update-coverage-baseline"}, func(string) string { return "" }, strings.NewReader(""), tc.stdout, tc.stderr)
+			if !errors.Is(err, errWrite) {
+				t.Errorf("err = %v, want the write error", err)
+			}
+		})
+	}
+}
+
+func TestRun_updateCoverageBaselineCannotWrite(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root writes files whatever their mode")
+	}
+	tests := []struct {
+		name     string
+		baseline string
+		setup    func(t *testing.T, repo string)
+	}{
+		{name: "a baseline directory under a file", baseline: "go.mod/base.txt"},
+		{name: "a baseline directory that is read-only", baseline: "ro/base.txt", setup: func(t *testing.T, repo string) {
+			t.Helper()
+			lock(t, filepath.Join(repo, "ro"), 0o555, true)
+		}},
+		// Searchable but not listable: the config and reports open by path,
+		// the root itself cannot be opened.
+		{name: "a root that cannot be opened", baseline: "base.txt", setup: func(t *testing.T, repo string) {
+			t.Helper()
+			lock(t, repo, 0o311, false)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := coverageRepo(t, coverageConfig+"  baseline: "+tc.baseline+"\n")
+			if tc.setup != nil {
+				tc.setup(t, repo)
+			}
+			got := runBaseline(t, repo)
+			if got.code != 2 || !strings.Contains(got.stderr, "write "+tc.baseline) {
+				t.Errorf("got %+v, want exit 2 saying it cannot write %s", got, tc.baseline)
+			}
+		})
+	}
+}
+
+// lock sets path's mode, creating it as a directory first when create is
+// set, and restores it when the test ends so the temp dir can be removed.
+func lock(t *testing.T, path string, mode os.FileMode, create bool) {
+	t.Helper()
+	if create {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
 }
