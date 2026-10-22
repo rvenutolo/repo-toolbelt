@@ -39,7 +39,6 @@
           d = input.lastModifiedDate;
         in
         "0-unstable-${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}";
-      inherit (nixpkgs) lib;
       # The version a development build reports and its image is tagged
       # with: the commit it was built from, so two builds of different trees
       # never share a tag.
@@ -52,17 +51,11 @@
       # where that heading is the version being published. A changelog with
       # no release heading falls back to devVersion, so evaluating the flake
       # never fails on it.
-      releaseVersion =
-        let
-          lines = lib.splitString "\n" (builtins.readFile ./CHANGELOG.md);
-          heading = lib.findFirst (lib.hasPrefix "## ") null lines;
-          versionMatch =
-            if heading == null then
-              null
-            else
-              builtins.match "## v((0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*))([[:blank:]].*)?" heading;
-        in
-        if versionMatch == null then devVersion else builtins.head versionMatch;
+      releaseVersion = import ./nix/release-version.nix {
+        changelog = builtins.readFile ./CHANGELOG.md;
+        script = builtins.readFile ./.ci/release-version;
+        fallback = devVersion;
+      };
       # The runner, the dist layout and the image, all reporting one version.
       imageFor =
         pkgs: version:
