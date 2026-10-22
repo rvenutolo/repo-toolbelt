@@ -1,0 +1,8 @@
+check-coverage-drop:
+  reports:
+    - format: cobertura
+      path: coverage/cobertura.xml
+check-patch-coverage:
+  reports:
+    - format: cobertura
+      path: coverage/cobertura.xml

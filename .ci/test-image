@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+# @description Build the image with Nix, load it into the host's Docker daemon
+#              and run the e2e suite under test/e2e against it. The loaded
+#              image is tagged repo-toolbelt:test, and the suite reads its
+#              reference from TOOLBELT_TEST_IMAGE and the version it was built
+#              as from TOOLBELT_TEST_VERSION. Refuses to start a container
+#              when the host has IP forwarding off. Must run inside the
+#              devShell, which carries the docker client; the daemon is the
+#              host's.
+# @arg $@ args Optional bats arguments or e2e test paths; default test/e2e.
+# @stderr Progress, and the reason for a failure.
+# @exitcode 0 the e2e suite passed.
+# @exitcode 1 IP forwarding is off, or the image did not build or load.
+# @exitcode * otherwise bats' exit status.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
+  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
+fi
+shopt -s inherit_errexit
+
+readonly TEST_TAG='repo-toolbelt:test'
+
+# `docker load` names what it loaded on a line of this form.
+readonly LOADED_RE='^Loaded image: (.+:(.+))$'
+
+# Scratch file for docker load's report. A script-level variable, not a local:
+# the single-quoted EXIT trap expands it at exit.
+TMP_FILE="$(mktemp)"
+readonly TMP_FILE
+trap 'rm --force -- "${TMP_FILE}"' EXIT
+
+# @description Fail unless the host forwards IP packets: Docker's networking
+#              is broken without it, and the user's rule is to start no
+#              container then.
+# @noargs
+# @exitcode 1 forwarding is off.
+function require_ip_forward() {
+  local forward
+  forward="$(sysctl --values net.ipv4.ip_forward)"
+  if [[ "${forward}" != '1' ]]; then
+    printf '%s: net.ipv4.ip_forward is %s, not 1; enable IP forwarding before running containers\n' \
+      "${0##*/}" "${forward}" >&2
+    exit 1
+  fi
+}
+
+# @description Build the image, load it, tag it and run the e2e suite.
+# @arg $@ args bats arguments, or none for the whole suite
+function main() {
+  require_ip_forward
+
+  local stream
+  stream="$(nix build --no-link --print-out-paths '.#image')"
+  "${stream}" | docker load > "${TMP_FILE}"
+
+  local line loaded='' version=''
+  while IFS= read -r line; do
+    if [[ "${line}" =~ ${LOADED_RE} ]]; then
+      loaded="${BASH_REMATCH[1]}"
+      version="${BASH_REMATCH[2]}"
+    fi
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+  if [[ -z "${loaded}" ]]; then
+    printf '%s: docker load named no image\n' "${0##*/}" >&2
+    exit 1
+  fi
+  docker tag "${loaded}" "${TEST_TAG}"
+
+  local -a bats_args=("$@")
+  if (($# == 0)); then
+    bats_args=(test/e2e)
+  fi
+  export TOOLBELT_TEST_IMAGE="${TEST_TAG}"
+  export TOOLBELT_TEST_VERSION="${version}"
+  # A runner reporting the suite's verdict is not a crash.
+  trap - ERR
+  exec bats "${bats_args[@]}"
+}
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+cd "${REPO_DIR}"
+
+main "$@"

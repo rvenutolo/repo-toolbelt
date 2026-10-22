@@ -33,6 +33,27 @@ jobs:
       - uses: ./.github/actions/setup # zizmor: ignore[self-repository]
       - name: Run the gate
         run: ./.ci/in-devshell ./run-all-checks
+  # Builds the image from this commit, loads it into the runner's Docker
+  # daemon and runs the e2e suite against it. Nothing is pushed.
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 vuln.go.dev:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `$/` waits on actionlint support; this job runs its own commit, so `./` is the same tree.
+      - uses: ./.github/actions/setup # zizmor: ignore[self-repository]
+      - name: Build the image and run the e2e suite
+        run: ./.ci/in-devshell ./.ci/test-image
   commitlint:
     name: commitlint
     runs-on: ubuntu-latest
@@ -84,7 +105,7 @@ jobs:
   # No Nix: it only reads the needed jobs' results.
   merge-gate:
     name: merge-gate
-    needs: [gate, commitlint]
+    needs: [gate, image, commitlint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -99,6 +120,7 @@ jobs:
       - id: verdict
         env:
           GATE_RESULT: ${{ needs.gate.result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
           COMMITLINT_RESULT: ${{ needs.commitlint.result }}
         run: |
           set -Eeuo pipefail
@@ -106,7 +128,7 @@ jobs:
           # Anything but success or skipped fails, an empty result included, so
           # a job renamed in `needs` but not here cannot pass unseen.
           rc=0
-          for job_result in "gate=${GATE_RESULT}" "commitlint=${COMMITLINT_RESULT}"; do
+          for job_result in "gate=${GATE_RESULT}" "image=${IMAGE_RESULT}" "commitlint=${COMMITLINT_RESULT}"; do
             case "${job_result#*=}" in
               success | skipped) ;;
               *)

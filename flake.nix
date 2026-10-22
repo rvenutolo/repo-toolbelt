@@ -39,8 +39,26 @@
           d = input.lastModifiedDate;
         in
         "0-unstable-${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}";
+      # The version the runner reports and the image is tagged with: the
+      # commit it was built from, so two builds of different trees never
+      # share a tag.
+      # TODO: derive this from the release tag once the release tooling exists.
+      version = "0.0.0-${self.shortRev or self.dirtyShortRev or "unknown"}";
     in
     {
+      # x86_64-linux only: the image is linux/amd64, and every CI runner and
+      # supported local run is x86_64 Linux.
+      packages.x86_64-linux =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          toolbelt = pkgs.callPackage ./nix/toolbelt.nix { inherit version; };
+          dist = pkgs.callPackage ./nix/dist.nix { inherit toolbelt; };
+        in
+        {
+          inherit toolbelt dist;
+          image = pkgs.callPackage ./nix/image.nix { inherit dist version; };
+        };
+
       formatter = eachSystem (pkgs: treefmtEval.${pkgs.stdenv.hostPlatform.system}.config.build.wrapper);
 
       checks = eachSystem (pkgs: {
@@ -113,6 +131,9 @@
               # Image build and release tooling. The docker daemon is the
               # host's; only the client lives here.
               docker-client
+              # sysctl, for .ci/test-image's IP-forwarding check before it
+              # starts any container.
+              procps
               skopeo
               git-cliff
               gh
