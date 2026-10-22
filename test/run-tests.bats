@@ -44,14 +44,17 @@ function setup() {
 @test 'runs go test with the documented flags' {
   run --separate-stderr "${REPO_DIR}/run-tests"
   assert_success
-  assert_output --partial 'go-ran test -short -race -count=1 -shuffle=on -timeout 10m -coverprofile=.coverage/go/coverage.out ./...'
+  local -r flags='-short -race -count=1 -shuffle=on -timeout 10m'
+  assert_output --partial "go-ran test ${flags} -coverprofile=.coverage/go/coverage.out ./..."
 }
 
 @test 'runs bats under kcov over the measured trees' {
   run --separate-stderr "${REPO_DIR}/run-tests"
   assert_success
-  local -r include="--include-path=${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,${FIXTURE_REPO}/.ci,${FIXTURE_REPO}/run-all-checks,${FIXTURE_REPO}/run-tests"
-  local -r parse="--bash-parse-files-in-dir=${FIXTURE_REPO},${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,${FIXTURE_REPO}/.ci"
+  local -r include="--include-path=${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,${FIXTURE_REPO}/.ci,\
+${FIXTURE_REPO}/run-all-checks,${FIXTURE_REPO}/run-tests"
+  local -r parse="--bash-parse-files-in-dir=${FIXTURE_REPO},${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,\
+${FIXTURE_REPO}/.ci"
   assert_output --partial "${include}"
   assert_output --partial "${parse}"
   assert_output --regexp "kcov-ran .* ${FIXTURE_REPO}/.coverage/bats bats --recursive --filter-tags !e2e test/"

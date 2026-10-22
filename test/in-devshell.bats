@@ -37,9 +37,19 @@ STUB
   run env --unset=IN_DEVSHELL "${REPO_DIR}/.ci/in-devshell" echo hi
 
   assert_success
-  local -r keeps='--keep HOME --keep TERM --keep CI --keep IN_DEVSHELL --keep NIX_SSL_CERT_FILE'
-  local -r github_keeps='--keep GITHUB_ACTIONS --keep GITHUB_OUTPUT --keep GITHUB_ENV --keep GITHUB_STEP_SUMMARY --keep GITHUB_WORKSPACE --keep GITHUB_REPOSITORY --keep GITHUB_REF --keep GITHUB_REF_NAME --keep GITHUB_SHA --keep GITHUB_EVENT_NAME --keep GITHUB_TOKEN'
-  local -r other_keeps='--keep GH_TOKEN --keep GH_REPO --keep RUNNER_OS --keep RUNNER_TEMP --keep GOFLAGS --keep GOPATH --keep GOCACHE --keep GOMODCACHE --keep XDG_CACHE_HOME --keep DOCKER_HOST'
-  assert_line --index 0 "nix-ran develop ${FIXTURE_REPO} --ignore-environment ${keeps} ${github_keeps} ${other_keeps} --command echo hi"
+  local -ra keep_vars=(
+    HOME TERM CI IN_DEVSHELL NIX_SSL_CERT_FILE
+    GITHUB_ACTIONS GITHUB_OUTPUT GITHUB_ENV GITHUB_STEP_SUMMARY GITHUB_WORKSPACE
+    GITHUB_REPOSITORY GITHUB_REF GITHUB_REF_NAME GITHUB_SHA GITHUB_EVENT_NAME GITHUB_TOKEN
+    GH_TOKEN GH_REPO RUNNER_OS RUNNER_TEMP
+    GOFLAGS GOPATH GOCACHE GOMODCACHE XDG_CACHE_HOME DOCKER_HOST
+  )
+  local keeps=''
+  local keep_var
+  for keep_var in "${keep_vars[@]}"; do
+    keeps+=" --keep ${keep_var}"
+  done
+  assert_line --index 0 \
+    "nix-ran develop ${FIXTURE_REPO} --ignore-environment${keeps} --command echo hi"
   assert_line --index 1 'IN_DEVSHELL=1'
 }
