@@ -516,3 +516,20 @@ func TestRun_runWriteError(t *testing.T) {
 		t.Errorf("err = %v (exit %d), want the write error and exit 1", err, cli.ExitCode(err))
 	}
 }
+
+func TestRun_runWarningGitFailure(t *testing.T) {
+	t.Parallel()
+	for _, hook := range []string{"pre-commit", "pre-push"} {
+		t.Run(hook, func(t *testing.T) {
+			t.Parallel()
+			repo, lintsDir := makeRepo(t), t.TempDir()
+			// rev-parse never reads the index; diff and status do.
+			writeFile(t, filepath.Join(repo, ".git", "index"), "not an index")
+			writeLint(t, lintsDir, "a", "exit 0")
+			got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", hook, "a")
+			if got.code != 2 || !strings.Contains(got.stderr, "index file") {
+				t.Errorf("got %+v, want exit 2 carrying git's own message", got)
+			}
+		})
+	}
+}

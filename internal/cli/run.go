@@ -351,12 +351,17 @@ func (t *tally) err() error {
 	}
 }
 
-// gitOutput runs git in dir and returns its stdout. A failed git's stderr is
-// in the *exec.ExitError.
+// gitOutput runs git in dir and returns its stdout. The error of a failed git
+// carries the first line of its stderr, and the *exec.ExitError holds all of
+// it. Git runs in the C locale, so callers can match its messages.
 func gitOutput(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // fixed program; the arguments are this package's own
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANGUAGE=")
 	out, err := cmd.Output()
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, firstLine(exitErr.Stderr))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
