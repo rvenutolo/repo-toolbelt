@@ -2,12 +2,18 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"os"
 	"path"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -21,7 +27,8 @@ const coverageDropLint = "check-coverage-drop"
 
 // newBaselineCmd rewrites the coverage baseline from the current reports.
 func (r Runner) newBaselineCmd() *cobra.Command {
-	return &cobra.Command{
+	var check bool
+	cmd := &cobra.Command{
 		Use:   "update-coverage-baseline",
 		Short: "Rewrite the coverage baseline from the current coverage reports",
 		Long: "Rewrite the coverage baseline from the current coverage reports.\n\n" +
@@ -30,17 +37,24 @@ func (r Runner) newBaselineCmd() *cobra.Command {
 			"writes the baseline, recording falls and rises alike. A rise also needs a\n" +
 			"Coverage-Drop trailer on the commit. Run the tests first, so the reports\n" +
 			"are current.\n\n" +
-			"Exit codes: 0 written, 1 a config problem, 2 no section, a missing or\n" +
-			"malformed report, or a write failure.",
+			"With --check, writes nothing: it compares the committed baseline (an absent\n" +
+			"file counts as empty) with what would be written, and prints one line per\n" +
+			"differing unit.\n\n" +
+			"Exit codes: 0 written, or with --check the baseline matches; 1 a config\n" +
+			"problem, or with --check the baseline differs; 2 no section, a missing or\n" +
+			"malformed report, an unreadable baseline, or a write failure.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, err := r.repoRoot(cmd.Context())
 			if err != nil {
 				return err
 			}
-			written, err := r.updateBaseline(root, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			written, err := r.updateBaseline(root, check, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
+			}
+			if check {
+				return nil
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", written); err != nil {
 				return fmt.Errorf("write result: %w", err)
@@ -48,10 +62,13 @@ func (r Runner) newBaselineCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&check, "check", false, "compare the committed baseline with the current reports and write nothing")
+	return cmd
 }
 
-// updateBaseline writes the baseline under root and returns its path.
-func (r Runner) updateBaseline(root string, stdout, stderr io.Writer) (string, error) {
+// updateBaseline writes the baseline under root and returns its path. With
+// check set it writes nothing and fails when the committed baseline differs.
+func (r Runner) updateBaseline(root string, check bool, stdout, stderr io.Writer) (string, error) {
 	cfg, err := r.loadConfig(root, stdout)
 	if err != nil {
 		return "", err
@@ -85,10 +102,69 @@ func (r Runner) updateBaseline(root string, stdout, stderr io.Writer) (string, e
 		return "", setupf("write %s: %w", section.Baseline, err)
 	}
 	defer dir.Close()
-	if err := writeBaseline(dir, section.Baseline, coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))); err != nil {
+	tally := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))
+	if check {
+		return section.Baseline, checkBaseline(dir, section.Baseline, tally, stdout)
+	}
+	if err := writeBaseline(dir, section.Baseline, tally); err != nil {
 		return "", setupf("write %s: %w", section.Baseline, err)
 	}
 	return section.Baseline, nil
+}
+
+// checkBaseline compares the committed baseline file with current, printing
+// one line per differing unit. An absent file counts as empty.
+func checkBaseline(dir *os.Root, file string, current coverage.Baseline, stdout io.Writer) error {
+	committed := coverage.Baseline{}
+	data, err := dir.ReadFile(file)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return setupf("read %s: %w", file, err)
+	default:
+		if committed, err = coverage.ParseBaseline(bytes.NewReader(data)); err != nil {
+			return setupf("%s: %w", file, err)
+		}
+	}
+	units := slices.SortedFunc(maps.Keys(mergeUnits(committed, current)), func(x, y coverage.Unit) int {
+		return cmp.Or(strings.Compare(x.Format, y.Format), strings.Compare(x.Name, y.Name))
+	})
+	var report strings.Builder
+	for _, u := range units {
+		old, inOld := committed[u]
+		now, inNow := current[u]
+		if inOld && inNow && old == now {
+			continue
+		}
+		fmt.Fprintf(&report, "%s %s: baseline %s, current %s\n", u.Format, u.Name, countText(old, inOld), countText(now, inNow))
+	}
+	if report.Len() == 0 {
+		return nil
+	}
+	fmt.Fprintf(&report, "run toolbelt update-coverage-baseline to rewrite %s\n", file)
+	if _, err := io.WriteString(stdout, report.String()); err != nil {
+		return fmt.Errorf("write difference: %w", err)
+	}
+	return codeError{code: exitError, err: fmt.Errorf("%s differs from the current coverage", file)}
+}
+
+func mergeUnits(a, b coverage.Baseline) map[coverage.Unit]struct{} {
+	units := map[coverage.Unit]struct{}{}
+	for u := range a {
+		units[u] = struct{}{}
+	}
+	for u := range b {
+		units[u] = struct{}{}
+	}
+	return units
+}
+
+// countText renders a unit's count, or none when the baseline lacks the unit.
+func countText(count int, present bool) string {
+	if !present {
+		return "none"
+	}
+	return strconv.Itoa(count)
 }
 
 func printFindings(w io.Writer, prefix string, findings []lintkit.Finding) error {

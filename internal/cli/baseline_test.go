@@ -46,11 +46,11 @@ func coverageRepo(t *testing.T, config string) string {
 	return repo
 }
 
-func runBaseline(t *testing.T, dir string) result {
+func runBaseline(t *testing.T, dir string, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	runner := cli.Runner{Lints: baselineLints, Version: "1.2.3", Dir: dir}
-	err := runner.Run(t.Context(), []string{"update-coverage-baseline"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
+	err := runner.Run(t.Context(), append([]string{"update-coverage-baseline"}, args...), func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		stderr.WriteString("error: " + err.Error() + "\n")
 	}
@@ -310,4 +310,126 @@ func lock(t *testing.T, path string, mode os.FileMode, create bool) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
+}
+
+func TestRun_updateCoverageBaselineCheck(t *testing.T) {
+	t.Parallel()
+	const file = ".coverage-baseline.txt"
+	const rewrite = "run toolbelt update-coverage-baseline to rewrite .coverage-baseline.txt\n"
+	tests := []struct {
+		name     string
+		baseline *string // nil: no baseline file
+		code     int
+		stdout   string
+	}{
+		{name: "an equal baseline", baseline: new(wantBaseline), code: 0},
+		{
+			name:     "a baseline with slack",
+			baseline: new(strings.Replace(wantBaseline, "go a 3", "go a 5", 1)),
+			code:     1,
+			stdout:   "go a: baseline 5, current 3\n" + rewrite,
+		},
+		{
+			name:     "a baseline below the count",
+			baseline: new(strings.Replace(wantBaseline, "go a 3", "go a 1", 1)),
+			code:     1,
+			stdout:   "go a: baseline 1, current 3\n" + rewrite,
+		},
+		{
+			name:     "a unit the baseline lacks and one the reports lack",
+			baseline: new("go gone 4\ngo . 0\ncobertura lib 2\n"),
+			code:     1,
+			stdout:   "go a: baseline none, current 3\ngo gone: baseline 4, current none\n" + rewrite,
+		},
+		{
+			name:   "no baseline file",
+			code:   1,
+			stdout: "cobertura lib: baseline none, current 2\ngo .: baseline none, current 0\ngo a: baseline none, current 3\n" + rewrite,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := coverageRepo(t, coverageConfig)
+			path := filepath.Join(repo, file)
+			if tc.baseline != nil {
+				writeFile(t, path, *tc.baseline)
+			}
+			got := runBaseline(t, repo, "--check")
+			if got.code != tc.code || got.stdout != tc.stdout {
+				t.Errorf("got %+v, want exit %d with stdout %q", got, tc.code, tc.stdout)
+			}
+			if tc.baseline == nil {
+				if _, err := os.Stat(path); err == nil {
+					t.Error("--check created the baseline")
+				}
+			} else if content := readFile(t, path); content != *tc.baseline {
+				t.Errorf("--check changed the baseline to\n%s", content)
+			}
+		})
+	}
+}
+
+func TestRun_updateCoverageBaselineCheckFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		config string
+		setup  func(t *testing.T, repo string)
+		stderr string
+	}{
+		{name: "no section", config: "a:\n  x: 1\n", stderr: "no check-coverage-drop section"},
+		{
+			name:   "a missing report",
+			config: coverageConfig,
+			setup: func(t *testing.T, repo string) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(repo, "cov", "c.xml")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			stderr: "cov/c.xml: coverage report not found",
+		},
+		{
+			name:   "a malformed baseline",
+			config: coverageConfig,
+			setup: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, ".coverage-baseline.txt"), "garbage\n")
+			},
+			stderr: ".coverage-baseline.txt",
+		},
+		{
+			name:   "a baseline that is a directory",
+			config: coverageConfig,
+			setup: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, ".coverage-baseline.txt", "x"), "")
+			},
+			stderr: ".coverage-baseline.txt",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := coverageRepo(t, tc.config)
+			if tc.setup != nil {
+				tc.setup(t, repo)
+			}
+			got := runBaseline(t, repo, "--check")
+			if got.code != 2 || !strings.Contains(got.stderr, tc.stderr) {
+				t.Errorf("got %+v, want exit 2 with stderr containing %q", got, tc.stderr)
+			}
+		})
+	}
+}
+
+func TestRun_updateCoverageBaselineCheckWriteFailure(t *testing.T) {
+	t.Parallel()
+	repo := coverageRepo(t, coverageConfig)
+	runner := cli.Runner{Lints: baselineLints, Version: "1.2.3", Dir: repo}
+	err := runner.Run(t.Context(), []string{"update-coverage-baseline", "--check"}, func(string) string { return "" }, strings.NewReader(""), failingWriter{}, &bytes.Buffer{})
+	if !errors.Is(err, errWrite) {
+		t.Errorf("err = %v, want the write error", err)
+	}
 }
