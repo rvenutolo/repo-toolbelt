@@ -84,7 +84,10 @@
         in
         imageFor pkgs devVersion
         // {
-          # What the release workflow pushes to GHCR; see releaseVersion.
+          # What the release workflow pushes to GHCR; see releaseVersion. Its
+          # version is the release's only on a commit `.ci/release-publish
+          # pending` approved; on any other commit the first changelog heading
+          # names a release that is already out, or none.
           release-image = (imageFor pkgs releaseVersion).image;
         };
 

@@ -18,8 +18,9 @@ name: release
 # does this: the attestation records the commit a run started from, so a run
 # of any other commit would vouch for the wrong one.
 #
-# dry-run builds the image the way the tests do and uploads it as a workflow
-# artifact. It proves the build; nothing is pushed, tagged or published. With
+# dry-run builds the image publish would push, release-image, and uploads it as
+# a workflow artifact. It proves the build; nothing is pushed, tagged or
+# published. With
 # sign as well, dry-run-signed attests that archive too, for trying the
 # attestation step from a branch.
 on:
@@ -211,7 +212,7 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >-
-            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -221,7 +222,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
-          ./.ci/in-devshell nix build .#image --out-link result-image
+          ./.ci/in-devshell nix build .#release-image --out-link result-image
           ./.ci/in-devshell ./result-image > repo-toolbelt-image.tar
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -250,7 +251,7 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >-
-            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 fulcio.sigstore.dev:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 rekor.sigstore.dev:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 timestamp.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 fulcio.sigstore.dev:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nixos.org:443 objects.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 proxy.golang.org:443 raw.githubusercontent.com:443 rekor.sigstore.dev:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 timestamp.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -263,7 +264,7 @@ jobs:
           set -Eeuo pipefail
           IFS=$'\n\t'
           env --unset=ACTIONS_ID_TOKEN_REQUEST_URL --unset=ACTIONS_ID_TOKEN_REQUEST_TOKEN \
-            ./.ci/in-devshell nix build .#image --out-link result-image
+            ./.ci/in-devshell nix build .#release-image --out-link result-image
           ./.ci/in-devshell ./result-image > repo-toolbelt-image.tar
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
