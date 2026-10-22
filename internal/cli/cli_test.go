@@ -171,6 +171,31 @@ func TestRun_version(t *testing.T) {
 	}
 }
 
+func TestRun_callerVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{name: "a version from the caller is printed", version: "0.0.0-abc1234", want: "0.0.0-abc1234"},
+		{name: "no version from the caller falls back to dev", version: "", want: "dev"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			err := cli.Run(context.Background(), tc.version, []string{"--version"}, func(string) string { return "" }, strings.NewReader(""), &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("Run error = %v, want nil", err)
+			}
+			if got := strings.TrimSpace(stdout.String()); !strings.HasSuffix(got, " "+tc.want) {
+				t.Errorf("got stdout %q, want it to end with the version %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRun_flagsMayFollowLints(t *testing.T) {
 	t.Parallel()
 	got := run(t, nil, "plan", "a", "b", "--mode", "matrix")

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Data for check-toolbelt-pins only; the e2e suite never runs this file.
+exec docker run ghcr.io/rvenutolo/repo-toolbelt:v1.2.3@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef run --hook pre-commit check-issue-numbers

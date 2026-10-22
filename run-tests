@@ -81,6 +81,9 @@ function run_go_tests() {
 #              --bash-dont-parse-binary-dir: otherwise kcov also parses every
 #              script in bats' own bin/ and reports on it.
 #              --include-path: only the measured trees count; test/ is the suite.
+#              --filter-tags '!e2e': the e2e suites drive the built image
+#              with docker; .ci/test-image runs them, and kcov cannot see
+#              inside a container.
 #              --bash-parse-files-in-dir: kcov only reports files it saw
 #              execute, so walking the directories makes a never-executed
 #              script score 0% instead of vanishing from the denominator. It
@@ -122,7 +125,7 @@ function run_bats_under_kcov() {
     --include-path="${include_list}" \
     --bash-parse-files-in-dir="${parse_list}" \
     "${repo_dir}/${COVERAGE_DIR}/bats" \
-    bats --recursive test/
+    bats --recursive --filter-tags '!e2e' test/
 }
 
 # @description Run the suites, or forward the arguments to bats.

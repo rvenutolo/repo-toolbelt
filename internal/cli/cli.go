@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -81,10 +82,12 @@ type Runner struct {
 	Dir string
 }
 
-// Run runs toolbelt with the embedded manifest. Help and version requests
-// return nil. A non-nil error is for the caller to print and pass to ExitCode.
-func Run(ctx context.Context, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return Runner{Lints: manifest.Load(), Version: buildVersion()}.Run(ctx, args, getenv, stdin, stdout, stderr)
+// Run runs toolbelt with the embedded manifest. version is what --version
+// prints; when it is empty, the module version from the build info is printed,
+// or "dev" when the build recorded none. Help and version requests return nil.
+// A non-nil error is for the caller to print and pass to ExitCode.
+func Run(ctx context.Context, version string, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return Runner{Lints: manifest.Load(), Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
 }
 
 // Run executes args and reads the environment only through getenv and writes
