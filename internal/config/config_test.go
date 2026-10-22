@@ -120,12 +120,27 @@ func TestLoad_problems(t *testing.T) {
 
 func TestLoad_invalidYAML(t *testing.T) {
 	t.Parallel()
-	_, problems, err := config.Load(repoWith(t, "invalid.yml"), known)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+	tests := []struct {
+		name    string
+		fixture string
+	}{
+		{name: "unclosed flow sequence", fixture: "invalid.yml"},
+		// A !!str-tagged << key in a flow map is rejected outright rather than
+		// read as a plain key, so it can never reach a lint as either a merge
+		// or a string key.
+		{name: "str-tagged merge key in a flow map", fixture: "str-tagged-merge-key-in-flow-map.yml"},
 	}
-	if len(problems) != 1 || !strings.HasPrefix(problems[0], "not valid YAML: ") {
-		t.Errorf("Load() problems = %q, want one starting with %q", problems, "not valid YAML: ")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, problems, err := config.Load(repoWith(t, tc.fixture), known)
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil", err)
+			}
+			if len(problems) != 1 || !strings.HasPrefix(problems[0], "not valid YAML: ") {
+				t.Errorf("Load() problems = %q, want one starting with %q", problems, "not valid YAML: ")
+			}
+		})
 	}
 }
 
@@ -200,6 +215,10 @@ func TestLoad_noProblems(t *testing.T) {
 		{
 			name: "core tags", fixture: "core-tags.yml",
 			sections: map[string]string{"check-workflow-hermetic": `{"exempt":[],"wrapper":".ci/x"}`},
+		},
+		{
+			name: "str tag on an int step makes it a string", fixture: "str-tag-on-int-step.yml",
+			sections: map[string]string{"check-workflow-hermetic": `{"exempt":[{"reason":"r","step":"5"}]}`},
 		},
 		{
 			name: "section for a lint absent from the file", fixture: "valid.yml",

@@ -1,0 +1,4 @@
+check-workflow-hermetic:
+  exempt:
+    - step: !!str 5
+      reason: r
