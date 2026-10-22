@@ -151,9 +151,10 @@ func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([
 	return markers, nil
 }
 
-// readRegular reads a tracked file; false for one missing from the working
-// tree (its directory may now be a file) or that is not a regular file, such as a symlink, whose target is
-// scanned under its own name if it is tracked.
+// readRegular reads a tracked file. It reports false for one missing from
+// the working tree (its directory may now be a file), and for one that is not
+// a regular file, such as a symlink, whose target is scanned under its own
+// name if it is tracked.
 func readRegular(root *os.Root, file string) ([]byte, bool, error) {
 	info, err := root.Lstat(file)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {

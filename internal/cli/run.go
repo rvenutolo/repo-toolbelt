@@ -32,8 +32,8 @@ const (
 )
 
 // Finding lines GitHub can annotate: "<path>:<line>: <message>",
-// "<path>:<line>-<end>: <message>" and "<path>: <message>". The lazy path takes the first separator, so a colon in
-// the message stays in the message.
+// "<path>:<line>-<end>: <message>" and "<path>: <message>". The lazy path
+// takes the first separator, so a colon in the message stays in the message.
 var (
 	lineFinding = regexp.MustCompile(`^(.+?):([0-9]+)(?:-([0-9]+))?: (.+)$`)
 	fileFinding = regexp.MustCompile(`^(.+?): (.+)$`)
@@ -308,8 +308,8 @@ func writeLines(w *bytes.Buffer, b []byte) {
 }
 
 // annotate writes a GitHub ::error command for each finding line that names a
-// line or a line range, and for each that names only a path when that path exists in the
-// checkout.
+// line or a line range, and for each that names only a path when that path
+// exists in the checkout.
 func annotate(w *bytes.Buffer, root string, output []byte) {
 	for raw := range bytes.Lines(output) {
 		line := strings.TrimSuffix(string(raw), "\n")
