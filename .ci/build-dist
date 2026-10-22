@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+# @description Build the image's /opt/toolbelt layout into a directory: the
+#              runner at bin/toolbelt, each Go lint at lints/<name>/<name>,
+#              each bash lint's directory at lints/<name>/ and lib/. Which
+#              lints exist, and in which language, comes from lints.toml, so
+#              the manifest is the only list. Local runs and the image share
+#              this layout, so what runs here is what ships.
+# @arg $1 out_dir An empty or not-yet-existing directory to build into.
+# @stdout Nothing.
+# @stderr Progress, and the reason for a failure.
+# @exitcode 0 the layout was built.
+# @exitcode 1 a wrong argument count, a non-empty out dir (nothing is written
+#             then), an unsupported language in lints.toml, or a build failure.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
+  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
+fi
+shopt -s inherit_errexit
+
+# @description Build the layout into the out dir.
+# @arg $1 out_dir directory to build into
+function main() {
+  local -r out_dir="$1"
+  local repo_dir
+  repo_dir="$(dirname -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")")"
+  readonly repo_dir
+
+  if [[ -e "${out_dir}" ]] && [[ -n "$(ls --almost-all -- "${out_dir}")" ]]; then
+    printf '%s: %s is not empty\n' "${0##*/}" "${out_dir}" >&2
+    exit 1
+  fi
+
+  local lints
+  lints="$(yq --input-format toml --output-format tsv '.lint[] | [.name, .language]' "${repo_dir}/lints.toml")"
+  readonly lints
+
+  mkdir --parents -- "${out_dir}/bin" "${out_dir}/lints"
+  (cd "${repo_dir}" && go build -o "${out_dir}/bin/toolbelt" ./cmd/toolbelt)
+  cp --recursive -- "${repo_dir}/lib" "${out_dir}/lib"
+
+  local name language
+  while IFS=$'\t' read -r name language; do
+    case "${language}" in
+      go)
+        (cd "${repo_dir}" && go build -o "${out_dir}/lints/${name}/${name}" "./cmd/${name}")
+        ;;
+      bash)
+        cp --recursive -- "${repo_dir}/lints/${name}" "${out_dir}/lints/${name}"
+        ;;
+      *)
+        printf '%s: lint %s has unsupported language %s\n' "${0##*/}" "${name}" "${language}" >&2 # coverage-exempt: lints.toml is validated by internal/manifest, so no other language reaches here
+        exit 1                                                                                    # coverage-exempt: lints.toml is validated by internal/manifest, so no other language reaches here
+        ;;
+    esac
+  done <<< "${lints}"
+}
+
+if (($# != 1)); then
+  printf 'usage: %s <out-dir>\n' "${0##*/}" >&2
+  exit 1
+fi
+
+main "$@"

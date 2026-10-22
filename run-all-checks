@@ -23,13 +23,13 @@ if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); 
 fi
 shopt -s inherit_errexit
 
-# The coverage lints run on this repo's own reports, from this commit.
+# Every lint that fits this repo, run through the built runner as CI runs
+# them. check-toolbelt-pins is not among them: it checks consumers' pins.
+readonly DOGFOOD_LINTS=(check-workflow-hermetic check-issue-numbers)
 readonly COVERAGE_LINTS=(check-coverage-drop check-patch-coverage)
-# Every Go lint is built, so a build break in any of them fails the gate.
-readonly BUILT_LINTS=("${COVERAGE_LINTS[@]}" check-issue-numbers check-toolbelt-pins)
 
 # Scratch directory: command output (no process substitution) and the built
-# lints. A script-level variable, not a local: the single-quoted EXIT trap
+# layout. A script-level variable, not a local: the single-quoted EXIT trap
 # expands it at exit, after any function's locals are gone.
 TMP_DIR="$(mktemp --directory)"
 readonly TMP_DIR
@@ -79,23 +79,18 @@ function warn_untracked() {
   done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
-# @description Run the coverage lints on the reports the tests just wrote,
-#              through the runner as CI runs them, judging the change since
-#              the fork point from origin/main. The lints are built from this
-#              commit into the layout the runner reads.
-#              TODO: build the lints with the repo's distribution build once
-#              it exists, instead of here.
-# @noargs
-function check_own_coverage() {
-  local -r lints_dir="${TMP_DIR}/lints"
-  local lint
-  for lint in "${BUILT_LINTS[@]}"; do
-    go build -o "${lints_dir}/${lint}/${lint}" "./cmd/${lint}" || return 1
-  done
+# @description Build the image layout from this commit and run the dogfooded
+#              lints through its runner, judging the change since the fork
+#              point from origin/main. The coverage lints read the reports the
+#              tests just wrote.
+# @arg $@ lints names of the lints to run
+function run_dogfood_lints() {
+  local -r dist_dir="${TMP_DIR}/dist"
+  "${REPO_DIR}/.ci/build-dist" "${dist_dir}" || return 1
   # Only --hook ci takes an explicit --base and --head; outside Actions its
   # ::stop-commands:: and ::error lines are expected noise.
-  TOOLBELT_LINTS_DIR="${lints_dir}" go run ./cmd/toolbelt run --hook ci \
-    --base origin/main --head HEAD --default-branch main "${COVERAGE_LINTS[@]}"
+  TOOLBELT_LINTS_DIR="${dist_dir}/lints" "${dist_dir}/bin/toolbelt" run --hook ci \
+    --base origin/main --head HEAD --default-branch main "$@"
 }
 
 # @description Run every check and aggregate the exit codes.
@@ -117,11 +112,12 @@ function main() {
   # Reports from failed or partial tests would add findings that only
   # repeat the test failure.
   if ((tests_rc == 0)); then
-    log_info 'running the coverage lints on the test reports'
-    check_own_coverage || rc=1
+    log_info 'running the dogfooded lints, coverage lints included'
+    run_dogfood_lints "${DOGFOOD_LINTS[@]}" "${COVERAGE_LINTS[@]}" || rc=1
   else
     rc=1
     log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
+    run_dogfood_lints "${DOGFOOD_LINTS[@]}" || rc=1
   fi
 
   if ((rc != 0)); then
