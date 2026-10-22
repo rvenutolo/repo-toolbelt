@@ -19,11 +19,7 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-# bash 4.4 for `inherit_errexit`; the devShell's bash always satisfies this.
-if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
-  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2 # coverage-exempt: the devShell bash always satisfies the version check
-  exit 1                                                                                                     # coverage-exempt: the devShell bash always satisfies the version check
-fi
+# `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
 readonly TEST_TAG='repo-toolbelt:test'

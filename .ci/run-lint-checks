@@ -21,11 +21,7 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-# bash 4.4 for `inherit_errexit` and namerefs; the devShell's bash satisfies it.
-if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
-  printf '%s: bash 4.4+ required (found %s.%s)\n' "${0##*/}" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
-  exit 1
-fi
+# `inherit_errexit` and namerefs need bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
 # Scratch file for command output (no process substitution). A script-level
