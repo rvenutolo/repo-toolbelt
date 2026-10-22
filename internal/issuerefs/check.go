@@ -50,9 +50,11 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 // textFiles lists the tracked files git takes for text, by git's own test,
 // in git's order. A tracked file missing from the working tree is left out.
 func textFiles(ctx context.Context, dir string) ([]string, error) {
+	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
+	// widen the scan to files the repo does not track.
 	// An empty pattern matches every line, so this lists every tracked text
 	// file with any content; an empty file holds no reference to report.
-	cmd := exec.CommandContext(ctx, "git", "grep", "-I", "-z", "--files-with-matches", "--color=never", "-e", "", "--")
+	cmd := exec.CommandContext(ctx, "git", "grep", "--no-recurse-submodules", "-I", "-z", "--files-with-matches", "--color=never", "-e", "", "--")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
