@@ -25,6 +25,8 @@ shopt -s inherit_errexit
 
 # The coverage lints run on this repo's own reports, from this commit.
 readonly COVERAGE_LINTS=(check-coverage-drop check-patch-coverage)
+# Every Go lint is built, so a build break in any of them fails the gate.
+readonly BUILT_LINTS=("${COVERAGE_LINTS[@]}" check-issue-numbers check-toolbelt-pins)
 
 # Scratch directory: command output (no process substitution) and the built
 # lints. A script-level variable, not a local: the single-quoted EXIT trap
@@ -87,7 +89,7 @@ function warn_untracked() {
 function check_own_coverage() {
   local -r lints_dir="${TMP_DIR}/lints"
   local lint
-  for lint in "${COVERAGE_LINTS[@]}"; do
+  for lint in "${BUILT_LINTS[@]}"; do
     go build -o "${lints_dir}/${lint}/${lint}" "./cmd/${lint}" || return 1
   done
   # Only --hook ci takes an explicit --base and --head; outside Actions its

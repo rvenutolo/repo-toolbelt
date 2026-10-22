@@ -69,9 +69,11 @@ STUB
   assert_line --index 2 'run-tests '
   assert_line --index 3 --regexp '^go build -o /.*/lints/check-coverage-drop/check-coverage-drop \./cmd/check-coverage-drop$'
   assert_line --index 4 --regexp '^go build -o /.*/lints/check-patch-coverage/check-patch-coverage \./cmd/check-patch-coverage$'
-  assert_line --index 5 'go run ./cmd/toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-coverage-drop check-patch-coverage'
-  assert_line --index 6 'runner sees check-coverage-drop'
-  assert_line --index 7 'runner sees check-patch-coverage'
+  assert_line --index 5 --regexp '^go build -o /.*/lints/check-issue-numbers/check-issue-numbers \./cmd/check-issue-numbers$'
+  assert_line --index 6 --regexp '^go build -o /.*/lints/check-toolbelt-pins/check-toolbelt-pins \./cmd/check-toolbelt-pins$'
+  assert_line --index 7 'go run ./cmd/toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-coverage-drop check-patch-coverage'
+  assert_line --index 8 'runner sees check-coverage-drop'
+  assert_line --index 9 'runner sees check-patch-coverage'
 }
 
 @test 'leaves no scratch directory behind' {
@@ -91,7 +93,7 @@ STUB
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
-    assert_output 8
+    assert_output 10
   done
 }
 
