@@ -131,6 +131,8 @@ func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result 
 		return Result{Lint: name, Exit: ExitPass, Output: stdout.Bytes(), Stderr: stderr.Bytes()}
 	case errors.As(err, &exitErr):
 		return fromExit(name, exitErr, stdout.Bytes(), stderr.Bytes())
+	case errors.Is(err, exec.ErrWaitDelay):
+		return errored(name, stdout.Bytes(), stderr.Bytes(), "lint exited, but a process it started kept its output open")
 	case errors.Is(err, os.ErrNotExist):
 		return errored(name, nil, nil, "lint executable "+path+" not found")
 	default:

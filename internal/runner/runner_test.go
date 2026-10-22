@@ -345,3 +345,29 @@ wait`)
 		t.Errorf("child %d outlived the run", pid)
 	}
 }
+
+func TestRun_childHoldingOutputAfterExit(t *testing.T) {
+	t.Parallel()
+	lintsDir, dir := t.TempDir(), t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	// The lint exits at once, but the child it leaves behind keeps stdout open.
+	writeLint(t, lintsDir, "leaky", `sleep 60 &
+echo "$!" > '`+pidFile+`'
+echo out`)
+
+	results := runner.Run(t.Context(), lintsNamed("leaky"), runner.Options{LintsDir: lintsDir, RepoRoot: t.TempDir()})
+
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].Exit != 2 || string(results[0].Output) != "out\n" {
+		t.Errorf("got %+v, want exit 2 and the output written before exit", results[0])
+	}
+	want := "toolbelt: lint exited, but a process it started kept its output open\n"
+	if got := string(results[0].Stderr); got != want {
+		t.Errorf("Stderr = %q, want %q", got, want)
+	}
+	if pid := readPID(t, pidFile); !waitGone(t, pid) {
+		t.Errorf("child %d outlived the run", pid)
+	}
+}
