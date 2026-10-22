@@ -90,6 +90,8 @@ function check_own_coverage() {
   for lint in "${COVERAGE_LINTS[@]}"; do
     go build -o "${lints_dir}/${lint}/${lint}" "./cmd/${lint}" || return 1
   done
+  # Only --hook ci takes an explicit --base and --head; outside Actions its
+  # ::stop-commands:: and ::error lines are expected noise.
   TOOLBELT_LINTS_DIR="${lints_dir}" go run ./cmd/toolbelt run --hook ci \
     --base origin/main --head HEAD --default-branch main "${COVERAGE_LINTS[@]}"
 }
@@ -107,10 +109,18 @@ function main() {
   "${REPO_DIR}/.ci/run-lint-checks" || rc=1
 
   log_info 'running tests'
-  "${REPO_DIR}/run-tests" || rc=1
+  local tests_rc=0
+  "${REPO_DIR}/run-tests" || tests_rc=1
 
-  log_info 'running the coverage lints on the test reports'
-  check_own_coverage || rc=1
+  # Reports from failed or partial tests would add findings that only
+  # repeat the test failure.
+  if ((tests_rc == 0)); then
+    log_info 'running the coverage lints on the test reports'
+    check_own_coverage || rc=1
+  else
+    rc=1
+    log_warn 'skipping the coverage lints: the tests failed, so their reports are not current'
+  fi
 
   if ((rc != 0)); then
     log_err 'one or more checks failed'

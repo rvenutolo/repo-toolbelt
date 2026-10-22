@@ -85,7 +85,7 @@ STUB
 
 @test 'a failing check fails the gate and the later checks still run' {
   local step
-  for step in NIX_STATUS LINT_STATUS TESTS_STATUS RUNNER_STATUS; do
+  for step in NIX_STATUS LINT_STATUS RUNNER_STATUS; do
     : > "${CALLS}"
     run env "${step}=1" "${REPO_DIR}/run-all-checks"
     assert_failure 1
@@ -93,6 +93,15 @@ STUB
     run grep --count '' "${CALLS}"
     assert_output 8
   done
+}
+
+@test 'failing tests fail the gate and skip the coverage lints' {
+  TESTS_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  assert_failure 1
+  assert_output --partial 'skipping the coverage lints: the tests failed'
+  assert_output --partial 'one or more checks failed'
+  run grep --count '^go ' "${CALLS}"
+  assert_output 0
 }
 
 @test 'a lint that does not build fails the gate without running the runner' {
