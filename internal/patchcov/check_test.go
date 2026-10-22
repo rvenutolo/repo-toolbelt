@@ -311,12 +311,13 @@ func TestCheck_setupFailures(t *testing.T) {
 		base    string
 		section string // "" for the fixture's section
 		setup   func(t *testing.T, root string)
+		want    string // part of the error
 	}{
-		{name: "an empty base", base: ""},
-		{name: "a section that is not JSON", base: "HEAD", section: "{"},
-		{name: "a base that is not a commit", base: "not-a-commit"},
-		{name: "a base that names a tree", base: "HEAD^{tree}"},
-		{name: "a malformed Go profile", base: "HEAD", setup: func(t *testing.T, root string) {
+		{name: "an empty base", base: "", want: "TOOLBELT_BASE is empty"},
+		{name: "a section that is not JSON", base: "HEAD", section: "{", want: "parse config section"},
+		{name: "a base that is not a commit", base: "not-a-commit", want: "TOOLBELT_BASE not-a-commit is not a commit"},
+		{name: "a base that names a tree", base: "HEAD^{tree}", want: "TOOLBELT_BASE HEAD^{tree} is not a commit"},
+		{name: "a malformed Go profile", base: "HEAD", want: "read cov/go.out", setup: func(t *testing.T, root string) {
 			t.Helper()
 			writeFile(t, filepath.Join(root, "cov", "go.out"), "not a profile\n")
 		}},
@@ -333,8 +334,8 @@ func TestCheck_setupFailures(t *testing.T) {
 				sectionJSON = tc.section
 			}
 			got, err := check(t, root, sectionJSON, tc.base)
-			if err == nil {
-				t.Errorf("Check = %v, nil error; want a setup failure", got)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Check = %v, %v; want an error containing %q", got, err, tc.want)
 			}
 		})
 	}
@@ -348,9 +349,10 @@ func TestCheck_unreadableFiles(t *testing.T) {
 	tests := []struct {
 		name string
 		path string // made unreadable, relative to the root
+		want string // part of the error
 	}{
-		{name: "an unreadable tracked Go file", path: "b.go"},
-		{name: "an unsearchable directory holding a tracked Go file", path: "sub"},
+		{name: "an unreadable tracked Go file", path: "b.go", want: "read b.go"},
+		{name: "an unsearchable directory holding a tracked Go file", path: "sub", want: "stat sub/c.go"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,8 +366,8 @@ func TestCheck_unreadableFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = os.Chmod(target, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
-			if got, err := check(t, root, section, base); err == nil {
-				t.Errorf("Check = %v, nil error; want a setup failure", got)
+			if got, err := check(t, root, section, base); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Check = %v, %v; want an error containing %q", got, err, tc.want)
 			}
 		})
 	}
@@ -392,8 +394,8 @@ func TestCheck_notARepository(t *testing.T) {
 	t.Parallel()
 	t.Run("a root that does not exist", func(t *testing.T) {
 		t.Parallel()
-		if got, err := check(t, filepath.Join(t.TempDir(), "missing"), section, "HEAD"); err == nil {
-			t.Errorf("Check = %v, nil error; want a setup failure", got)
+		if got, err := check(t, filepath.Join(t.TempDir(), "missing"), section, "HEAD"); err == nil || !strings.Contains(err.Error(), "open repository root") {
+			t.Errorf("Check = %v, %v; want an error opening the repository root", got, err)
 		}
 	})
 	t.Run("a root that is not a git repository", func(t *testing.T) {
@@ -404,8 +406,8 @@ func TestCheck_notARepository(t *testing.T) {
 		writeFile(t, filepath.Join(root, "lib", "t.sh"), tSh)
 		writeFile(t, filepath.Join(root, "cov", "go.out"), goProfile)
 		writeFile(t, filepath.Join(root, "cov", "c.xml"), `<coverage><packages/></coverage>`)
-		if got, err := check(t, root, section, "HEAD"); err == nil {
-			t.Errorf("Check = %v, nil error; want a setup failure", got)
+		if got, err := check(t, root, section, "HEAD"); err == nil || !strings.Contains(err.Error(), "not a git repository") {
+			t.Errorf("Check = %v, %v; want git's not-a-repository error", got, err)
 		}
 	})
 }
@@ -425,7 +427,7 @@ func TestCheck_diffFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if got, err := check(t, root, section, base); err == nil {
-		t.Errorf("Check = %v, nil error; want a setup failure", got)
+	if got, err := check(t, root, section, base); err == nil || !strings.Contains(err.Error(), "git diff") {
+		t.Errorf("Check = %v, %v; want the git diff failure", got, err)
 	}
 }

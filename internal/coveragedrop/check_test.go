@@ -518,11 +518,12 @@ func TestCheck_unreadableBaseline(t *testing.T) {
 		name   string
 		locked string // made unreadable, relative to the root
 		mode   os.FileMode
+		want   string // part of the error
 	}{
-		{name: "an unreadable baseline", locked: ".coverage-baseline.txt", mode: 0},
+		{name: "an unreadable baseline", locked: ".coverage-baseline.txt", mode: 0, want: "open .coverage-baseline.txt"},
 		// Searchable but not listable: the reports open by path, the root
 		// itself cannot be opened.
-		{name: "a root that cannot be opened", locked: ".", mode: 0o311},
+		{name: "a root that cannot be opened", locked: ".", mode: 0o311, want: "open repository root"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -535,8 +536,8 @@ func TestCheck_unreadableBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = os.Chmod(target, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
-			if got, err := check(t, root, section, ""); err == nil {
-				t.Errorf("Check = %+v, want an error", got)
+			if got, err := check(t, root, section, ""); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Check = %+v, %v; want an error containing %q", got, err, tc.want)
 			}
 		})
 	}
