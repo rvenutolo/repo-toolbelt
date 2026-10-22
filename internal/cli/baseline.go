@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -100,7 +101,11 @@ func printFindings(w io.Writer, prefix string, findings []lintkit.Finding) error
 
 // writeBaseline replaces the baseline file through a temporary file beside
 // it, so an interrupted write never leaves a truncated baseline.
-func writeBaseline(root, file string, baseline coverage.Baseline) (err error) {
+func writeBaseline(root, file string, baseline coverage.Baseline) error {
+	var content bytes.Buffer
+	if err := baseline.Write(&content); err != nil {
+		return err
+	}
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return err
@@ -110,20 +115,12 @@ func writeBaseline(root, file string, baseline coverage.Baseline) (err error) {
 		return err
 	}
 	tmp := file + ".tmp-" + rand.Text()
-	f, err := dir.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := dir.WriteFile(tmp, content.Bytes(), 0o644); err != nil {
+		_ = dir.Remove(tmp) //nolint:errcheck // best effort: a create that failed leaves nothing to remove
 		return err
 	}
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, dir.Remove(tmp))
-		}
-	}()
-	if err := baseline.Write(f); err != nil { // coverage-exempt: writing a new local file fails only on a full or failing disk
-		return errors.Join(err, f.Close())
+	if err := dir.Rename(tmp, file); err != nil {
+		return errors.Join(err, dir.Remove(tmp))
 	}
-	if err := f.Close(); err != nil { // coverage-exempt: closing a new local file fails only on a full or failing disk
-		return err
-	}
-	return dir.Rename(tmp, file)
+	return nil
 }

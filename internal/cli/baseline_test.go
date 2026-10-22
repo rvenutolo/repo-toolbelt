@@ -161,6 +161,18 @@ func TestRun_updateCoverageBaselineFailures(t *testing.T) {
 			stderr: "cov/go.out",
 		},
 		{
+			name:   "a unit no baseline line can carry",
+			config: coverageConfig,
+			setup: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "cov", "c.xml"), `<coverage><packages><package name="p"><classes>`+
+					`<class filename="lib /t.sh"><lines><line number="1" hits="0"/></lines></class>`+
+					`</classes></package></packages></coverage>`)
+			},
+			code:   2,
+			stderr: `unit "lib "`,
+		},
+		{
 			name:   "a baseline that is a directory",
 			config: coverageConfig,
 			setup: func(t *testing.T, repo string) {
