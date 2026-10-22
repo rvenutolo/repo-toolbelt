@@ -78,6 +78,21 @@ func TestParseSection_problems(t *testing.T) {
 			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path 'docs/[a' is not a valid glob")},
 		},
 		{
+			name:    "path with a trailing slash",
+			section: `{"exempt":[{"path":"docs/","reason":"r"}]}`,
+			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path 'docs/' must not end in /; write 'docs' to exempt everything under it")},
+		},
+		{
+			name:    "path with a leading dot slash",
+			section: `{"exempt":[{"path":"./a.md","reason":"r"}]}`,
+			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path './a.md' must not start with ./; paths are relative to the repo root, as in 'a.md'")},
+		},
+		{
+			name:    "path with a leading slash",
+			section: `{"exempt":[{"path":"/a.md","reason":"r"}]}`,
+			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "path '/a.md' must not start with /; paths are relative to the repo root, as in 'a.md'")},
+		},
+		{
 			name:    "reason missing",
 			section: `{"exempt":[{"path":"a.md"}]}`,
 			want:    []lintkit.Finding{lintkit.SectionError("exempt[0]", "reason is missing or empty")},
