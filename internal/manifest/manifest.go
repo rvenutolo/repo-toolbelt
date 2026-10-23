@@ -90,7 +90,7 @@ func validate(lint Lint) error {
 func Load() []Lint {
 	lints, err := Parse(lintsmanifest.TOML)
 	if err != nil {
-		panic(errors.Join(errors.New("embedded lints.toml is malformed"), err))
+		panic(errors.Join(errors.New("embedded lints.toml is malformed"), err)) // coverage-exempt: only a malformed embedded lints.toml reaches it, and tests do not replace the embedded file
 	}
 	return lints
 }

@@ -100,7 +100,7 @@ func (r Runner) Run(ctx context.Context, args []string, getenv func(string) stri
 
 func buildVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		return info.Main.Version // coverage-exempt: go test binaries carry no module version
 	}
 	return "dev"
 }
