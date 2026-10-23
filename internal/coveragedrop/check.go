@@ -72,7 +72,7 @@ func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error)
 		if n, held := current[unit], baseline[unit]; n > held {
 			findings = append(findings, lintkit.Finding{
 				Path:    unit.Name,
-				Message: fmt.Sprintf("%d uncovered %s, baseline %d", n, measure(unit.Format), held),
+				Message: fmt.Sprintf("%d uncovered %s, baseline %d", n, measure(unit.Format, n), held),
 			})
 		}
 	}
@@ -199,12 +199,16 @@ func sortedUnits(b coverage.Baseline) []coverage.Unit {
 	})
 }
 
-// measure names what a format counts.
-func measure(format string) string {
+// measure names what a format counts, in the singular for a count of 1.
+func measure(format string, n int) string {
+	noun := "line"
 	if format == coverage.FormatGo {
-		return "statements"
+		noun = "statement"
 	}
-	return "lines"
+	if n == 1 {
+		return noun
+	}
+	return noun + "s"
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {

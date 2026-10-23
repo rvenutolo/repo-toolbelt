@@ -1,6 +1,7 @@
 package coveragedrop_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,7 +146,7 @@ func TestCheck_markers(t *testing.T) {
 		{
 			name:   "a reasonless marker still counts",
 			marker: "echo # coverage-exempt:",
-			want:   []lintkit.Finding{{Path: "lib", Message: "1 uncovered lines, baseline 0"}},
+			want:   []lintkit.Finding{{Path: "lib", Message: "1 uncovered line, baseline 0"}},
 		},
 	}
 	for _, tc := range tests {
@@ -163,6 +164,32 @@ func TestCheck_markers(t *testing.T) {
 				t.Fatalf("Check error = %v", err)
 			}
 			diffFindings(t, tc.want, got)
+		})
+	}
+}
+
+func TestCheck_countNounAgreesWithCount(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		count int
+		want  string
+	}{
+		{name: "one statement is singular", count: 1, want: "1 uncovered statement, baseline 0"},
+		{name: "two statements are plural", count: 2, want: "2 uncovered statements, baseline 0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeFile(t, filepath.Join(root, "go.mod"), "module example.com/m\n\ngo 1.22\n")
+			writeFile(t, filepath.Join(root, "cov", "go.out"),
+				fmt.Sprintf("mode: set\nexample.com/m/a/x.go:3.1,5.2 %d 0\n", tc.count))
+			got, err := check(t, root, `{"reports":[{"format":"go","path":"cov/go.out"}]}`, "")
+			if err != nil {
+				t.Fatalf("Check error = %v", err)
+			}
+			diffFindings(t, []lintkit.Finding{{Path: "a", Message: tc.want}}, got)
 		})
 	}
 }
