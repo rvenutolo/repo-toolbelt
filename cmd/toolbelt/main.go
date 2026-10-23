@@ -18,7 +18,6 @@ var version string
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop) // first signal cancels ctx; a second one kills the process
-	// coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
 	err := cli.Run(ctx, version, os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr)
 	stop()
 	if err != nil { // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
