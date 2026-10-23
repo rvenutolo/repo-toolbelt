@@ -99,7 +99,7 @@ func (r Runner) updateBaseline(root string, check bool, stdout, stderr io.Writer
 	}
 	dir, err := os.OpenRoot(root)
 	if err != nil {
-		return "", setupf("write %s: %w", section.Baseline, err)
+		return "", setupf("open repository root: %w", err)
 	}
 	defer dir.Close()
 	tally := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))
