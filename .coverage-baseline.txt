@@ -8,7 +8,7 @@ go cmd/check-issue-numbers 1
 go cmd/check-patch-coverage 0
 go cmd/check-toolbelt-pins 0
 go cmd/toolbelt 2
-go internal/cli 7
+go internal/cli 1
 go internal/config 3
 go internal/coverage 0
 go internal/coveragedrop 0

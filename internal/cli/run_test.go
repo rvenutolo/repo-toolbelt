@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -725,5 +726,88 @@ func TestRun_runCIBaseWithoutHeadIsUsageError(t *testing.T) {
 	got := runIn(t.Context(), t, repo, lintsDir, "run", "--hook", "ci", "--base", "abc", "a")
 	if got.code != 2 || !strings.Contains(got.stderr, "--head") {
 		t.Errorf("got %+v, want exit 2 naming --head", got)
+	}
+}
+
+var errBoom = errors.New("boom")
+
+// writerFailingAfter accepts its first ok Write calls and fails every later one
+// with errBoom.
+type writerFailingAfter struct{ ok int }
+
+func (w *writerFailingAfter) Write(p []byte) (int, error) {
+	if w.ok == 0 {
+		return 0, errBoom
+	}
+	w.ok--
+	return len(p), nil
+}
+
+// readerFailingAfter returns data, then errBoom.
+type readerFailingAfter struct{ data io.Reader }
+
+func (r readerFailingAfter) Read(p []byte) (int, error) {
+	n, err := r.data.Read(p)
+	if errors.Is(err, io.EOF) {
+		return n, errBoom
+	}
+	return n, err
+}
+
+// runStreams runs toolbelt in repo with the given streams, mirroring main's
+// error handling, and returns the error Run returned.
+func runStreams(t *testing.T, repo, lintsDir string, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
+	t.Helper()
+	env := map[string]string{"TOOLBELT_LINTS_DIR": lintsDir}
+	runner := cli.Runner{Lints: runLints, Version: "1.2.3", Dir: repo}
+	return runner.Run(t.Context(), args, func(k string) string { return env[k] }, stdin, stdout, stderr)
+}
+
+func TestRun_runStreamFailures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		args     []string
+		dirty    bool
+		stdout   int // Write calls stdout accepts before failing
+		stderr   int // Write calls stderr accepts before failing
+		wantCode int
+	}{
+		// ci writes the whole block in one stdout Write, then the summary.
+		{name: "summary line", args: []string{"run", "--hook", "ci", "a"}, stdout: 1, stderr: 100, wantCode: 1},
+		{name: "warning line", args: []string{"run", "--hook", "pre-commit", "a"}, dirty: true, stdout: 100, stderr: 0, wantCode: 1},
+		{name: "result block on stdout", args: []string{"run", "--hook", "pre-commit", "a"}, stdout: 0, stderr: 100, wantCode: 1},
+		{name: "result block on stderr", args: []string{"run", "--hook", "pre-commit", "a"}, stdout: 100, stderr: 0, wantCode: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo, lintsDir := makeRepo(t), t.TempDir()
+			writeLint(t, lintsDir, "a", "exit 0")
+			if tt.dirty {
+				writeFile(t, filepath.Join(repo, "tracked.txt"), "two\n")
+			}
+			err := runStreams(t, repo, lintsDir, strings.NewReader(""), &writerFailingAfter{ok: tt.stdout}, &writerFailingAfter{ok: tt.stderr}, tt.args...)
+			if !errors.Is(err, errBoom) || cli.ExitCode(err) != tt.wantCode {
+				t.Errorf("err = %v (exit %d), want errBoom and exit %d", err, cli.ExitCode(err), tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestRun_runPrePushInputReadFailure(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	writeLint(t, lintsDir, "a", "exit 0")
+	flags, line := withRemote(t, repo)
+	args := append([]string{"run", "--hook", "pre-push"}, flags...)
+	args = append(args, "a")
+	var stdout, stderr bytes.Buffer
+	err := runStreams(t, repo, lintsDir, readerFailingAfter{data: strings.NewReader(line)}, &stdout, &stderr, args...)
+	if !errors.Is(err, errBoom) || cli.ExitCode(err) != 2 || !strings.Contains(err.Error(), "read pre-push input") {
+		t.Errorf("err = %v (exit %d), want errBoom, exit 2 and \"read pre-push input\"", err, cli.ExitCode(err))
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want no lint run after the failed read", stdout.String())
 	}
 }
