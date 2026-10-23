@@ -6,6 +6,9 @@ spec.
 
 1. **Brainstorm.** **REQUIRED SUB-SKILL:** superpowers:brainstorming, with the user. It may decide that no written
    design is needed; the remaining steps still apply, scaled down. A family of features shares one brainstorm.
+   Brainstorming ends when the user approves the design in the conversation. Steps 2–5 below replace its written
+   design, its builder-check round with the user, its hand-over and its hard gate; the user has authorized building
+   once those steps pass.
 2. **Halt questions.** Before going unattended, ask every likely halt question in one batched message, each with a
    recommended answer and a one-line reason, as the global "Unattended Execution" rule requires. Write the answers
    into the spec.

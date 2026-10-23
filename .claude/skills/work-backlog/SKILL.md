@@ -19,7 +19,8 @@ skill adds only what is below.
 Two local files under `.claude/backlog/`, which git ignores. At the start of each session, create the directory and
 both files if any is missing.
 
-- `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start.
+- `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start. No
+  header or other lines.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision, one entry each:
 
   ```markdown
@@ -32,13 +33,17 @@ both files if any is missing.
 
 ## The session
 
-1. **Preconditions.** The working tree is clean, on `main`, and up to date with `origin/main`, and `gh auth status`
-   succeeds. If any of these fails, stop and tell the user (blocked banner) before doing anything else.
+1. **Preconditions.** The working tree is clean and on `main`, `gh auth status` succeeds, and
+   `git pull --ff-only` succeeds. If any of these fails, stop and tell the user (blocked banner) before doing anything
+   else. The same holds for every later `gh` call this skill makes: if one fails, stop with the blocked banner, and
+   never log a count or choose work from a partial or guessed result.
 2. **Log.** Append today's line to `session-log.md`, with the count from
    `gh issue list --state open --limit 1000 --json number --jq length`.
 3. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
-4. **Unfinished work.** If an open PR or a pushed branch exists for an open issue, finish it (review, CI, merge) before
-   choosing anything new. This comes before the bugs-first rule.
+4. **Unfinished work.** Check `gh pr list --author @me --state open` and local branches other than `main`
+   (`git branch --list`). Work left on one of them for an open issue is finished (review, CI, merge) before choosing
+   anything new. This comes before the bugs-first rule. To keep such work findable, push a branch as soon as it has a
+   commit, and open its PR early; the PR's closing keyword names its issue.
 5. **Stall check.** Compare today's line with the third line before it. If that line exists and today's count is not
    lower than its count, run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it.
@@ -49,7 +54,8 @@ both files if any is missing.
 
 ## Choosing the chunk
 
-Read the open issues with `gh issue list`. If any open issue has the `bug` label, the chunk is bugs; otherwise it is
+Read every open issue with `gh issue list --state open --limit 1000 --json number,title,labels,body` (the default
+limit hides older issues). If any open issue has the `bug` label, the chunk is bugs; otherwise it is
 features (`enhancement`).
 
 - **Bugs:** related bugs together (same code, same root cause). With none related, a batch of several small bugs.
@@ -70,9 +76,16 @@ session, propose the part that fits; the rest stays open for the next session.
 - **PRs:** one per issue, so each merges and reverts on its own. Closely related issues that touch the same code may
   share a PR with at least one commit per issue. The PR body closes its issues with a closing keyword.
 - **Review:** every PR gets a review with superpowers:requesting-code-review before merge. A round is one reviewer
-  pass plus the fixes it prompts; at most two rounds per PR. Fix what the second round finds without a third review.
-  A finding from reviewing the session's own change is fixed in the branch, given a known-gap comment, or dropped,
-  under the filing bar's rules. It never becomes an issue or a pending finding.
+  pass plus the fixes it prompts; at most two rounds. Fix what the second round finds without a third review. When
+  the work runs through superpowers:subagent-driven-development or superpowers:executing-plans, their reviews are the
+  PR's review: the same two-round cap applies to each of their review loops, and no extra PR review follows. The
+  first review and its fixes are round one; the re-review and its fixes are round two. What round two finds is fixed
+  with no further review, never parked. Out-of-scope notes in their ledgers are findings: judge each by the filing bar
+  and move the ones that pass to `pending-findings.md`.
+- **Findings about the change itself** (a hole in the session's own fix, a gap in its own new test) are fixed in the
+  branch, given a known-gap comment, or dropped. They never become an issue or a pending finding, even when they pass
+  the filing bar. Anything else a review turns up, such as a bug in nearby code the change did not touch, is an
+  ordinary finding: judge it by the filing bar and the out-of-scope rules.
 - **Subagents:** every subagent prompt that implements or reviews carries the filing bar below and tells the subagent
   to return findings to the controller. The controller applies the rules below to them.
 
@@ -104,8 +117,7 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 
 When a PR's CI is green, merge it with no wait for the user. When CI fails, fix the cause and push again. A failure
 that is plainly infrastructure (such as a Nix setup step failing before any check runs) gets one re-run. If CI is still
-red after that, leave that PR open, carry on with the chunk's other issues, and tell the user in the
-summary.
+red after that, stop and tell the user.
 
 ## Ending early
 
@@ -116,7 +128,8 @@ their branches or PRs. Every finding is already in `pending-findings.md`.
 
 - Cut a release, tag, or bump a version. Releases are the user's own step.
 - Start a whole-repo audit or sweep.
-- Open an issue, or close one, without the user's decision in the walkthrough.
+- Open an issue, or close one, without the user's decision. The user decides in the walkthrough, or by approving the
+  chunk, whose issues the merged PRs close.
 
 ## Red flags
 
@@ -126,4 +139,5 @@ their branches or PRs. Every finding is already in `pending-findings.md`.
 | "It reproduces, so it's real" | A reproduction you built for an input nobody writes fails the bar. |
 | "The reviewer found another hole in my fix; that's a new issue" | Fix it in the branch or drop it. |
 | "Three findings is enough for one session" | There is no cap. Every passing finding is recorded. |
-| "I'll sweep the repo for this pattern" | Fix the matches the change owns. The rest are findings, judged by the bar. |
+| "This pattern may be elsewhere too" | Search for it, as the global rule requires; fix the matches the change owns. |
+| "I'll audit the whole repo for this" | No audits. Matches outside the change are findings, judged by the bar. |
