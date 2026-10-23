@@ -85,8 +85,12 @@ func textFiles(ctx context.Context, dir string, diagnostics io.Writer) ([]string
 }
 
 // passWarnings writes every line of git's stderr that is not an error to w
-// and returns the error lines, `error:` or `fatal:`, joined by newlines.
+// and returns the error lines, `error:` or `fatal:`, joined by newlines. A
+// nil w discards the warnings.
 func passWarnings(stderr string, w io.Writer) string {
+	if w == nil {
+		w = io.Discard
+	}
 	var failures []string
 	for line := range strings.Lines(stderr) {
 		if strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "fatal:") {

@@ -45,7 +45,8 @@ type Context struct {
 	// rev-list syntax; it may be empty.
 	Range string
 	// Stderr receives diagnostics that are neither findings nor a setup
-	// failure, such as a warning from a tool the check runs.
+	// failure, such as a warning from a tool the check runs. A nil Stderr
+	// discards them.
 	Stderr io.Writer
 }
 

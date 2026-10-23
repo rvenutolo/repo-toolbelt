@@ -252,6 +252,18 @@ func TestCheck_gitWarningPassesThroughAndFindingsStand(t *testing.T) {
 	}
 }
 
+func TestCheck_gitWarningWithNoStderrIsDiscarded(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{".gitattributes": "!*.md text\n", "a.md": "#1\n"})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	if diff := cmp.Diff([]lintkit.Finding{ref("a.md", 1, "#1")}, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestCheck_trackedFileUnderSymlinkOutsideRepoIsASetupError(t *testing.T) {
 	t.Parallel()
 	outside := t.TempDir()
