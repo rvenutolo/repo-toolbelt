@@ -1582,3 +1582,134 @@ EOF
 EOF
   assert_stderr ''
 }
+
+# @description Put a wrapper for a tool first on a stub PATH, exported as
+#              FAULT_PATH. The wrapper counts its calls in a file under the
+#              per-test temp dir and delegates to the real tool, except that
+#              call $<PREFIX>_FAIL_CALL exits 2 and call $<PREFIX>_CORRUPT_CALL
+#              prints `garbage` and exits 0. The real tool is resolved before
+#              any PATH change, so the wrapper never calls itself.
+# @arg $1 tool the tool to wrap, such as yq or grep
+# @arg $2 prefix the environment variable prefix, such as YQ
+function write_fault_wrapper() {
+  local -r tool="$1"
+  local -r prefix="$2"
+  local real_tool
+  real_tool="$(command -v "${tool}")"
+  FAULT_PATH="${BATS_TEST_TMPDIR}/fault-bin"
+  mkdir --parents "${FAULT_PATH}"
+  cat > "${FAULT_PATH}/${tool}" << EOF
+#!/usr/bin/env bash
+count_file='${BATS_TEST_TMPDIR}/${tool}-calls'
+calls=0
+if [[ -f "\${count_file}" ]]; then
+  calls="\$(< "\${count_file}")"
+fi
+calls=\$((calls + 1))
+printf '%s\n' "\${calls}" > "\${count_file}"
+if [[ "\${${prefix}_FAIL_CALL:-}" == "\${calls}" ]]; then
+  exit 2
+fi
+if [[ "\${${prefix}_CORRUPT_CALL:-}" == "\${calls}" ]]; then
+  printf 'garbage\n'
+  exit 0
+fi
+exec '${real_tool}' "\$@"
+EOF
+  chmod +x "${FAULT_PATH}/${tool}"
+  export FAULT_PATH
+}
+
+# @description Assert the run died with the setup-failure status, printing the
+#              given message on stderr and nothing on stdout.
+# @arg $1 message the expected text after `check-workflow-hermetic: `
+function assert_died() {
+  local -r message="$1"
+  assert_failure 2
+  assert_output ''
+  assert_stderr --partial "check-workflow-hermetic: ${message}"
+}
+
+@test 'reports both the forbidden spelling and invalid YAML' {
+  write_fixture .github/workflows/a.yml << 'EOF'
+jobs: [
+  # @@DIRECT@@
+EOF
+  run --separate-stderr "${LINT_PATH}"
+  assert_failure 1
+  assert_output - << EOF
+.github/workflows/a.yml: spells "${DIRECT_SPELLING}"; only .ci/in-devshell may enter the devShell
+.github/workflows/a.yml: not valid YAML
+2 hermetic-boundary violation(s)
+EOF
+  assert_stderr ''
+}
+
+@test 'dies when grep cannot read a workflow that yq can' {
+  write_bare_step_workflow
+  write_fault_wrapper grep GREP
+  GREP_FAIL_CALL=1 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'grep cannot read .github/workflows/ci.yml'
+}
+
+@test 'dies when grep cannot search the seen steps for an exemption' {
+  write_section <<< '{"exempt": [{"step": "a.yml::x", "reason": "r"}]}'
+  write_fault_wrapper grep GREP
+  GREP_FAIL_CALL=1 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'cannot search '
+}
+
+@test 'dies on a grep line count that is not a number' {
+  write_section <<< '{"exempt": [{"step": "a.yml::x", "reason": "r"}]}'
+  write_fault_wrapper grep GREP
+  GREP_CORRUPT_CALL=1 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died "unexpected line count 'garbage' for "
+}
+
+@test 'dies on an exempt length that is not a number' {
+  write_section <<< '{"exempt": []}'
+  write_fault_wrapper yq YQ
+  # Calls: section type, unknown keys, has wrapper, has exempt, exempt type,
+  # exempt length.
+  YQ_CORRUPT_CALL=6 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died "unexpected exempt length 'garbage'"
+}
+
+# With a null section yq's first call reads the section type; each scanned
+# file then gets four calls: the direct-spelling count, the duplicate keys,
+# the unsupported tags and the run steps.
+
+@test 'dies on a scalar count that is not a number' {
+  write_bare_step_workflow
+  write_fault_wrapper yq YQ
+  YQ_CORRUPT_CALL=2 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died "unexpected scalar count 'garbage' for .github/workflows/ci.yml"
+}
+
+@test 'dies when yq fails on the duplicate-key read after parsing the file' {
+  write_bare_step_workflow
+  write_fault_wrapper yq YQ
+  YQ_FAIL_CALL=3 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'yq failed on .github/workflows/ci.yml after parsing it'
+}
+
+@test 'dies when yq fails on the tag read after parsing the file' {
+  write_bare_step_workflow
+  write_fault_wrapper yq YQ
+  YQ_FAIL_CALL=4 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'yq failed on .github/workflows/ci.yml after parsing it'
+}
+
+@test 'dies when yq fails on the run-step read after parsing the file' {
+  write_bare_step_workflow
+  write_fault_wrapper yq YQ
+  YQ_FAIL_CALL=5 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'yq failed on .github/workflows/ci.yml after parsing it'
+}
+
+@test 'dies on a run-step record that is not well-formed' {
+  write_bare_step_workflow
+  write_fault_wrapper yq YQ
+  YQ_CORRUPT_CALL=5 PATH="${FAULT_PATH}:${PATH}" run --separate-stderr "${LINT_PATH}"
+  assert_died 'unexpected step record for .github/workflows/ci.yml'
+}
