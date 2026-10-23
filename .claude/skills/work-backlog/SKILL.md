@@ -15,7 +15,8 @@ skill adds only what is below.
 
 ## State
 
-Two local files under `.claude/backlog/`, which git ignores. Create the directory and either file when it is missing.
+Two local files under `.claude/backlog/`, which git ignores. At the start of each session, create the directory and
+both files if any is missing.
 
 - `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision, one entry each:
@@ -37,8 +38,8 @@ Two local files under `.claude/backlog/`, which git ignores. Create the director
 3. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
 4. **Unfinished work.** If an open PR or a pushed branch exists for an open issue, finish it (review, CI, merge) before
    choosing anything new. This comes before the bugs-first rule.
-5. **Stall check.** If the log holds a line from three sessions earlier and today's count is not lower than that line's
-   count, run `triage.md` before choosing work.
+5. **Stall check.** Compare today's line with the third line before it. If that line exists and today's count is not
+   lower than its count, run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
@@ -57,7 +58,8 @@ features (`enhancement`).
 - **Order:** by implementation sequence as the global "Prioritizing Work Items" rule defines it: what unblocks other
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size.
 
-The proposal names the issues, why they belong together, and why they come first.
+The proposal names the issues, why they belong together, and why they come first. When a chunk is too big for one
+session, propose the part that fits; the rest stays open for the next session.
 
 ## Doing the work
 
@@ -67,8 +69,9 @@ The proposal names the issues, why they belong together, and why they come first
 - **PRs:** one per issue, so each merges and reverts on its own. Closely related issues that touch the same code may
   share a PR with at least one commit per issue. The PR body closes its issues with a closing keyword.
 - **Review:** every PR gets a review with superpowers:requesting-code-review before merge. A round is one reviewer
-  pass plus the fixes it prompts; at most two rounds per PR. A finding from reviewing the session's own change is
-  fixed in the branch when it is in scope, or dropped. It never becomes an issue or a pending finding.
+  pass plus the fixes it prompts; at most two rounds per PR. Fix what the second round finds without a third review.
+  A finding from reviewing the session's own change is fixed in the branch, given a known-gap comment, or dropped,
+  under the filing bar's rules. It never becomes an issue or a pending finding.
 - **Subagents:** every subagent prompt that implements or reviews carries the filing bar below and tells the subagent
   to return findings to the controller. The controller applies the rules below to them.
 
@@ -81,8 +84,8 @@ A finding counts only if both hold:
 2. **It is wrong now.** A hole that only a hypothetical future edit could open does not count.
 
 A finding that fails the bar is fixed in the branch when it is in scope and small, or gets a one-line known-gap
-comment beside the code, or is dropped. It is never reported, recorded or filed. A known-gap comment states the gap in
-the present tense and cites no issue or PR number.
+comment beside the code when that code is in a file the PR already changes, or is dropped. It is never reported,
+recorded or filed. A known-gap comment states the gap in the present tense and cites no issue or PR number.
 
 ## Out-of-scope findings
 
@@ -100,7 +103,8 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 
 When a PR's CI is green, merge it with no wait for the user. When CI fails, fix the cause and push again. A failure
 that is plainly infrastructure (such as a Nix setup step failing before any check runs) gets one re-run. If CI is still
-red after that, stop and tell the user.
+red after that, leave that PR open, carry on with the chunk's other issues, and tell the user in the
+summary.
 
 ## Ending early
 
