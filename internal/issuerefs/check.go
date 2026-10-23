@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,7 +34,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	}
 	var findings []lintkit.Finding
 	for _, file := range files {
-		content, ok, err := readRegular(root, file)
+		content, ok, err := lintkit.ReadRegular(root, file)
 		if err != nil {
 			return nil, err
 		}
@@ -74,27 +73,6 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 		files = append(files, name)
 	}
 	return files, nil
-}
-
-// readRegular reads a tracked file under root. It reports false for anything
-// but a regular file: git records a symlink's target as its content, and the
-// file it points to is scanned under its own name if it is tracked.
-func readRegular(root *os.Root, file string) ([]byte, bool, error) {
-	info, err := root.Lstat(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("stat %s: %w", file, err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, false, nil
-	}
-	content, err := root.ReadFile(file)
-	if err != nil {
-		return nil, false, fmt.Errorf("read %s: %w", file, err)
-	}
-	return content, true, nil
 }
 
 func scanFile(file string, content []byte, exemptions *Exemptions) []lintkit.Finding {

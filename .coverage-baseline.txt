@@ -12,7 +12,7 @@ go internal/cli 1
 go internal/config 3
 go internal/coverage 0
 go internal/coveragedrop 0
-go internal/issuerefs 6
+go internal/issuerefs 2
 go internal/lintkit 8
 go internal/manifest 1
 go internal/patchcov 0
