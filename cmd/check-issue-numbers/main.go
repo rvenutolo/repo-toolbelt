@@ -9,6 +9,6 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-func main() { // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
+func main() { // coverage-exempt: main ends in os.Exit, which would end the test binary
 	os.Exit(lintkit.Main("check-issue-numbers", "issue reference", issuerefs.Check))
 }

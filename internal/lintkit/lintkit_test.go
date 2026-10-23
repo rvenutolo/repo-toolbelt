@@ -167,6 +167,10 @@ func TestRun_passesContext(t *testing.T) {
 	}); code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr %q", code, h.stderr.String())
 	}
+	if got.Stderr != &h.stderr {
+		t.Errorf("context Stderr = %v, want the lint's stderr", got.Stderr)
+	}
+	got.Stderr = nil
 	want := lintkit.Context{
 		Root:    h.dir,
 		Section: []byte(`{"exempt":[]}`),

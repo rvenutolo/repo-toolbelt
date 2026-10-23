@@ -44,6 +44,9 @@ type Context struct {
 	// Range is TOOLBELT_RANGE, the commits a history-aware lint judges in git
 	// rev-list syntax; it may be empty.
 	Range string
+	// Stderr receives diagnostics that are neither findings nor a setup
+	// failure, such as a warning from a tool the check runs.
+	Stderr io.Writer
 }
 
 // Finding is one problem a check reports.
@@ -167,6 +170,7 @@ func setup(name string, env Env) (Context, bool, error) {
 		Hook:    env.Getenv("TOOLBELT_HOOK"),
 		Base:    env.Getenv("TOOLBELT_BASE"),
 		Range:   env.Getenv("TOOLBELT_RANGE"),
+		Stderr:  env.Stderr,
 	}, false, nil
 }
 

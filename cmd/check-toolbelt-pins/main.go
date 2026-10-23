@@ -10,6 +10,6 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/pins"
 )
 
-func main() { // coverage-exempt: go test cannot run main; lintkit.Main and the check it runs are tested
+func main() { // coverage-exempt: main ends in os.Exit, which would end the test binary
 	os.Exit(lintkit.Main("check-toolbelt-pins", "pin problem", pins.Check))
 }

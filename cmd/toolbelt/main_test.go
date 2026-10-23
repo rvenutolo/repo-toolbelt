@@ -8,11 +8,9 @@ import (
 )
 
 // TestMain_versionPrintsTheVersion runs main in process; --version succeeds,
-// so main returns without calling os.Exit. It swaps process state, so it is
-// not parallel.
-func TestMain_versionPrintsTheVersion(t *testing.T) { //nolint:paralleltest // swaps process state (os.Args, streams, working directory)
-	version = "1.2.3-test"
-	t.Cleanup(func() { version = "" })
+// so main returns without calling os.Exit. It swaps os.Args and os.Stdout, so
+// it is not parallel.
+func TestMain_versionPrintsTheVersion(t *testing.T) { //nolint:paralleltest // swaps os.Args and os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +24,9 @@ func TestMain_versionPrintsTheVersion(t *testing.T) { //nolint:paralleltest // s
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "1.2.3-test") {
-		t.Errorf("stdout = %q, want the version", out)
+	// The version is whatever the build stamped, or a fallback; never empty.
+	got, ok := strings.CutPrefix(string(out), "toolbelt version ")
+	if !ok || strings.TrimSpace(got) == "" || strings.Count(got, "\n") != 1 || !strings.HasSuffix(got, "\n") {
+		t.Errorf("stdout = %q, want one line `toolbelt version <version>`", out)
 	}
 }

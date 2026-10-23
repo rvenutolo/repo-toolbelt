@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -28,7 +29,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer root.Close()
-	files, err := textFiles(ctx, lc.Root)
+	files, err := textFiles(ctx, lc.Root, lc.Stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +49,9 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 
 // textFiles lists the tracked files git takes for text, by git's own test,
 // in git's order. A tracked file missing from the working tree is left out;
-// one git cannot read is an error.
-func textFiles(ctx context.Context, dir string) ([]string, error) {
+// one git cannot read is an error. Any other stderr from git, such as a
+// warning about the repo's .gitattributes, goes to diagnostics unchanged.
+func textFiles(ctx context.Context, dir string, diagnostics io.Writer) ([]string, error) {
 	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
 	// widen the scan to files the repo does not track.
 	// An empty pattern matches every line, so this lists every tracked text
@@ -62,12 +64,13 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 	err := cmd.Run()
 	var exitErr *exec.ExitError
 	switch {
-	case err == nil && stderr.Len() == 0:
 	case err == nil:
 		// git grep skips a file it cannot read, says so on stderr, and still
 		// exits 0 when another file matched; skipping it would pass the file
-		// unchecked.
-		return nil, fmt.Errorf("list tracked text files: %s", strings.TrimSpace(stderr.String()))
+		// unchecked. A warning leaves the listing whole.
+		if failures := passWarnings(stderr.String(), diagnostics); failures != "" {
+			return nil, fmt.Errorf("list tracked text files: %s", failures)
+		}
 	case errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && stderr.Len() == 0:
 		// git grep exits 1 when nothing matched: no text file has content.
 		return nil, nil
@@ -79,6 +82,20 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 		files = append(files, name)
 	}
 	return files, nil
+}
+
+// passWarnings writes every line of git's stderr that is not an error to w
+// and returns the error lines, `error:` or `fatal:`, joined by newlines.
+func passWarnings(stderr string, w io.Writer) string {
+	var failures []string
+	for line := range strings.Lines(stderr) {
+		if strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "fatal:") {
+			failures = append(failures, strings.TrimSuffix(line, "\n"))
+			continue
+		}
+		fmt.Fprint(w, line)
+	}
+	return strings.Join(failures, "\n")
 }
 
 func scanFile(file string, content []byte, exemptions *Exemptions) []lintkit.Finding {

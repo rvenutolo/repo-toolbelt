@@ -275,12 +275,6 @@ func TestRun_updateCoverageBaselineCannotWrite(t *testing.T) {
 			t.Helper()
 			lock(t, filepath.Join(repo, "ro"), 0o555, true)
 		}},
-		// Searchable but not listable: the config and reports open by path,
-		// the root itself cannot be opened.
-		{name: "a root that cannot be opened", baseline: "base.txt", setup: func(t *testing.T, repo string) {
-			t.Helper()
-			lock(t, repo, 0o311, false)
-		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,6 +286,26 @@ func TestRun_updateCoverageBaselineCannotWrite(t *testing.T) {
 			got := runBaseline(t, repo)
 			if got.code != 2 || !strings.Contains(got.stderr, "write "+tc.baseline) {
 				t.Errorf("got %+v, want exit 2 saying it cannot write %s", got, tc.baseline)
+			}
+		})
+	}
+}
+
+func TestRun_updateCoverageBaselineRootCannotBeOpened(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root opens directories whatever their mode")
+	}
+	for name, args := range map[string][]string{"rewrite": nil, "check": {"--check"}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			repo := coverageRepo(t, coverageConfig+"  baseline: base.txt\n")
+			// Searchable but not listable: the config and reports open by
+			// path, the root itself cannot be opened.
+			lock(t, repo, 0o311, false)
+			got := runBaseline(t, repo, args...)
+			if got.code != 2 || !strings.Contains(got.stderr, "open repository root: ") || strings.Contains(got.stderr, "write ") {
+				t.Errorf("got %+v, want exit 2 saying it cannot open the repository root", got)
 			}
 		})
 	}

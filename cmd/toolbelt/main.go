@@ -20,7 +20,7 @@ func main() {
 	context.AfterFunc(ctx, stop) // first signal cancels ctx; a second one kills the process
 	err := cli.Run(ctx, version, os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr)
 	stop()
-	if err != nil { // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
+	if err != nil { // coverage-exempt: this branch calls os.Exit, which would end the test binary
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(cli.ExitCode(err))
 	}
