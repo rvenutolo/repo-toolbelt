@@ -156,6 +156,19 @@ func TestReadRegularPrefix_stopsAtTheLimit(t *testing.T) {
 	}
 }
 
+func TestReadRegularPrefix_nonPositiveLimitIsAnError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "a.txt"), "content\n")
+	root := openRoot(t, dir)
+	for _, limit := range []int64{0, -1} {
+		got, ok, err := lintkit.ReadRegularPrefix(root, "a.txt", limit)
+		if err == nil || !strings.Contains(err.Error(), "a.txt") || got != nil || ok {
+			t.Errorf("ReadRegularPrefix(limit %d) = %q, %t, %v; want nil, false and an error naming a.txt", limit, got, ok, err)
+		}
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

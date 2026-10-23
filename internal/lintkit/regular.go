@@ -28,8 +28,13 @@ func ReadRegular(root *os.Root, file string) ([]byte, bool, error) {
 }
 
 // ReadRegularPrefix is ReadRegular reading at most the first limit bytes, for
-// a caller that needs only the start of a file that may be large.
+// a caller that needs only the start of a file that may be large. A limit
+// that is not positive is an error: it would read nothing, and an empty file
+// would look like any other.
 func ReadRegularPrefix(root *os.Root, file string, limit int64) ([]byte, bool, error) {
+	if limit <= 0 {
+		return nil, false, fmt.Errorf("read %s: prefix limit %d is not positive", file, limit)
+	}
 	ok, err := isRegular(root, file)
 	if !ok || err != nil {
 		return nil, false, err
