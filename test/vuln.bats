@@ -32,8 +32,10 @@ function write_report() {
     if [[ "${spec}" == import:* ]]; then
       function_json=''
     fi
-    printf '{"finding":{"osv":"%s","fixed_version":"v1.2.3","trace":[{"module":"example.com/dep","version":"v1.0.0"%s}]}}\n' \
-      "${osv}" "${function_json}" >> "${STUB_REPORT}"
+    {
+      printf '{"finding":{"osv":"%s","fixed_version":"v1.2.3",' "${osv}"
+      printf '"trace":[{"module":"example.com/dep","version":"v1.0.0"%s}]}}\n' "${function_json}"
+    } >> "${STUB_REPORT}"
   done
 }
 

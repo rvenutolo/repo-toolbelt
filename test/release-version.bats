@@ -403,7 +403,9 @@ EOF
   run_in "${RELEASE_REPO}" next
   assert_output 'v1.1.0'
   run_in "${RELEASE_REPO}" section v1.1.0
-  assert_output $'## v1.1.0\n\n### Features\n\n- c\n\n### Fixes\n\n- a\n\n### Reverts\n\n- feat: add widget\n- **cli:** fix: b'
+  local expected=$'## v1.1.0\n\n### Features\n\n- c\n\n### Fixes\n\n- a\n\n'
+  expected+=$'### Reverts\n\n- feat: add widget\n- **cli:** fix: b'
+  assert_output "${expected}"
 
   release_repo v1.0.0
   commit_empty "${RELEASE_REPO}" 'revert!: feat: add widget' 'BREAKING CHANGE: the widget is gone again'
@@ -515,8 +517,10 @@ EOF
 
 @test 'notes prints one version body without its heading' {
   local -r file="${BATS_TEST_TMPDIR}/notes.md"
-  printf '# Changelog\n\nPreamble.\n\n## v1.2.0\n\n### Features\n\n- a\n\n\n## v1.1.0 - 2026-01-01\n\n### Fixes\n\n- b\n- c\n\n' \
-    > "${file}"
+  {
+    printf '# Changelog\n\nPreamble.\n\n## v1.2.0\n\n### Features\n\n- a\n\n'
+    printf '\n## v1.1.0 - 2026-01-01\n\n### Fixes\n\n- b\n- c\n\n'
+  } > "${file}"
   run_in "${BATS_TEST_TMPDIR}" notes "${file}" v1.2.0
   assert_output $'### Features\n\n- a'
   run_in "${BATS_TEST_TMPDIR}" notes "${file}" v1.1.0

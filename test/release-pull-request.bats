@@ -16,6 +16,14 @@ readonly COMMIT='c0ffeec0ffeec0ffeec0ffeec0ffeec0ffee0001'
 # The reads the script makes before it decides anything, as the stub logs them.
 readonly READ_BRANCH='api repos/gh-owner/report --jq .default_branch'
 readonly READ_HEAD='api repos/gh-owner/report/git/ref/heads/main --jq .object.sha'
+# The open-pull-request listing: the arguments up to the jq program, and the program, which the stub runs over
+# pr-list.json.
+readonly PR_LIST_HEAD='pr list --repo gh-owner/report --head chore/release'
+readonly PR_LIST="${PR_LIST_HEAD} --state open --limit 1000 --json number,isCrossRepository --jq "
+readonly PR_LIST_JQ='[.[] | select(.isCrossRepository == false)][0].number // empty'
+# The pull request creation and the ref updates, up to their varying arguments.
+readonly PR_CREATE='pr create --repo gh-owner/report --base main --head chore/release'
+readonly GIT_REFS='repos/gh-owner/report/git/refs'
 
 function setup() {
   load test_helper/common
@@ -84,7 +92,7 @@ case "\$*" in
     ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release') [[ -e ${q_dir}/branch-exists ]] ;;
   'api repos/gh-owner/report/git/ref/heads/chore/release-staging') [[ -e ${q_dir}/staging-exists ]] ;;
-  'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq '*)
+  '${PR_LIST}'*)
     # The script's own filter, the last argument, is run over the list.
     jq --raw-output "\${!#}" ${q_dir}/pr-list.json
     ;;
@@ -186,12 +194,12 @@ function committed_changelog() {
   # The commit is made on the staging branch, created at the base, and the
   # release branch, which does not exist yet, is created at that commit.
   assert_call '--field branch=chore/release-staging'
-  assert_call "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release-staging --field sha=${head}"
-  assert_call "api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release --field sha=${COMMIT}"
+  assert_call "api --method POST ${GIT_REFS} --field ref=refs/heads/chore/release-staging --field sha=${head}"
+  assert_call "api --method POST ${GIT_REFS} --field ref=refs/heads/chore/release --field sha=${COMMIT}"
   refute_call "heads/chore/release --field sha=${head}"
   refute_call '--method PATCH'
   assert_call 'api --method DELETE repos/gh-owner/report/git/refs/heads/chore/release-staging'
-  assert_call 'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 --body-file '
+  assert_call "${PR_CREATE} --title chore(release): v1.1.0 --body-file "
   refute_call 'pr edit'
   refute_call 'pr merge'
   refute_call '--auto'
@@ -245,7 +253,7 @@ function committed_changelog() {
   assert_stderr --partial 'MD013'
   assert_stderr --partial 'markdownlint rejects the assembled changelog'
   assert_only_calls "${READ_BRANCH}" "${READ_HEAD}" \
-    'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
+    "${PR_LIST}${PR_LIST_JQ}"
 }
 
 @test 'a changelog whose first section is not the version is refused before any write' {
@@ -263,7 +271,7 @@ STUB
   assert_failure 1
   assert_stderr --partial "the assembled changelog's first section is missing, not v1.0.1"
   assert_only_calls "${READ_BRANCH}" "${READ_HEAD}" \
-    'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
+    "${PR_LIST}${PR_LIST_JQ}"
 }
 
 @test 'a release branch left behind is moved onto the new commit, in order, and a pull request opened' {
@@ -274,8 +282,8 @@ STUB
   head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
   run_script
   assert_success
-  local -r stage="api --method POST repos/gh-owner/report/git/refs --field ref=refs/heads/chore/release-staging --field sha=${head}"
-  local -r move="api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${COMMIT} --field force=true"
+  local -r stage="api --method POST ${GIT_REFS} --field ref=refs/heads/chore/release-staging --field sha=${head}"
+  local -r move="api --method PATCH ${GIT_REFS}/heads/chore/release --field sha=${COMMIT} --field force=true"
   assert_call "${stage}"
   assert_call "${move}"
   refute_call 'ref=refs/heads/chore/release --field'
@@ -285,7 +293,7 @@ STUB
   rest="${rest#*'api graphql '}"
   rest="${rest#*"${move}"}"
   rest="${rest#*'api --method DELETE repos/gh-owner/report/git/refs/heads/chore/release-staging'}"
-  [[ "${rest}" == *'pr create --repo gh-owner/report --base main --head chore/release --title chore(release): v1.1.0 '* ]]
+  [[ "${rest}" == *"${PR_CREATE} --title chore(release): v1.1.0 "* ]]
 }
 
 @test 'a staging branch left behind is moved back onto the base' {
@@ -297,7 +305,7 @@ STUB
   head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
   run_script
   assert_success
-  assert_call "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release-staging --field sha=${head} --field force=true"
+  assert_call "api --method PATCH ${GIT_REFS}/heads/chore/release-staging --field sha=${head} --field force=true"
   refute_call '--method POST'
   assert_call "--field oid=${head}"
   assert_call "pr edit ${PR} "
@@ -341,7 +349,7 @@ STUB
   assert_success
   assert_stderr --partial 'nothing to release'
   assert_only_calls "${READ_BRANCH}" "${READ_HEAD}" \
-    'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
+    "${PR_LIST}${PR_LIST_JQ}"
 }
 
 @test 'a version given by hand is the version' {
@@ -388,7 +396,7 @@ STUB
   assert_stderr --partial 'keeping v3.0.0'
   assert_call '--field headline=chore(release): v3.0.0'
   assert_call "pr edit ${PR} --repo gh-owner/report --title chore(release): v3.0.0 --body-file "
-  assert_call "api --method PATCH repos/gh-owner/report/git/refs/heads/chore/release --field sha=${COMMIT} --field force=true"
+  assert_call "api --method PATCH ${GIT_REFS}/heads/chore/release --field sha=${COMMIT} --field force=true"
   refute_call 'pr create'
   refute_call 'ref=refs/heads/chore/release --field'
 }

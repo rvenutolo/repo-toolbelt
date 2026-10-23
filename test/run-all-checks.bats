@@ -5,6 +5,9 @@
 # its name and arguments to CALLS, and exits with the status in its
 # <NAME>_STATUS variable (0 when unset).
 
+# The runner's arguments in CI, up to the lints it is given.
+readonly TOOLBELT_RUN='toolbelt run --hook ci --base origin/main --head HEAD --default-branch main'
+
 function setup() {
   load test_helper/common
   make_repo
@@ -78,7 +81,8 @@ STUB
   assert_line --index 2 'check-examples '
   assert_line --index 3 'run-tests '
   assert_line --index 4 --regexp '^build-dist /.+/dist$'
-  assert_line --index 5 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage'
+  assert_line --index 5 \
+    "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage"
   assert_line --index 6 'lints dir ok'
   assert_line --index 7 'toolbelt update-coverage-baseline --check'
   assert_line --index 8 'check-toolbelt-pins in examples/consumer/ section null hook ci'
@@ -111,7 +115,7 @@ STUB
   assert_output --partial 'skipping the coverage lints: the tests failed'
   assert_output --partial 'one or more checks failed'
   run grep '^toolbelt ' "${CALLS}"
-  assert_output 'toolbelt run --hook ci --base origin/main --head HEAD --default-branch main check-workflow-hermetic check-issue-numbers'
+  assert_output "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers"
   run grep --count '^check-toolbelt-pins ' "${CALLS}"
   assert_output 1
 }

@@ -5,10 +5,14 @@ bats_require_minimum_version 1.5.0
 # Every test runs in a fixture repo holding a two-lint manifest (one quick,
 # one slow) and example files that agree with it; each test breaks one thing.
 
-readonly PLACEHOLDER_IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000'
-readonly PLACEHOLDER_USES='rvenutolo/repo-toolbelt/.github/workflows/lint.yml@0000000000000000000000000000000000000000 # v0.0.0'
-readonly REAL_IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v1.2.3@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-readonly REAL_USES='rvenutolo/repo-toolbelt/.github/workflows/lint.yml@0123456789abcdef0123456789abcdef01234567 # v1.2.3'
+readonly IMAGE_REPO='ghcr.io/rvenutolo/repo-toolbelt'
+readonly USES_WORKFLOW='rvenutolo/repo-toolbelt/.github/workflows/lint.yml'
+readonly PLACEHOLDER_DIGEST='0000000000000000000000000000000000000000000000000000000000000000'
+readonly REAL_DIGEST='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+readonly PLACEHOLDER_IMAGE="${IMAGE_REPO}:v0.0.0@sha256:${PLACEHOLDER_DIGEST}"
+readonly PLACEHOLDER_USES="${USES_WORKFLOW}@0000000000000000000000000000000000000000 # v0.0.0"
+readonly REAL_IMAGE="${IMAGE_REPO}:v1.2.3@sha256:${REAL_DIGEST}"
+readonly REAL_USES="${USES_WORKFLOW}@0123456789abcdef0123456789abcdef01234567 # v1.2.3"
 
 function setup() {
   load test_helper/common
