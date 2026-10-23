@@ -94,16 +94,16 @@ func SectionError(where, problem string) Finding {
 // Main runs check as the lint called name in this process and returns the
 // exit status for os.Exit. noun names what the lint counts, in the singular,
 // for the count line. SIGINT or SIGTERM cancels the check's context.
-func Main(name, noun string, check Check) int {
+func Main(name, noun string, check Check) int { // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	context.AfterFunc(ctx, stop) // the first signal cancels ctx; a second one kills the process
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
-		return exitSetup
+		return exitSetup // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
 	}
-	return Run(ctx, name, noun, check, Env{Args: os.Args[1:], Getenv: os.Getenv, Dir: dir, Stdout: os.Stdout, Stderr: os.Stderr})
+	return Run(ctx, name, noun, check, Env{Args: os.Args[1:], Getenv: os.Getenv, Dir: dir, Stdout: os.Stdout, Stderr: os.Stderr}) // coverage-exempt: main runs only as a built binary; the e2e suite runs it in the image
 }
 
 // Run runs check as the lint called name in env and returns its exit status:
