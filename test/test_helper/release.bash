@@ -59,3 +59,22 @@ function commit_empty() {
   fi
   git -C "${repo}" commit --quiet --allow-empty "${args[@]}"
 }
+
+# @description Write a stand-in git to a directory that answers one call with a
+#              set status and otherwise runs the real git. Put the directory
+#              ahead of PATH to use it. The real git is resolved here, before
+#              PATH changes.
+# @arg $1 dir directory to put the stand-in in
+# @arg $2 pattern shell glob the stand-in's whole argument list is matched against
+# @arg $3 status exit status for a matching call
+# @arg $4 output what a matching call prints to stdout, optional
+function write_git_stub() {
+  local -r dir="$1" pattern="$2" status="$3" output="${4:-}"
+  local real_git
+  real_git="$(command -v git)"
+  mkdir --parents "${dir}"
+  # shellcheck disable=SC2016 # the stand-in's own expansions must stay literal in the file it writes
+  printf '#!/usr/bin/env bash\nif [[ "$*" == %s ]]; then\n  printf "%%s" %q\n  exit %q\nfi\nexec %q "$@"\n' \
+    "${pattern}" "${output}" "${status}" "${real_git}" > "${dir}/git"
+  chmod +x "${dir}/git"
+}

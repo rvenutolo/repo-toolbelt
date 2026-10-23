@@ -219,7 +219,7 @@ function changelog_path() {
 function require_full_clone() {
   local shallow
   if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
-    fail 'cannot tell whether the repository is a shallow clone' # coverage-exempt: git answered --show-toplevel just before, so this read cannot fail in a test
+    fail 'cannot tell whether the repository is a shallow clone'
   fi
   if [[ "${shallow}" != 'false' ]]; then
     fail 'this is a shallow clone, so the commit that brought the version into the changelog cannot be found; fetch the full history first (git fetch --unshallow --tags)'
@@ -280,7 +280,7 @@ function release_commit() {
   local -r top="${changelog%/*}" file="${changelog##*/}"
   local commits
   if ! commits="$(git -C "${top}" log --no-show-signature --first-parent --format='%H' "${from}" -- "${file}")"; then
-    fail "cannot read the history of ${file}" # coverage-exempt: the caller checked that the commit is in this checkout, so git log cannot fail in a test
+    fail "cannot read the history of ${file}"
   fi
   local commit found='' named
   while IFS= read -r commit; do
@@ -294,7 +294,7 @@ function release_commit() {
     found="${commit}"
   done <<< "${commits}"
   if [[ -z "${found}" ]]; then
-    fail "no commit in the history of ${from} holds a ${file} that names ${version} at its top; there is no commit to cut the release from" # coverage-exempt: the caller checked that ${from} itself names the version, so no test can reach it
+    fail "no commit in the history of ${from} holds a ${file} that names ${version} at its top; there is no commit to cut the release from"
   fi
   printf '%s\n' "${found}"
 }

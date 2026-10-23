@@ -29,15 +29,15 @@ readonly EXCEPTION_RE='^- (GO-[0-9]{4}-[0-9]+):'
 # One row per reachable vulnerability and module. A report always opens with a
 # config message, so one without it is not a report.
 readonly ROWS_FILTER='
-  if any(.[]; has("config")) | not then error("no config message") else . end
-  | [ .[] | .finding? // empty | select(.trace[0].function != null)
-      | { osv,
-          module: .trace[0].module,
-          version: (.trace[0].version // "unknown"),
-          fixed: (.fixed_version // "none released") } ]
-  | unique_by([.osv, .module]) | .[]
-  | [.osv, .module, .version, .fixed]
-  | @tsv'
+  if any(.[]; has("config")) | not then error("no config message") else . end # coverage-exempt: kcov scores this line; it never executes as bash
+  | [ .[] | .finding? // empty | select(.trace[0].function != null) # coverage-exempt: kcov scores this line; it never executes as bash
+      | { osv, # coverage-exempt: kcov scores this line; it never executes as bash
+          module: .trace[0].module, # coverage-exempt: kcov scores this line; it never executes as bash
+          version: (.trace[0].version // "unknown"), # coverage-exempt: kcov scores this line; it never executes as bash
+          fixed: (.fixed_version // "none released") } ] # coverage-exempt: kcov scores this line; it never executes as bash
+  | unique_by([.osv, .module]) | .[] # coverage-exempt: kcov scores this line; it never executes as bash
+  | [.osv, .module, .version, .fixed] # coverage-exempt: kcov scores this line; it never executes as bash
+  | @tsv' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # @description Print the excepted OSV ids, one per line.
 # @noargs
@@ -48,7 +48,7 @@ function excepted_ids() {
     if [[ "${line}" =~ ${EXCEPTION_RE} ]]; then
       printf '%s\n' "${BASH_REMATCH[1]}"
     fi
-  done < "${EXCEPTIONS_FILE}"
+  done < "${EXCEPTIONS_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
 # @description Scan the module and judge the findings.

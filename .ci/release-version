@@ -145,7 +145,7 @@ function repo_top() {
     fail 'not inside a git repository'
   fi
   if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
-    fail 'cannot tell whether the repository is a shallow clone' # coverage-exempt: git answered --show-toplevel just before, so this read cannot fail in a test
+    fail 'cannot tell whether the repository is a shallow clone'
   fi
   if [[ "${shallow}" != 'false' ]]; then
     fail 'this is a shallow clone, so tags and commits a version is computed from are missing; fetch the full history first (git fetch --unshallow --tags)'
