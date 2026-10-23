@@ -124,6 +124,20 @@ function run_in() {
   assert_output 'v1.0.1'
 }
 
+@test 'a shallow-clone check that cannot be answered is a failure for every subcommand that reads history' {
+  release_repo v1.0.0
+  write_git_stub "${BATS_TEST_TMPDIR}/bin" '*--is-shallow-repository*' 2
+  PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" run_in "${RELEASE_REPO}" last-tag
+  assert_failure 1
+  assert_stderr --partial 'cannot tell whether the repository is a shallow clone'
+  PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" run_in "${RELEASE_REPO}" next
+  assert_failure 1
+  assert_stderr --partial 'cannot tell whether the repository is a shallow clone'
+  PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" run_in "${RELEASE_REPO}" section v1.0.1
+  assert_failure 1
+  assert_stderr --partial 'cannot tell whether the repository is a shallow clone'
+}
+
 @test 'greater compares by number, strictly' {
   run_in "${BATS_TEST_TMPDIR}" greater v1.0.0 v0.1.0
   assert_success

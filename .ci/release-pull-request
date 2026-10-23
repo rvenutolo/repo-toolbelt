@@ -381,7 +381,7 @@ function main() {
   local written
   written="$("${RELEASE_VERSION}" top "${new}")"
   if [[ "${written}" != "${version}" ]]; then
-    fail "the assembled changelog's first section is ${written:-missing}, not ${version}" # coverage-exempt: prepend puts the section first and markdownlint's fixes keep headings, so no test can reach it
+    fail "the assembled changelog's first section is ${written:-missing}, not ${version}"
   fi
   # The body shows the section as it is committed, after the formatter, so
   # what is reviewed in the pull request is what the release notes say.

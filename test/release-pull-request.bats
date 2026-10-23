@@ -248,6 +248,24 @@ function committed_changelog() {
     'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
 }
 
+@test 'a changelog whose first section is not the version is refused before any write' {
+  pr_repo v1.0.0
+  commit_empty "${RELEASE_REPO}" 'fix: a'
+  mkdir "${BATS_TEST_TMPDIR}/bin"
+  # A formatter that leaves a file with no release section in it. Its last
+  # argument is the file, behind the `:` that makes it a literal.
+  cat > "${BATS_TEST_TMPDIR}/bin/markdownlint-cli2" << 'STUB'
+#!/usr/bin/env bash
+printf '# Changelog\n' > "${!#:1}"
+STUB
+  chmod +x "${BATS_TEST_TMPDIR}/bin/markdownlint-cli2"
+  PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" run_script
+  assert_failure 1
+  assert_stderr --partial "the assembled changelog's first section is missing, not v1.0.1"
+  assert_only_calls "${READ_BRANCH}" "${READ_HEAD}" \
+    'pr list --repo gh-owner/report --head chore/release --state open --limit 1000 --json number,isCrossRepository --jq [.[] | select(.isCrossRepository == false)][0].number // empty'
+}
+
 @test 'a release branch left behind is moved onto the new commit, in order, and a pull request opened' {
   pr_repo v1.0.0
   : > "${STUB}/branch-exists"

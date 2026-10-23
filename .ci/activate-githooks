@@ -35,7 +35,7 @@ function main() {
   # other non-zero exit (corrupt config, unreadable file) is a real failure.
   current="$(git -C "${REPO_ROOT}" config --local --get core.hooksPath)" || status=$?
   case "${status}" in
-    0) ;;
+    0) ;; # coverage-exempt: kcov scores this line; it never executes as bash
     1) current='' ;;
     *)
       printf '%s: could not read core.hooksPath (git exit %s)\n' "${0##*/}" "${status}" >&2
