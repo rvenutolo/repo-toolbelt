@@ -775,6 +775,7 @@ func TestRun_runStreamFailures(t *testing.T) {
 	}{
 		// ci writes the whole block in one stdout Write, then the summary.
 		{name: "summary line", args: []string{"run", "--hook", "ci", "a"}, stdout: 1, stderr: 100, wantCode: 1},
+		// A modified tracked file under pre-commit makes run warn about unstaged changes on stderr.
 		{name: "warning line", args: []string{"run", "--hook", "pre-commit", "a"}, dirty: true, stdout: 100, stderr: 0, wantCode: 1},
 		{name: "result block on stdout", args: []string{"run", "--hook", "pre-commit", "a"}, stdout: 0, stderr: 100, wantCode: 1},
 		{name: "result block on stderr", args: []string{"run", "--hook", "pre-commit", "a"}, stdout: 100, stderr: 0, wantCode: 1},
