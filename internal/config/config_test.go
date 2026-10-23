@@ -149,6 +149,9 @@ func TestLoad_invalidYAML(t *testing.T) {
 		// read as a plain key, so it can never reach a lint as either a merge
 		// or a string key.
 		{name: "str-tagged merge key in a flow map", fixture: "str-tagged-merge-key-in-flow-map.yml"},
+		// A mapping used as a key has no text a lint could match, and YAML
+		// that holds one is rejected before any key is read.
+		{name: "flow mapping as a key", fixture: "flow-mapping-key.yml"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -223,6 +226,9 @@ func TestLoad_noProblems(t *testing.T) {
 		{name: "no file", sections: map[string]string{"check-workflow-hermetic": "null", "check-issue-numbers": "null"}},
 		{name: "empty file", fixture: "empty.yml", sections: map[string]string{"check-workflow-hermetic": "null"}},
 		{name: "comment only", fixture: "comments-only.yml", sections: map[string]string{"check-workflow-hermetic": "null"}},
+		// A document end marker with nothing before it is a stream of no
+		// documents, which is no config, as an empty file is.
+		{name: "document end marker only", fixture: "document-end-only.yml", sections: map[string]string{"check-workflow-hermetic": "null"}},
 		{
 			name: "sections present", fixture: "valid.yml",
 			sections: map[string]string{
@@ -317,12 +323,28 @@ func TestLoad_anchorWithoutAliasIsAllowed(t *testing.T) {
 
 func TestLoad_sectionThatCannotBeJSON(t *testing.T) {
 	t.Parallel()
-	_, problems, err := config.Load(repoWith(t, "not-a-number.yml"), known)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+	tests := []struct {
+		name    string
+		fixture string
+		want    string // the problem's prefix
+	}{
+		{name: "not a number", fixture: "not-a-number.yml", want: "check-issue-numbers: cannot be read as JSON: encode: "},
+		{name: "bool tag on a non-boolean", fixture: "bool-tag-on-non-boolean.yml", want: "check-issue-numbers: cannot be read as JSON: decode: "},
 	}
-	if len(problems) != 1 || !strings.HasPrefix(problems[0], "check-issue-numbers: cannot be read as JSON: ") {
-		t.Errorf("Load() problems = %q, want one starting with %q", problems, "check-issue-numbers: cannot be read as JSON: ")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, problems, err := config.Load(repoWith(t, tc.fixture), known)
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil", err)
+			}
+			if len(problems) != 1 || !strings.HasPrefix(problems[0], tc.want) {
+				t.Errorf("Load() problems = %q, want one starting with %q", problems, tc.want)
+			}
+			if section := string(cfg.Section("check-issue-numbers")); section != "null" {
+				t.Errorf("Section after problems = %s, want null", section)
+			}
+		})
 	}
 }
 

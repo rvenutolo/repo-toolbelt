@@ -229,3 +229,22 @@ func TestCheck_unreadableTrackedFileIsASetupError(t *testing.T) {
 		})
 	}
 }
+
+func TestCheck_trackedFileUnderSymlinkOutsideRepoIsASetupError(t *testing.T) {
+	t.Parallel()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "c.md"), "#9\n")
+	repo := makeRepo(t, map[string]string{"a.md": "clean\n", "sub/c.md": "clean\n"})
+	if err := os.RemoveAll(filepath.Join(repo, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	// git grep follows the symlinked directory and lists sub/c.md, which
+	// the lint must not read outside the repository.
+	if err := os.Symlink(outside, filepath.Join(repo, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err == nil || !strings.Contains(err.Error(), "sub/c.md") {
+		t.Errorf("Check = %v, %v; want a setup error naming sub/c.md", got, err)
+	}
+}

@@ -39,7 +39,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 			return nil, err
 		}
 		if !ok {
-			continue
+			continue // coverage-exempt: git grep lists no missing path and none that ends in a symlink or other non-regular file, so this skips only if the tree changes while the lint runs
 		}
 		findings = append(findings, scanFile(file, content, exemptions)...)
 	}

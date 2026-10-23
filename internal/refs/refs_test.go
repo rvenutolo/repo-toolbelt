@@ -160,6 +160,23 @@ func TestResolve_prePushRemoteShaUnknownLocallyFallsBackToRemoteHead(t *testing.
 	}
 }
 
+func TestResolve_prePushRemoteShaUnrelatedToHeadNamesTheRef(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f1 := f.branch("feature", f.c2, 1)
+	git(t, f.repo, "push", "--quiet", "origin", "feature")
+	git(t, f.repo, "checkout", "--quiet", "--orphan", "other")
+	other := f.commit()
+	line := "refs/heads/feature " + other + " refs/heads/feature " + f1
+	got, err := resolve(f, refs.Input{Hook: "pre-push", Remote: "origin", PrePushLines: []string{line}})
+	if err == nil {
+		t.Fatalf("Resolve = %v, nil; want an error", got)
+	}
+	if msg := err.Error(); !strings.HasPrefix(msg, "pre-push refs/heads/feature: ") || !strings.Contains(msg, "no common ancestor") {
+		t.Errorf("err = %v, want it to name refs/heads/feature and the missing common ancestor", err)
+	}
+}
+
 func TestResolve_prePushNewBranchWithoutRemoteHeadNamesTheFix(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

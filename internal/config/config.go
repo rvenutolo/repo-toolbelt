@@ -294,7 +294,7 @@ func keyText(key ast.MapKeyNode) string {
 	switch n := unwrap(key).(type) {
 	case ast.ScalarNode:
 		return fmt.Sprint(n.GetValue())
-	default:
+	default: // coverage-exempt: the parser rejects every non-scalar map key, and unwrap strips what wraps a scalar one
 		return strings.TrimSpace(n.String())
 	}
 }
