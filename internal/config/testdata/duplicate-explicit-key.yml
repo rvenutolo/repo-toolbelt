@@ -1,0 +1,4 @@
+check-workflow-hermetic:
+  wrapper: .ci/x
+  ? wrapper
+  : .ci/y

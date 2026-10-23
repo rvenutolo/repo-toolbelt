@@ -78,6 +78,14 @@ func TestLoad_problems(t *testing.T) {
 			want: []string{"duplicate key 'step' in check-workflow-hermetic.exempt[0]"},
 		},
 		{
+			name: "duplicate explicit key", fixture: "duplicate-explicit-key.yml",
+			want: []string{"duplicate key 'wrapper' in check-workflow-hermetic"},
+		},
+		{
+			name: "unknown explicit key", fixture: "unknown-explicit-key.yml",
+			want: []string{"unknown lint 'check-workflow-hermitic'; known: check-issue-numbers, check-workflow-hermetic"},
+		},
+		{
 			name: "unknown lint", fixture: "unknown-lint.yml",
 			want: []string{"unknown lint 'check-workflow-hermitic'; known: check-issue-numbers, check-workflow-hermetic"},
 		},
@@ -210,6 +218,10 @@ func TestLoad_noProblems(t *testing.T) {
 					`"step":".github/workflows/ci.yml::verdict"}],"wrapper":".ci/in-devshell"}`,
 				"check-issue-numbers": "null",
 			},
+		},
+		{
+			name: "explicit keys", fixture: "explicit-keys.yml",
+			sections: map[string]string{"check-workflow-hermetic": `{"wrapper":".ci/x"}`},
 		},
 		{name: "section holding null", fixture: "null-section.yml", sections: map[string]string{"check-issue-numbers": "null"}},
 		{

@@ -261,13 +261,16 @@ func mapEntries(node ast.Node) ([]*ast.MappingValueNode, bool) {
 	return nil, false
 }
 
-// unwrap strips anchors and tags, which carry no content of their own.
+// unwrap strips anchors, tags and the `?` of an explicit key, which carry no
+// content of their own.
 func unwrap(node ast.Node) ast.Node {
 	for {
 		switch n := node.(type) {
 		case *ast.AnchorNode:
 			node = n.Value
 		case *ast.TagNode:
+			node = n.Value
+		case *ast.MappingKeyNode:
 			node = n.Value
 		default:
 			return node
