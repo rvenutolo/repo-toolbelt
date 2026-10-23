@@ -460,7 +460,8 @@ STUB
 @test 'a pull request from a fork listed first is passed over for our own' {
   pr_repo v1.0.0
   open_pull_request 'chore(release): v3.0.0'
-  printf '[{"number":99,"isCrossRepository":true},{"number":%s,"isCrossRepository":false}]\n' "${PR}" > "${STUB}/pr-list.json"
+  printf '[{"number":99,"isCrossRepository":true},{"number":%s,"isCrossRepository":false}]\n' "${PR}" \
+    > "${STUB}/pr-list.json"
   commit_empty "${RELEASE_REPO}" 'fix: pad columns'
   run_script
   assert_success

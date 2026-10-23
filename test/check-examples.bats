@@ -154,7 +154,8 @@ function write_hook() {
 }
 
 @test 'reports every missing example file' {
-  rm examples/consumer/.github/workflows/lint.yml examples/consumer/.githooks/pre-push examples/consumer/.repo-toolbelt.yml
+  rm examples/consumer/.github/workflows/lint.yml examples/consumer/.githooks/pre-push \
+    examples/consumer/.repo-toolbelt.yml
   run --separate-stderr "${REPO_DIR}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.github/workflows/lint.yml: missing
