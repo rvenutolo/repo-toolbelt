@@ -43,7 +43,8 @@ fi
 STUB
   cat > "${bin}/bats" << 'STUB'
 #!/usr/bin/env bash
-printf 'bats %s image=%s version=%s cwd=%s\n' "$*" "${TOOLBELT_TEST_IMAGE}" "${TOOLBELT_TEST_VERSION}" "${PWD}" >> "${CALLS}"
+printf 'bats %s image=%s version=%s cwd=%s\n' "$*" "${TOOLBELT_TEST_IMAGE}" "${TOOLBELT_TEST_VERSION}" "${PWD}" \
+  >> "${CALLS}"
 exit "${BATS_STATUS}"
 STUB
   chmod +x "${bin}"/*

@@ -18,7 +18,8 @@ readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt'
 # notes file's path, the script's own temporary file.
 readonly READ_STATE="release view ${VERSION} --repo gh-owner/tool --json isDraft --jq .isDraft"
 readonly WRITE_DELETE="release delete ${VERSION} --repo gh-owner/tool --yes"
-readonly WRITE_CREATE="release create ${VERSION} --repo gh-owner/tool --draft --target ${SHA} --title ${VERSION} --notes-file NOTES"
+readonly WRITE_CREATE_TARGET="release create ${VERSION} --repo gh-owner/tool --draft --target ${SHA}"
+readonly WRITE_CREATE="${WRITE_CREATE_TARGET} --title ${VERSION} --notes-file NOTES"
 readonly WRITE_EDIT="release edit ${VERSION} --repo gh-owner/tool --draft=false"
 readonly READ_TAG="api repos/gh-owner/tool/git/ref/tags/${VERSION} --jq .object.sha"
 readonly READ_HEAD='api repos/gh-owner/tool/commits/HEAD --jq .sha'

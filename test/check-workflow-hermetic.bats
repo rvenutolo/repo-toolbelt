@@ -255,7 +255,10 @@ EOF
 
 @test 'passes: step with a nested path and a space' {
   write_section << 'EOF'
-{"exempt":[{"step":".github/actions/my action/action.yml::x","reason":"Runs before Nix is installed."},{"step":".github/workflows/a/b.yml::x","reason":"Runs before Nix is installed."}]}
+{"exempt":[
+  {"step":".github/actions/my action/action.yml::x","reason":"Runs before Nix is installed."},
+  {"step":".github/workflows/a/b.yml::x","reason":"Runs before Nix is installed."}
+]}
 EOF
   write_fixture '.github/actions/my action/action.yml' << 'EOF'
 runs:
@@ -303,7 +306,10 @@ EOF
 
 @test 'fails: duplicate step' {
   write_section << 'EOF'
-{"exempt":[{"step":".github/workflows/ci.yml::bare","reason":"Runs before Nix is installed."},{"step":".github/workflows/ci.yml::bare","reason":"Still runs before Nix is installed."}]}
+{"exempt":[
+  {"step":".github/workflows/ci.yml::bare","reason":"Runs before Nix is installed."},
+  {"step":".github/workflows/ci.yml::bare","reason":"Still runs before Nix is installed."}
+]}
 EOF
   run --separate-stderr "${LINT_PATH}"
   assert_config_error "check-workflow-hermetic: exempt[1]: duplicate step '.github/workflows/ci.yml::bare'"
@@ -358,8 +364,10 @@ EOF
 }
 
 @test 'passes: a folded multi-line reason' {
-  write_section << 'EOF'
-{"exempt":[{"step":".github/workflows/ci.yml::bare","reason":"Runs before Nix is installed. It decides whether the Nix jobs run at all, so it cannot depend on them."}]}
+  local reason='Runs before Nix is installed. It decides whether the Nix jobs run at all, '
+  reason+='so it cannot depend on them.'
+  write_section << EOF
+{"exempt":[{"step":".github/workflows/ci.yml::bare","reason":"${reason}"}]}
 EOF
   write_bare_step_workflow
   run --separate-stderr "${LINT_PATH}"
