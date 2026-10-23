@@ -127,6 +127,10 @@ restores it into the checkout at the same paths.
 comments and docs instead of pointing at an issue; exempt the rest in `.repo-toolbelt.yml` with a `path` glob and, to
 narrow it, a `match` regular expression.
 
+It reads the tracked files `git grep` takes for text, skipping empty files and the ones git takes for binary, by content
+or by a gitattributes entry such as `-diff`. A tracked text file in the working tree that git does not read, such as one
+it cannot open or one marked skip-worktree, fails the run as a setup error rather than passing unchecked.
+
 ## The calling convention
 
 Every lint is an executable at `/opt/toolbelt/lints/<name>/<name>` in the image, whatever its language: bash for lints

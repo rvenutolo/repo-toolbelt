@@ -81,12 +81,21 @@ func TestReadRegular(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			tc.setup(t, dir)
-			got, ok, err := lintkit.ReadRegular(openRoot(t, dir), tc.file)
+			root := openRoot(t, dir)
+			got, ok, err := lintkit.ReadRegular(root, tc.file)
 			if err != nil {
 				t.Fatalf("ReadRegular(%q) error = %v, want nil", tc.file, err)
 			}
 			if ok != tc.wantOK || string(got) != tc.want {
 				t.Errorf("ReadRegular(%q) = %q, %t; want %q, %t", tc.file, got, ok, tc.want, tc.wantOK)
+			}
+			// A limit past the end reads what ReadRegular reads.
+			got, ok, err = lintkit.ReadRegularPrefix(root, tc.file, 1<<10)
+			if err != nil {
+				t.Fatalf("ReadRegularPrefix(%q) error = %v, want nil", tc.file, err)
+			}
+			if ok != tc.wantOK || string(got) != tc.want {
+				t.Errorf("ReadRegularPrefix(%q) = %q, %t; want %q, %t", tc.file, got, ok, tc.want, tc.wantOK)
 			}
 		})
 	}
@@ -116,17 +125,34 @@ func TestReadRegular_unreadable(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = os.Chmod(target, 0o700) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
-			got, ok, err := lintkit.ReadRegular(openRoot(t, dir), tc.file)
-			if err == nil {
-				t.Fatalf("ReadRegular(%q) = %q, %t, nil; want an error", tc.file, got, ok)
+			root := openRoot(t, dir)
+			readers := map[string]func() ([]byte, bool, error){
+				"ReadRegular":       func() ([]byte, bool, error) { return lintkit.ReadRegular(root, tc.file) },
+				"ReadRegularPrefix": func() ([]byte, bool, error) { return lintkit.ReadRegularPrefix(root, tc.file, 4) },
 			}
-			if !errors.Is(err, fs.ErrPermission) || !strings.HasPrefix(err.Error(), tc.want) {
-				t.Errorf("ReadRegular(%q) error = %v; want a permission error starting %q", tc.file, err, tc.want)
-			}
-			if got != nil || ok {
-				t.Errorf("ReadRegular(%q) = %q, %t with its error; want nil, false", tc.file, got, ok)
+			for name, read := range readers {
+				got, ok, err := read()
+				if err == nil {
+					t.Fatalf("%s(%q) = %q, %t, nil; want an error", name, tc.file, got, ok)
+				}
+				if !errors.Is(err, fs.ErrPermission) || !strings.HasPrefix(err.Error(), tc.want) {
+					t.Errorf("%s(%q) error = %v; want a permission error starting %q", name, tc.file, err, tc.want)
+				}
+				if got != nil || ok {
+					t.Errorf("%s(%q) = %q, %t with its error; want nil, false", name, tc.file, got, ok)
+				}
 			}
 		})
+	}
+}
+
+func TestReadRegularPrefix_stopsAtTheLimit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "a.txt"), "content\n")
+	got, ok, err := lintkit.ReadRegularPrefix(openRoot(t, dir), "a.txt", 4)
+	if err != nil || !ok || string(got) != "cont" {
+		t.Errorf("ReadRegularPrefix = %q, %t, %v; want %q, true, nil", got, ok, err, "cont")
 	}
 }
 

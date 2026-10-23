@@ -234,6 +234,104 @@ func TestCheck_unreadableTrackedFileIsASetupError(t *testing.T) {
 	}
 }
 
+func TestCheck_onlyFileUnreadableIsASetupError(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads files whatever their mode")
+	}
+	// Nothing else has content, so git grep exits 1 with its error on stderr.
+	repo := makeRepo(t, map[string]string{"a.md": "#1\n", "empty.md": ""})
+	target := filepath.Join(repo, "a.md")
+	if err := os.Chmod(target, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(target, 0o644) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the file
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null"), Stderr: io.Discard})
+	if err == nil || !strings.Contains(err.Error(), "a.md") {
+		t.Errorf("Check = %v, %v; want an error naming a.md", got, err)
+	}
+}
+
+// git grep passes over a skip-worktree file without a word on stderr, though
+// it sits in the working tree; the lint must not pass it unchecked.
+func TestCheck_textFileGitSkipsSilentlyIsASetupError(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{"a.md": "clean\n", "hidden.md": "#1\n"})
+	gitIn(t, repo, "update-index", "--skip-worktree", "hidden.md")
+	var stderr bytes.Buffer
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null"), Stderr: &stderr})
+	if err == nil || !strings.Contains(err.Error(), `"hidden.md"`) {
+		t.Errorf("Check = %v, %v; want a setup error naming hidden.md", got, err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want git silent", stderr.String())
+	}
+}
+
+func TestCheck_unreadableFileGitSkipsSilentlyIsASetupError(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads files whatever their mode")
+	}
+	repo := makeRepo(t, map[string]string{"a.md": "clean\n", "hidden.md": "#1\n"})
+	gitIn(t, repo, "update-index", "--skip-worktree", "hidden.md")
+	target := filepath.Join(repo, "hidden.md")
+	if err := os.Chmod(target, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(target, 0o644) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the file
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err == nil || !strings.Contains(err.Error(), "hidden.md") {
+		t.Errorf("Check = %v, %v; want a setup error naming hidden.md", got, err)
+	}
+}
+
+// Files git takes for binary or that hold nothing are not text it skipped:
+// empty, NUL-bearing, and text marked binary by gitattributes.
+func TestCheck_emptyAndBinaryFilesPass(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		".gitattributes": "*.lock -diff\n*.svg binary\n",
+		"a.md":           "see #1\n",
+		"empty.md":       "",
+		"nul.dat":        "#2\x00\n",
+		"late-nul.dat":   strings.Repeat("x", 7999) + "\x00#3\n",
+		"deps.lock":      "#4\n",
+		"icon.svg":       "<svg>#5</svg>\n",
+	})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	if diff := cmp.Diff([]lintkit.Finding{ref("a.md", 1, "#1")}, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// Only empty and binary files: git grep lists nothing and the check of the
+// rest finds no text it skipped.
+func TestCheck_noTextFilesPasses(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{"empty.md": "", "nul.dat": "#2\x00\n"})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil || len(got) != 0 {
+		t.Errorf("Check = %v, %v; want no findings and no error", got, err)
+	}
+}
+
+// A NUL past the first 8000 bytes does not make a file binary to git.
+func TestCheck_nulPastGitsBinaryWindowIsText(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{"a.md": "#1\n" + strings.Repeat("x", 8000) + "\x00\n"})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	if diff := cmp.Diff([]lintkit.Finding{ref("a.md", 1, "#1")}, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestCheck_gitWarningPassesThroughAndFindingsStand(t *testing.T) {
 	t.Parallel()
 	// git ignores a negative attribute pattern, warns on stderr, and still
