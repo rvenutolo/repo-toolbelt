@@ -10,8 +10,9 @@ spec.
    design, its builder-check round with the user, its hand-over and its hard gate; the user has authorized building
    once those steps pass.
 2. **Halt questions.** Before going unattended, ask every likely halt question in one batched message, each with a
-   recommended answer and a one-line reason, as the global "Unattended Execution" rule requires. Write the answers
-   into the spec.
+   recommended answer and a one-line reason, as the global "Unattended Execution" rule requires. In the same message,
+   list every tool and permission the rest of the flow will need and ask the user to approve them all at once, as the
+   global "Long Multi-Step Tasks" rule requires. Write the answers into the spec.
 3. **Spec.** Write it to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
 4. **Builder check.** Run the brainstorming skill's builder check on the spec. It looks for gaps: questions a builder
    would still need answered. Fill them.
