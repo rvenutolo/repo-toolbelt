@@ -58,10 +58,10 @@ type problem struct {
 // Load reads repoRoot's config file and validates its file level: it parses,
 // holds one document, uses no merge key, alias or explicit tag (core tags such
 // as !!str included), has a map at the top, repeats no key anywhere and names
-// only the known lints. A missing file is the same as an empty one. The problems come back in file order, each
-// without the file name prefix; the returned Config is empty when there are
-// any. The error reports a failure to read the file, which is not a problem
-// with its content.
+// only the known lints. A missing file is the same as an empty one. The
+// problems come back in file order, each without the file name prefix; the
+// returned Config is empty when there are any. The error reports a failure to
+// read the file, which is not a problem with its content.
 func Load(repoRoot string, known []string) (Config, []string, error) {
 	path := filepath.Join(repoRoot, FileName)
 
