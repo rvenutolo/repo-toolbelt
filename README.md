@@ -29,7 +29,8 @@ Copy the files under `examples/consumer/` into the repo and delete the lints the
 - `examples/consumer/.repo-toolbelt.yml` to `.repo-toolbelt.yml`
 
 The config file is needed only for exemptions or a lint's required settings; without either, leave it out. Its comments
-document each lint's section.
+document each lint's section. It is plain YAML: an alias, a merge key (`<<`) or an explicit tag, core tags such as
+`!!str` included, is a finding. Quote a value instead of tagging it.
 
 ### Pin the image
 

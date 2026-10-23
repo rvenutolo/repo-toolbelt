@@ -56,9 +56,9 @@ type problem struct {
 }
 
 // Load reads repoRoot's config file and validates its file level: it parses,
-// holds one document, uses no merge key, alias or non-core tag, has a map at
-// the top, repeats no key anywhere and names only the known lints. A missing
-// file is the same as an empty one. The problems come back in file order, each
+// holds one document, uses no merge key, alias or explicit tag (core tags such
+// as !!str included), has a map at the top, repeats no key anywhere and names
+// only the known lints. A missing file is the same as an empty one. The problems come back in file order, each
 // without the file name prefix; the returned Config is empty when there are
 // any. The error reports a failure to read the file, which is not a problem
 // with its content.
@@ -186,13 +186,12 @@ func (c *collector) sorted() []string {
 }
 
 // walk reports every construct a JSON conversion would silently rewrite:
-// merge keys, aliases and tags other than the core ones.
+// merge keys, aliases and tags. A core tag is no exception: the conversion
+// coerces a value its tag does not fit, so `!!int x` would read as 0.
 func (c *collector) walk(node ast.Node, path []string) {
 	switch n := node.(type) {
 	case *ast.TagNode:
-		if tag := n.Start.Value; !coreTag(tag) {
-			c.add(n, fmt.Sprintf("YAML tag '%s' is not supported (in %s)%s", escape(tag), where(path), tagFixSuffix))
-		}
+		c.add(n, fmt.Sprintf("YAML tag '%s' is not supported (in %s)%s", escape(n.Start.Value), where(path), tagFixSuffix))
 		c.walk(n.Value, path)
 	case *ast.AnchorNode:
 		c.walk(n.Value, path)
@@ -263,14 +262,13 @@ func mapEntries(node ast.Node) ([]*ast.MappingValueNode, bool) {
 	return nil, false
 }
 
-// unwrap strips anchors, tags and the `?` of an explicit key, which carry no
-// content of their own.
+// unwrap strips anchors and the `?` of an explicit key, which carry no content
+// of their own. Tags need no stripping: walk rejects any file that holds one
+// before anything unwraps a node.
 func unwrap(node ast.Node) ast.Node {
 	for {
 		switch n := node.(type) {
 		case *ast.AnchorNode:
-			node = n.Value
-		case *ast.TagNode:
 			node = n.Value
 		case *ast.MappingKeyNode:
 			node = n.Value
@@ -301,15 +299,6 @@ func keyText(key ast.MapKeyNode) string {
 
 func aliasName(alias *ast.AliasNode) string {
 	return strings.TrimSpace(alias.Value.String())
-}
-
-func coreTag(tag string) bool {
-	switch tag {
-	case "!!map", "!!seq", "!!str", "!!null", "!!int", "!!bool", "!!float":
-		return true
-	default:
-		return false
-	}
 }
 
 // where renders a path as `section.key[index]`, or `top level` for the root.

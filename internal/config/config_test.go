@@ -75,6 +75,21 @@ func TestLoad_problems(t *testing.T) {
 			name: "tag on the document root", fixture: "tag-on-root.yml",
 			want: []string{"YAML tag '!x' is not supported (in top level)" + tagFix},
 		},
+		{
+			name: "core tags", fixture: "core-tags.yml",
+			want: []string{
+				"YAML tag '!!str' is not supported (in check-workflow-hermetic.wrapper)" + tagFix,
+				"YAML tag '!!seq' is not supported (in check-workflow-hermetic.exempt)" + tagFix,
+			},
+		},
+		{
+			name: "str tag on an int step", fixture: "str-tag-on-int-step.yml",
+			want: []string{"YAML tag '!!str' is not supported (in check-workflow-hermetic.exempt[0].step)" + tagFix},
+		},
+		{
+			name: "bool tag on a non-boolean", fixture: "bool-tag-on-non-boolean.yml",
+			want: []string{"YAML tag '!!bool' is not supported (in check-issue-numbers.a)" + tagFix},
+		},
 		{name: "top level list", fixture: "top-level-list.yml", want: []string{"top level must be a map"}},
 		{name: "top level scalar", fixture: "top-level-scalar.yml", want: []string{"top level must be a map"}},
 		{
@@ -138,6 +153,93 @@ func TestLoad_problems(t *testing.T) {
 	}
 }
 
+// A tag is rejected wherever it appears, core tags included: decoding would
+// otherwise coerce a value its tag does not fit, such as !!int x to 0.
+func TestLoad_everyTagIsAProblem(t *testing.T) {
+	t.Parallel()
+	const tagFix = "; quote the value or drop the tag"
+	coreTags := []struct {
+		tag   string
+		value string
+	}{
+		{tag: "!!str", value: "x"},
+		{tag: "!!int", value: "1"},
+		{tag: "!!bool", value: "true"},
+		{tag: "!!float", value: "1.5"},
+		{tag: "!!null", value: ""},
+		{tag: "!!map", value: "{}"},
+		{tag: "!!seq", value: "[]"},
+	}
+	type testCase struct {
+		name    string
+		content string
+		want    []string
+	}
+	var tests []testCase
+	for _, ct := range coreTags {
+		tests = append(tests, testCase{
+			name:    ct.tag + " on a value",
+			content: "check-issue-numbers:\n  a: " + ct.tag + " " + ct.value + "\n",
+			want:    []string{"YAML tag '" + ct.tag + "' is not supported (in check-issue-numbers.a)" + tagFix},
+		})
+		// The parser itself rejects !!seq on a scalar key; TestLoad_invalidYAML
+		// covers that case.
+		if ct.tag != "!!seq" {
+			tests = append(tests, testCase{
+				name:    ct.tag + " on a key",
+				content: "check-issue-numbers:\n  " + ct.tag + " a: 1\n",
+				want:    []string{"YAML tag '" + ct.tag + "' is not supported (in check-issue-numbers)" + tagFix},
+			})
+		}
+	}
+	tests = append(tests,
+		testCase{
+			name:    "int tag on a non-number",
+			content: "check-issue-numbers:\n  a: !!int x\n",
+			want:    []string{"YAML tag '!!int' is not supported (in check-issue-numbers.a)" + tagFix},
+		},
+		testCase{
+			name:    "int tag on an overflowing number",
+			content: "check-issue-numbers:\n  a: !!int 99999999999999999999\n",
+			want:    []string{"YAML tag '!!int' is not supported (in check-issue-numbers.a)" + tagFix},
+		},
+		testCase{
+			name:    "float tag on a non-number",
+			content: "check-issue-numbers:\n  a: !!float abc\n",
+			want:    []string{"YAML tag '!!float' is not supported (in check-issue-numbers.a)" + tagFix},
+		},
+		testCase{
+			name:    "null tag on a value",
+			content: "check-issue-numbers:\n  a: !!null something\n",
+			want:    []string{"YAML tag '!!null' is not supported (in check-issue-numbers.a)" + tagFix},
+		},
+		testCase{
+			name:    "tag on a section",
+			content: "check-issue-numbers: !!map {a: 1}\n",
+			want:    []string{"YAML tag '!!map' is not supported (in check-issue-numbers)" + tagFix},
+		},
+	)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, config.FileName), []byte(tc.content), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			cfg, got, err := config.Load(root, known)
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil", err)
+			}
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("Load() problems mismatch (-want +got):\n%s", diff)
+			}
+			if section := string(cfg.Section("check-issue-numbers")); section != "null" {
+				t.Errorf("Section after problems = %s, want null", section)
+			}
+		})
+	}
+}
+
 func TestLoad_invalidYAML(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -152,6 +254,9 @@ func TestLoad_invalidYAML(t *testing.T) {
 		// A mapping used as a key has no text a lint could match, and YAML
 		// that holds one is rejected before any key is read.
 		{name: "flow mapping as a key", fixture: "flow-mapping-key.yml"},
+		// A seq-tagged scalar key is rejected by the parser, so it never
+		// reaches a lint as a key.
+		{name: "seq tag on a key", fixture: "seq-tag-on-key.yml"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -243,14 +348,6 @@ func TestLoad_noProblems(t *testing.T) {
 		},
 		{name: "section holding null", fixture: "null-section.yml", sections: map[string]string{"check-issue-numbers": "null"}},
 		{
-			name: "core tags", fixture: "core-tags.yml",
-			sections: map[string]string{"check-workflow-hermetic": `{"exempt":[],"wrapper":".ci/x"}`},
-		},
-		{
-			name: "str tag on an int step makes it a string", fixture: "str-tag-on-int-step.yml",
-			sections: map[string]string{"check-workflow-hermetic": `{"exempt":[{"reason":"r","step":"5"}]}`},
-		},
-		{
 			name: "section for a lint absent from the file", fixture: "valid.yml",
 			sections: map[string]string{"not-a-lint": "null"},
 		},
@@ -329,7 +426,6 @@ func TestLoad_sectionThatCannotBeJSON(t *testing.T) {
 		want    string // the problem's prefix
 	}{
 		{name: "not a number", fixture: "not-a-number.yml", want: "check-issue-numbers: cannot be read as JSON: encode: "},
-		{name: "bool tag on a non-boolean", fixture: "bool-tag-on-non-boolean.yml", want: "check-issue-numbers: cannot be read as JSON: decode: "},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -345,6 +441,29 @@ func TestLoad_sectionThatCannotBeJSON(t *testing.T) {
 				t.Errorf("Section after problems = %s, want null", section)
 			}
 		})
+	}
+}
+
+// A section nested deeper than the decoder will go is a problem in that
+// section, not a setup error.
+func TestLoad_sectionNestedTooDeep(t *testing.T) {
+	t.Parallel()
+	const depth = 10001
+	content := "check-issue-numbers:\n  a: " + strings.Repeat("[", depth) + strings.Repeat("]", depth) + "\n"
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, config.FileName), []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, problems, err := config.Load(root, known)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	const want = "check-issue-numbers: cannot be read as JSON: decode: "
+	if len(problems) != 1 || !strings.HasPrefix(problems[0], want) {
+		t.Errorf("Load() problems = %q, want one starting with %q", problems, want)
+	}
+	if section := string(cfg.Section("check-issue-numbers")); section != "null" {
+		t.Errorf("Section after problems = %s, want null", section)
 	}
 }
 
