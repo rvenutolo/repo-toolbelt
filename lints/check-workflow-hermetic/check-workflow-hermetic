@@ -241,8 +241,8 @@ function validate_entry() {
       # newline would split the one-step-per-line exempt file.
       local -r file_part="${step%%::*}"
       local -r id_part="${step#*::}"
-      if [[ "${step}" == *::* && "${file_part}" == "${step%::*}" && -n "${file_part//[[:space:]]/}" &&
-        -n "${id_part//[[:space:]]/}" && "${step}" != *[[:cntrl:]]* ]]; then
+      if [[ "${step}" == *::* && "${file_part}" == "${step%::*}" && -n "${file_part//[[:space:]]/}" ]] \
+        && [[ -n "${id_part//[[:space:]]/}" && "${step}" != *[[:cntrl:]]* ]]; then
         step_ok=1
       else
         local shown_step

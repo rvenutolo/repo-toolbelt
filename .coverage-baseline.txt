@@ -2,7 +2,7 @@
 cobertura . 0
 cobertura .ci 13
 cobertura lib 1
-cobertura lints/check-workflow-hermetic 12
+cobertura lints/check-workflow-hermetic 11
 go cmd/check-coverage-drop 0
 go cmd/check-issue-numbers 1
 go cmd/check-patch-coverage 0
