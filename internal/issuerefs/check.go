@@ -47,7 +47,8 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 }
 
 // textFiles lists the tracked files git takes for text, by git's own test,
-// in git's order. A tracked file missing from the working tree is left out.
+// in git's order. A tracked file missing from the working tree is left out;
+// one git cannot read is an error.
 func textFiles(ctx context.Context, dir string) ([]string, error) {
 	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
 	// widen the scan to files the repo does not track.
@@ -61,7 +62,12 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 	err := cmd.Run()
 	var exitErr *exec.ExitError
 	switch {
+	case err == nil && stderr.Len() == 0:
 	case err == nil:
+		// git grep skips a file it cannot read, says so on stderr, and still
+		// exits 0 when another file matched; skipping it would pass the file
+		// unchecked.
+		return nil, fmt.Errorf("list tracked text files: %s", strings.TrimSpace(stderr.String()))
 	case errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && stderr.Len() == 0:
 		// git grep exits 1 when nothing matched: no text file has content.
 		return nil, nil
