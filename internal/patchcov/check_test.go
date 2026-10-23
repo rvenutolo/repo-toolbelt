@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -262,6 +263,27 @@ func TestCheck_trackedSymlinkIsNotScanned(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, root, "add", "notes.txt", "link.go")
+	got, err := check(t, root, section, base)
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	diffFindings(t, nil, got)
+}
+
+func TestCheck_trackedFileReplacedByAFIFOIsNotRead(t *testing.T) {
+	t.Parallel()
+	root, base := newFixture(t)
+	pipe := filepath.Join(root, "pipe.go")
+	writeFile(t, pipe, "package m\n\n// coverage-exempt: in a file now a FIFO\n")
+	git(t, root, "add", "pipe.go")
+	if err := os.Remove(pipe); err != nil {
+		t.Fatal(err)
+	}
+	// Opening a FIFO for reading blocks until a writer appears, so reading
+	// it would hang the lint.
+	if err := syscall.Mkfifo(pipe, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	got, err := check(t, root, section, base)
 	if err != nil {
 		t.Fatalf("Check error = %v", err)

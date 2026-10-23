@@ -15,7 +15,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/coverage"
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
@@ -137,7 +136,7 @@ func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([
 		default:
 			continue
 		}
-		src, ok, err := readRegular(root, file)
+		src, ok, err := lintkit.ReadRegular(root, file)
 		if err != nil {
 			return nil, err
 		}
@@ -149,28 +148,6 @@ func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([
 		}
 	}
 	return markers, nil
-}
-
-// readRegular reads a tracked file. It reports false for one missing from
-// the working tree (its directory may now be a file), and for one that is not
-// a regular file, such as a symlink, whose target is scanned under its own
-// name if it is tracked.
-func readRegular(root *os.Root, file string) ([]byte, bool, error) {
-	info, err := root.Lstat(file)
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("stat %s: %w", file, err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, false, nil
-	}
-	src, err := root.ReadFile(file)
-	if err != nil {
-		return nil, false, fmt.Errorf("read %s: %w", file, err)
-	}
-	return src, true, nil
 }
 
 // judge reports the markers' problems, then each changed, uncovered block no

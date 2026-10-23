@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -195,5 +196,55 @@ func TestCheck_doesNotRecurseIntoSubmodules(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("Check = %v, want no findings from the submodule", got)
+	}
+}
+
+func TestCheck_unreadableTrackedFileIsASetupError(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads files whatever their mode")
+	}
+	tests := []struct {
+		name       string
+		unreadable string // made mode 0o000, relative to the repo
+		want       string // part of the error
+	}{
+		// b.md still matches, so git grep exits 0 having skipped a.md.
+		{name: "a file with no permissions beside a readable one", unreadable: "a.md", want: "a.md"},
+		{name: "a directory with no permissions", unreadable: "sub", want: "sub/c.md"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := makeRepo(t, map[string]string{"a.md": "#1\n", "b.md": "#2\n", "sub/c.md": "#3\n"})
+			target := filepath.Join(repo, tc.unreadable)
+			if err := os.Chmod(target, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(target, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
+			got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Check = %v, %v; want an error naming %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheck_trackedFileUnderSymlinkOutsideRepoIsASetupError(t *testing.T) {
+	t.Parallel()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "c.md"), "#9\n")
+	repo := makeRepo(t, map[string]string{"a.md": "clean\n", "sub/c.md": "clean\n"})
+	if err := os.RemoveAll(filepath.Join(repo, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	// git grep follows the symlinked directory and lists sub/c.md, which
+	// the lint must not read outside the repository.
+	if err := os.Symlink(outside, filepath.Join(repo, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err == nil || !strings.Contains(err.Error(), "sub/c.md") {
+		t.Errorf("Check = %v, %v; want a setup error naming sub/c.md", got, err)
 	}
 }

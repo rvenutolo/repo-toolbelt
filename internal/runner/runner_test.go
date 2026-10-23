@@ -232,6 +232,47 @@ func TestRun_missingExecutable(t *testing.T) {
 	}
 }
 
+func TestRun_sectionFileWriteFailure(t *testing.T) {
+	t.Parallel()
+	lintsDir := t.TempDir()
+	writeLint(t, lintsDir, "present", "echo ran")
+	// <name>.json is longer than any file name the file system allows.
+	long := strings.Repeat("a", 255)
+
+	results := runner.Run(t.Context(), lintsNamed(long, "present"), runner.Options{LintsDir: lintsDir, RepoRoot: t.TempDir()})
+
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+	if results[0].Lint != long || results[0].Exit != 2 || len(results[0].Output) != 0 {
+		t.Errorf("long name: got %+v, want an errored result that never ran", results[0])
+	}
+	if got := string(results[0].Stderr); !strings.HasPrefix(got, "toolbelt: cannot write config section: ") {
+		t.Errorf("long name: Stderr = %q, want the reason", got)
+	}
+	if results[1].Exit != 0 || string(results[1].Output) != "ran\n" {
+		t.Errorf("present: got %+v, want exit 0 and %q", results[1], "ran\n")
+	}
+}
+
+func TestRun_executableThatIsADirectory(t *testing.T) {
+	t.Parallel()
+	lintsDir := t.TempDir()
+	path := filepath.Join(lintsDir, "dir", "dir")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	results := runner.Run(t.Context(), lintsNamed("dir"), runner.Options{LintsDir: lintsDir, RepoRoot: t.TempDir()})
+
+	if len(results) != 1 || results[0].Exit != 2 || len(results[0].Output) != 0 {
+		t.Fatalf("got %+v, want one errored result that never ran", results)
+	}
+	if got, want := string(results[0].Stderr), "toolbelt: cannot run lint executable "+path+": "; !strings.HasPrefix(got, want) {
+		t.Errorf("Stderr = %q, want it to start %q", got, want)
+	}
+}
+
 func TestRun_cancelKillsLints(t *testing.T) {
 	t.Parallel()
 	lintsDir, dir := t.TempDir(), t.TempDir()

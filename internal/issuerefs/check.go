@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,12 +34,12 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	}
 	var findings []lintkit.Finding
 	for _, file := range files {
-		content, ok, err := readRegular(root, file)
+		content, ok, err := lintkit.ReadRegular(root, file)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			continue
+			continue // coverage-exempt: git grep lists no missing path and none that ends in a symlink or other non-regular file, so this skips only if the tree changes while the lint runs
 		}
 		findings = append(findings, scanFile(file, content, exemptions)...)
 	}
@@ -48,7 +47,8 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 }
 
 // textFiles lists the tracked files git takes for text, by git's own test,
-// in git's order. A tracked file missing from the working tree is left out.
+// in git's order. A tracked file missing from the working tree is left out;
+// one git cannot read is an error.
 func textFiles(ctx context.Context, dir string) ([]string, error) {
 	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
 	// widen the scan to files the repo does not track.
@@ -62,7 +62,12 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 	err := cmd.Run()
 	var exitErr *exec.ExitError
 	switch {
+	case err == nil && stderr.Len() == 0:
 	case err == nil:
+		// git grep skips a file it cannot read, says so on stderr, and still
+		// exits 0 when another file matched; skipping it would pass the file
+		// unchecked.
+		return nil, fmt.Errorf("list tracked text files: %s", strings.TrimSpace(stderr.String()))
 	case errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && stderr.Len() == 0:
 		// git grep exits 1 when nothing matched: no text file has content.
 		return nil, nil
@@ -74,27 +79,6 @@ func textFiles(ctx context.Context, dir string) ([]string, error) {
 		files = append(files, name)
 	}
 	return files, nil
-}
-
-// readRegular reads a tracked file under root. It reports false for anything
-// but a regular file: git records a symlink's target as its content, and the
-// file it points to is scanned under its own name if it is tracked.
-func readRegular(root *os.Root, file string) ([]byte, bool, error) {
-	info, err := root.Lstat(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("stat %s: %w", file, err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, false, nil
-	}
-	content, err := root.ReadFile(file)
-	if err != nil {
-		return nil, false, fmt.Errorf("read %s: %w", file, err)
-	}
-	return content, true, nil
 }
 
 func scanFile(file string, content []byte, exemptions *Exemptions) []lintkit.Finding {

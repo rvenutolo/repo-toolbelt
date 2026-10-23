@@ -214,16 +214,18 @@ func (c *collector) walk(node ast.Node, path []string) {
 	}
 }
 
-// walkKey reports a merge key or a tag on a key, against the map holding it.
+// walkKey reports a merge key, or an alias or tag in a key, against the map
+// holding it.
 func (c *collector) walkKey(key ast.MapKeyNode, path []string) {
 	if key.IsMergeKey() {
 		c.add(key, fmt.Sprintf("merge key '<<' is not supported (in %s)", where(path)))
 		return
 	}
-	if tagged, ok := key.(*ast.TagNode); ok && !coreTag(tagged.Start.Value) {
-		c.add(tagged, fmt.Sprintf("YAML tag '%s' is not supported (in %s)%s",
-			escape(tagged.Start.Value), where(path), tagFixSuffix))
+	var node ast.Node = key
+	if explicit, ok := key.(*ast.MappingKeyNode); ok {
+		node = explicit.Value
 	}
+	c.walk(node, path)
 }
 
 // duplicateKeys reports every key a map repeats, anywhere in the file. A
@@ -261,13 +263,16 @@ func mapEntries(node ast.Node) ([]*ast.MappingValueNode, bool) {
 	return nil, false
 }
 
-// unwrap strips anchors and tags, which carry no content of their own.
+// unwrap strips anchors, tags and the `?` of an explicit key, which carry no
+// content of their own.
 func unwrap(node ast.Node) ast.Node {
 	for {
 		switch n := node.(type) {
 		case *ast.AnchorNode:
 			node = n.Value
 		case *ast.TagNode:
+			node = n.Value
+		case *ast.MappingKeyNode:
 			node = n.Value
 		default:
 			return node
@@ -289,7 +294,7 @@ func keyText(key ast.MapKeyNode) string {
 	switch n := unwrap(key).(type) {
 	case ast.ScalarNode:
 		return fmt.Sprint(n.GetValue())
-	default:
+	default: // coverage-exempt: the parser rejects every non-scalar map key, and unwrap strips what wraps a scalar one
 		return strings.TrimSpace(n.String())
 	}
 }
