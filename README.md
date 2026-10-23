@@ -29,7 +29,8 @@ Copy the files under `examples/consumer/` into the repo and delete the lints the
 - `examples/consumer/.repo-toolbelt.yml` to `.repo-toolbelt.yml`
 
 The config file is needed only for exemptions or a lint's required settings; without either, leave it out. Its comments
-document each lint's section.
+document each lint's section. It is plain YAML: an alias, a merge key (`<<`) or an explicit tag, core tags such as
+`!!str` included, is a finding. Quote a value instead of tagging it.
 
 ### Pin the image
 
@@ -125,6 +126,10 @@ restores it into the checkout at the same paths.
 `color: "#540"`, is read as a colour, so a quoted bare issue number in that position goes unreported. State a reason in
 comments and docs instead of pointing at an issue; exempt the rest in `.repo-toolbelt.yml` with a `path` glob and, to
 narrow it, a `match` regular expression.
+
+It reads the tracked files `git grep` takes for text, skipping empty files and the ones git takes for binary, by content
+or by a gitattributes entry such as `-diff`. A tracked text file in the working tree that git does not read, such as one
+it cannot open or one marked skip-worktree, fails the run as a setup error rather than passing unchecked.
 
 ## The calling convention
 
