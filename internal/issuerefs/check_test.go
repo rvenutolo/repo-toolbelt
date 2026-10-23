@@ -309,6 +309,23 @@ func TestCheck_emptyAndBinaryFilesPass(t *testing.T) {
 	}
 }
 
+// Names git would read as glob or pathspec magic are names: a text file
+// marked binary by gitattributes passes whatever its name holds.
+func TestCheck_binaryByAttributeWithPathspecCharactersPasses(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		".gitattributes":   "*.lock -diff\n",
+		"*.lock":           "#1\n",
+		":(exclude)q.lock": "#2\n",
+		"q.lock":           "#3\n",
+		"[ab].lock":        "#4\n",
+	})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil || len(got) != 0 {
+		t.Errorf("Check = %v, %v; want no findings and no error", got, err)
+	}
+}
+
 // Every attribute-binary text file and every skipped one is accounted for
 // however many there are: their names together run past the kernel's limit
 // on one command's arguments.
