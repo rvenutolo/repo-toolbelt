@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -305,6 +306,28 @@ func TestCheck_emptyAndBinaryFilesPass(t *testing.T) {
 	}
 	if diff := cmp.Diff([]lintkit.Finding{ref("a.md", 1, "#1")}, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
 		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// Every attribute-binary text file and every skipped one is accounted for
+// however many there are: their names together run past the kernel's limit
+// on one command's arguments.
+func TestCheck_manyBinaryByAttributeFiles(t *testing.T) {
+	t.Parallel()
+	// A deep directory keeps each path long, so the names add up to more than
+	// the 4 MiB argument limit a 16 MiB stack gives.
+	deep := filepath.Join(strings.Repeat(strings.Repeat("d", 240)+"/", 14), strings.Repeat("f", 100))
+	files := map[string]string{".gitattributes": "*.lock -diff\n"}
+	const count = 1300
+	for i := range count {
+		files[fmt.Sprintf("%s%04d.lock", deep, i)] = "#1\n"
+	}
+	files["zz-hidden.md"] = "#2\n"
+	repo := makeRepo(t, files)
+	gitIn(t, repo, "update-index", "--skip-worktree", "zz-hidden.md")
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err == nil || !strings.HasSuffix(err.Error(), `tracked text files: "zz-hidden.md"`) {
+		t.Errorf("Check = %v, %v; want a setup error naming only zz-hidden.md", got, err)
 	}
 }
 

@@ -103,11 +103,17 @@ func checkSkipped(ctx context.Context, dir string, root *os.Root, tracked, liste
 		return nil
 	}
 	// Warnings went to diagnostics on the first pass; this one repeats them.
-	// A failure here lists nothing, so every suspect counts as unread too.
-	forced, grepErr := grepFiles(ctx, dir, io.Discard, "-a", suspects)
-	read = make(map[string]bool, len(forced))
-	for _, file := range forced {
-		read[file] = true
+	// A failed batch lists nothing, so each of its suspects counts as unread
+	// too. git grep takes no pathspecs on stdin, so the suspects go on the
+	// command line in batches.
+	read = make(map[string]bool, len(suspects))
+	var grepErr error
+	for _, batch := range pathBatches(suspects) {
+		forced, err := grepFiles(ctx, dir, io.Discard, "-a", batch)
+		grepErr = errors.Join(grepErr, err)
+		for _, file := range forced {
+			read[file] = true
+		}
 	}
 	var skipped []string
 	for _, file := range suspects {
@@ -119,6 +125,26 @@ func checkSkipped(ctx context.Context, dir string, root *os.Root, tracked, liste
 		return nil
 	}
 	return errors.Join(grepErr, fmt.Errorf("git grep did not read tracked text files: %s", strings.Join(skipped, ", ")))
+}
+
+// pathspecBatchBytes bounds the bytes of pathspecs one git command takes, far
+// under Linux's limit on a command's arguments, which is a quarter of the
+// stack limit and commonly 2 MiB.
+const pathspecBatchBytes = 256 << 10
+
+// pathBatches splits paths, in order, into runs of at most pathspecBatchBytes
+// bytes each, counting a terminator per path.
+func pathBatches(paths []string) [][]string {
+	var batches [][]string
+	start, size := 0, 0
+	for i, file := range paths {
+		if size > 0 && size+len(file)+1 > pathspecBatchBytes {
+			batches = append(batches, paths[start:i])
+			start, size = i, 0
+		}
+		size += len(file) + 1
+	}
+	return append(batches, paths[start:])
 }
 
 // textFiles lists the tracked files git takes for text, by git's own test,
