@@ -10,7 +10,7 @@ For each finding:
 2. **Explain it** for a reader who does not know the context: what the code does, what goes wrong, the realistic input
    that triggers it, and who would hit it.
 3. **Offer options**, typically:
-   - open an issue (a bug gets the `bug` label, so it leads the next session)
+   - open an issue, labelled `bug` (so it leads the next session) or `enhancement`
    - fix it now, in this session
    - leave a one-line known-gap comment beside the code
    - drop it

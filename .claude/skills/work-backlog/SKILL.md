@@ -115,9 +115,11 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 
 ## Merging
 
-When a PR's CI is green, merge it with no wait for the user. When CI fails, fix the cause and push again. A failure
-that is plainly infrastructure (such as a Nix setup step failing before any check runs) gets one re-run. If CI is still
-red after that, stop and tell the user.
+When a PR's CI is green, merge it with no wait for the user, using `gh pr merge <number> --merge --delete-branch`:
+the repo allows merge commits only. Then `git switch main` and `git pull --ff-only` before starting the next
+branch. When CI fails, fix the cause and push again. A failure that is plainly infrastructure (such as a Nix setup
+step failing before any check runs, or a job that hangs until its timeout) gets one re-run. If CI is still red after
+that, stop and tell the user.
 
 ## Ending early
 
