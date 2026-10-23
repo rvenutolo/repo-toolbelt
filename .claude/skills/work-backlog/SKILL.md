@@ -3,6 +3,7 @@ name: work-backlog
 description: >-
   Use when starting a session to work through this repo's GitHub issue backlog, or when asked to pick up the next
   backlog issue, bug or feature.
+disable-model-invocation: true
 ---
 
 # Working the backlog
