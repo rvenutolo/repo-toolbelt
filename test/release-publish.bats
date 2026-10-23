@@ -564,14 +564,18 @@ STUB
   run_script pending
   assert_failure 1
   assert_stderr --partial 'cannot read the history of CHANGELOG.md'
+  assert_only_calls "${READ_TAG}" "${READ_STATE}" "${READ_HEAD}"
 }
 
 @test 'pending: a changelog history with no commit is a failure, not a release from nowhere' {
   publish_repo
+  local -r head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
   write_git_stub "${STUB}/bin" '*log*--first-parent*' 0
   run_script pending
   assert_failure 1
-  assert_stderr --partial "no commit in the history of $(git -C "${RELEASE_REPO}" rev-parse HEAD) holds a CHANGELOG.md that names ${VERSION}"
+  assert_stderr --partial \
+    "no commit in the history of ${head} holds a CHANGELOG.md that names ${VERSION}"
+  assert_only_calls "${READ_TAG}" "${READ_STATE}" "${READ_HEAD}"
 }
 
 @test 'push-image streams the image to GHCR under the version and prints the digest the registry holds' {
