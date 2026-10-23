@@ -43,7 +43,8 @@ function setup() {
 }
 
 @test 'fails when git cannot read core.hooksPath' {
-  local -r real_git="$(command -v git)"
+  local real_git
+  real_git="$(command -v git)"
   mkdir "${BATS_TEST_TMPDIR}/bin"
   # shellcheck disable=SC2016 # the stand-in's own expansions must stay literal in the file it writes
   printf '#!/usr/bin/env bash\nif [[ "$*" == *"config --local --get"* ]]; then\n  exit 3\nfi\nexec %q "$@"\n' \

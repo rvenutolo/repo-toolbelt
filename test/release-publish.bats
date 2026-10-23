@@ -569,7 +569,8 @@ STUB
 
 @test 'pending: a changelog history with no commit is a failure, not a release from nowhere' {
   publish_repo
-  local -r head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
+  local head
+  head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
   write_git_stub "${STUB}/bin" '*log*--first-parent*' 0
   run_script pending
   assert_failure 1
