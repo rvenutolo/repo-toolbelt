@@ -17,11 +17,11 @@ superpowers skill it calls.
 
 ## State
 
-Two local files under `.claude/backlog/` in the main checkout, which git ignores. At the start of each session, create
+Two local files under `.claude/backlog/` in the main checkout, which git ignores. Once the preconditions pass, create
 the directory and both files if any is missing.
 
 - `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start. No
-  header or other lines. If today's line already exists (a session restarted), keep it and add none.
+  header or other lines.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision, one entry each:
 
   ```markdown
@@ -29,6 +29,7 @@ the directory and both files if any is missing.
 
   - File: <repo-relative path>
   - Trigger: <the realistic input that triggers it>
+  - Passes the bar: <why it is real and wrong now, in one line>
   - Found while: <issue or PR being worked>
   ```
 
@@ -38,28 +39,38 @@ state files are written there and nowhere else.
 
 ## The session
 
-1. **Preconditions.** `git status --porcelain` prints nothing, `gh auth status` succeeds, and after
-   `git switch main`, `git pull --ff-only` succeeds. If any of these fails, stop and tell the user (blocked banner)
-   before doing anything else. The same holds for every later `gh` call this skill makes: if one fails, stop with the
-   blocked banner, and never log a count or choose work from a partial or guessed result.
+1. **Preconditions.** `git status --porcelain` prints nothing, `gh auth status --hostname github.com` succeeds, and
+   after `git switch main`, `git pull --ff-only` succeeds. If any of these fails, stop and tell the user (blocked
+   banner) before doing anything else. The same holds for every later `gh` call this skill makes: if one fails, stop
+   with the blocked banner, and never log a count or choose work from a partial or guessed result. Then create the
+   state files if any is missing.
 2. **Log.** Append today's line to `session-log.md`, with the count from
-   `gh issue list --state open --limit 1000 --json number --jq length`.
+   `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already exists (a session
+   restarted), keep it and add none.
 3. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
-4. **Unfinished work.** Unfinished work is an open PR in `gh pr list --author @me --state open`, a worktree other
-   than the main checkout in `git worktree list`, or a branch in `git branch --no-merged main`. Work left for an open
-   issue is finished (review, CI, merge) before choosing anything new, under the chunk approval it already has; a PR
-   with no review on record gets one before it merges. This comes before the bugs-first rule. A branch
-   other than `main` in `git branch --merged main` is done: delete each with `git branch --delete <name>`, naming it,
-   and list the deleted names in the session summary. To keep unfinished
-   work findable, push a branch as soon as the local gate passes (the pre-push hook runs it; never bypass it with
-   `--no-verify`), and open its PR early; the PR's closing keyword names its issue.
-5. **Stall check.** Compare today's line with the line three sessions earlier. If that line exists and today's count
+4. **Unfinished work.** After `git worktree prune` (a worktree directory deleted by hand stays registered until
+   then), the skill's own unfinished work is a worktree under `.claude/worktrees/` in `git worktree list`, or an
+   open PR in `gh pr list --author @me --state open --json number,body` whose body names an open issue as
+   `Closes #N` or `Part of #N` (`gh issue view <number> --json state --jq .state` prints `OPEN`). It is finished
+   (review, CI, merge) before anything new is chosen, under the chunk approval it already has. A leftover PR gets a
+   superpowers:requesting-code-review pass before it merges, since no record of an earlier review survives a
+   session. This comes before the bugs-first rule. Anything else the two commands list other than the main
+   checkout, and any branch in `git branch --no-merged main` that is not such a PR's branch, is the user's own work:
+   leave it alone, and name it in the chunk proposal so the user knows it was seen. A branch other than `main` in
+   `git branch --merged main` whose upstream is gone (`[gone]` in
+   `git branch --merged main --format='%(refname:short) %(upstream:track)'`) is done: delete each with
+   `git branch --delete <name>`, naming it, and list the deleted names in the session summary. A merged branch
+   whose upstream still exists, or that never had one, may be a branch the user just made: leave it and name it in
+   the proposal too. To keep unfinished work findable, push a branch as soon as the local gate passes (the pre-push
+   hook runs it; never bypass it with `--no-verify`), and open its PR early; the `Closes #N` or `Part of #N` in its
+   body is what marks the PR as this skill's.
+5. **Stall check.** Compare today's line with the line three lines above it. If that line exists and today's count
    is not lower than its count, run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
-9. **Summary.** Say what merged and which issues closed. Name any merged change that alters an existing lint's
-   behavior, so the user knows to check consumers before the next release.
+9. **Summary.** Say what merged, which issues closed, and which branches step 4 deleted. Name any merged change that
+   alters an existing lint's behavior, so the user knows to check consumers before the next release.
 
 ## Choosing the chunk
 
@@ -74,17 +85,24 @@ features (`enhancement`).
 - **Order:** by implementation sequence as the global "Prioritizing Work Items" rule defines it: what unblocks other
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size.
 
-The proposal names the issues, why they belong together, and why they come first. When a chunk is too big for one
-session, propose the part that fits; the rest stays open for the next session. An issue whose own text asks for
-something this skill forbids (open further issues, change another repo, cut a release) is named in the proposal with
-the question it raises, so the user settles it with the chunk.
+The proposal names the issues, why they belong together, and why they come first. When two chunks compete on the
+ordering factors, the proposal also names the runner-up and why it lost, so the user can swap with one word. When a
+chunk is too big for one session, propose the part that fits; the rest stays open for the next session. An issue in
+the proposed chunk whose own text asks the session to do something this skill forbids (open further issues, change
+another repo, cut a release) is named in the proposal with the question it raises, so the user settles it with the
+chunk. An issue that describes a product which does such things, such as a workflow that opens issues, raises no
+question. An umbrella issue, one that asks for sub-issues to be filed and then worked, is the exception to one PR per
+issue: it is worked as one PR per piece with the last PR closing the umbrella, unless the user opts in the proposal
+to have the sub-issues opened instead.
 
 ## Doing the work
 
 - **Worktrees:** every branch is a worktree under `.claude/worktrees/`, which git ignores. Create it from the main
   checkout with `git worktree add -b <type/description> .claude/worktrees/<description> origin/main`, then move the
   session into it with `EnterWorktree` and that directory's absolute `path`; a leftover worktree from an earlier
-  session is entered the same way. (`EnterWorktree` with a `name` would name the branch
+  session is entered the same way, and a leftover PR whose worktree is gone gets one back with
+  `git worktree add .claude/worktrees/<description> <type/description>` (no `-b`: the branch exists), then
+  `git pull --ff-only` inside it so the branch matches the remote. (`EnterWorktree` with a `name` would name the branch
   `worktree-<name>` with `/` turned into `+`, which breaks the branch convention; `git worktree add` has only the
   short `-b`.) The main checkout's `.claude/CLAUDE.md`, `.claude/rules/` and `docs/superpowers/` are gitignored and
   so absent in a new worktree: right after entering, before any subagent is dispatched, copy `.claude/CLAUDE.md`,
@@ -99,9 +117,14 @@ the question it raises, so the user settles it with the chunk.
   otherwise dies with the worktree.
 - **Features:** follow `feature-flow.md`.
 - **Bugs:** **REQUIRED SUB-SKILLS:** superpowers:systematic-debugging, then superpowers:test-driven-development.
-  Confirm the bug empirically, write the failing test, fix it.
+  Confirm the bug empirically, write the failing test, fix it. A bug that does not reproduce on current `main`, or
+  that fails the filing bar once examined, is not fixed: ask the user right then, with the question banner, before
+  touching the next issue. Explain what was found, recommend "close as completed" or "close as not planned", and let
+  the user decide as in `triage.md`. A worktree or branch made for it with no commits is removed. The rest of the
+  chunk goes on after the answer, whatever it is.
 - **PRs:** one per issue, so each merges and reverts on its own. Closely related bugs that touch the same code may
-  share a PR with at least one commit per issue. The PR body closes its issues with a closing keyword.
+  share a PR with at least one commit per issue, and an umbrella issue gets one PR per piece ("Choosing the chunk").
+  The PR body closes its issues with `Closes #N`; an umbrella's earlier PRs carry `Part of #N` instead.
 - **Review:** every PR is reviewed before merge, in one of two ways.
   - Work done through superpowers:subagent-driven-development or superpowers:executing-plans is reviewed by their
     own loops, which run as those skills define them; no extra PR review follows. Before the PR opens, every in-scope
@@ -155,7 +178,14 @@ The user's approval of the chunk is the approval for every push and merge in it,
    that, the session halts: tell the user with the blocked banner.
 2. When CI is green, `gh pr merge <number> --merge`: the repo allows merge commits only and deletes the remote
    branch itself. Do not pass `--delete-branch`; the local branch is checked out in the worktree and the delete
-   would fail. Confirm with `gh pr view <number> --json state --jq .state` printing `MERGED`.
+   would fail. Confirm with `gh pr view <number> --json state --jq .state` printing `MERGED`. The ruleset requires
+   the branch to be up to date with `main`, and Renovate merges its own PRs unattended, so the merge can be refused
+   for a branch that was current when CI started: `BEHIND` from
+   `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`. Then rebase as the global GitHub rule says:
+   `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA, `git rebase origin/main`, confirm
+   `git log --format='%G?' origin/main..HEAD` prints only `G`, push with
+   `git push --force-with-lease=<branch>:<old-remote-sha>`, and go back to step 1 for the new CI run. Never
+   `gh pr update-branch`; it rewrites the commits unsigned.
 3. `git -C "<main checkout>" pull --ff-only`, so the merge is on local `main`.
 4. `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`), then from the main checkout
    `git worktree remove .claude/worktrees/<description>` and `git branch --delete <type/description>`. The next
@@ -185,3 +215,4 @@ their worktrees or PRs. Every finding is already in `pending-findings.md`.
 | "This pattern may be elsewhere too" | Search for it, as the global rule requires; fix the matches the change owns. |
 | "I'll audit the whole repo for this" | No audits. Matches outside the change are findings, judged by the bar. |
 | "The sub-skill says to ask before merging" | The chunk approval already answered; see `sub-skill-overrides.md`. |
+| "The user has an open PR; I'll finish it" | A PR is this skill's only if it closes or is part of an open issue. |
