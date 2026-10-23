@@ -1,8 +1,10 @@
 package issuerefs_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,11 +224,31 @@ func TestCheck_unreadableTrackedFileIsASetupError(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = os.Chmod(target, 0o755) }) //nolint:errcheck // lets TempDir clean up; a failure only leaves the dir
-			got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+			// git also warns that it cannot read sub/.gitattributes.
+			lc := lintkit.Context{Root: repo, Section: []byte("null"), Stderr: io.Discard}
+			got, err := issuerefs.Check(t.Context(), lc)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Check = %v, %v; want an error naming %q", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCheck_gitWarningPassesThroughAndFindingsStand(t *testing.T) {
+	t.Parallel()
+	// git ignores a negative attribute pattern, warns on stderr, and still
+	// exits 0 with the full listing.
+	repo := makeRepo(t, map[string]string{".gitattributes": "!*.md text\n", "a.md": "#1\n"})
+	var stderr bytes.Buffer
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null"), Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	if diff := cmp.Diff([]lintkit.Finding{ref("a.md", 1, "#1")}, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+	if !strings.HasPrefix(stderr.String(), "warning: Negative patterns are ignored in git attributes\n") {
+		t.Errorf("stderr = %q, want git's warning passed through", stderr.String())
 	}
 }
 
