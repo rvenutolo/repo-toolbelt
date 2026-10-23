@@ -52,6 +52,18 @@ func TestLoad_problems(t *testing.T) {
 			want: []string{"YAML tag '!custom' is not supported (in check-workflow-hermetic)" + tagFix},
 		},
 		{
+			name: "alias as a key", fixture: "alias-as-key.yml",
+			want: []string{"YAML alias '*w' is not supported (in check-workflow-hermetic)"},
+		},
+		{
+			name: "alias as an explicit key", fixture: "alias-as-explicit-key.yml",
+			want: []string{"YAML alias '*w' is not supported (in check-workflow-hermetic)"},
+		},
+		{
+			name: "tag on an explicit key", fixture: "tag-on-explicit-key.yml",
+			want: []string{"YAML tag '!custom' is not supported (in check-workflow-hermetic)" + tagFix},
+		},
+		{
 			name: "tag on a value", fixture: "tag-on-value.yml",
 			want: []string{"YAML tag '!custom' is not supported (in check-workflow-hermetic.wrapper)" + tagFix},
 		},

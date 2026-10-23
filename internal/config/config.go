@@ -214,16 +214,18 @@ func (c *collector) walk(node ast.Node, path []string) {
 	}
 }
 
-// walkKey reports a merge key or a tag on a key, against the map holding it.
+// walkKey reports a merge key, or an alias or tag in a key, against the map
+// holding it.
 func (c *collector) walkKey(key ast.MapKeyNode, path []string) {
 	if key.IsMergeKey() {
 		c.add(key, fmt.Sprintf("merge key '<<' is not supported (in %s)", where(path)))
 		return
 	}
-	if tagged, ok := key.(*ast.TagNode); ok && !coreTag(tagged.Start.Value) {
-		c.add(tagged, fmt.Sprintf("YAML tag '%s' is not supported (in %s)%s",
-			escape(tagged.Start.Value), where(path), tagFixSuffix))
+	var node ast.Node = key
+	if explicit, ok := key.(*ast.MappingKeyNode); ok {
+		node = explicit.Value
 	}
+	c.walk(node, path)
 }
 
 // duplicateKeys reports every key a map repeats, anywhere in the file. A

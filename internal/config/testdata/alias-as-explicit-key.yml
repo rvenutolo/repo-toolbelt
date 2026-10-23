@@ -1,0 +1,4 @@
+check-workflow-hermetic:
+  exempt: &w wrapper
+  ? *w
+  : .ci/x
