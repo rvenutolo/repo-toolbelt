@@ -82,19 +82,19 @@ function load_shell_files() {
         shell_files_ref+=("${path}")
         continue
         ;;
-      *) ;;
+      *) ;; # coverage-exempt: kcov scores this line; it never executes as bash
     esac
     in_scope=0
     case "${path}" in
-      .coverage/*) ;;
-      .ci/* | .githooks/* | examples/consumer/.githooks/* | lints/*) in_scope=1 ;; # coverage-exempt: the gate runs this script; no BATS suite drives it
-      */*) ;;
+      .coverage/*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
+      .ci/* | .githooks/* | examples/consumer/.githooks/* | lints/*) in_scope=1 ;;
+      */*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
       *) in_scope=1 ;;
     esac
     if ((in_scope == 1)) && [[ "${mode}" == '100755' && "${name}" != *.* ]]; then
       shell_files_ref+=("${path}")
     fi
-  done < "${TMP_FILE}"
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
 # @description Fail the run when a file list is empty.
@@ -171,7 +171,8 @@ function main() {
 
   log_info 'running actionlint'
   # The example caller is a workflow too, so it is held to the same checks.
-  load_tracked workflow_files '.github/workflows/*.yml' '.github/workflows/*.yaml' 'examples/consumer/.github/workflows/*.yml' # coverage-exempt: the gate runs this script; no BATS suite drives it
+  load_tracked workflow_files '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+    'examples/consumer/.github/workflows/*.yml'
   if require_files 'workflow files' "${#workflow_files[@]}"; then
     actionlint "${workflow_files[@]}" || rc=1
   else
@@ -182,7 +183,7 @@ function main() {
   load_tracked github_files '.github/*'
   if require_files 'files under .github/' "${#github_files[@]}"; then
     # --no-online-audits: the gate needs no network for this.
-    zizmor --no-online-audits .github/ examples/consumer/.github/ || rc=1 # coverage-exempt: the gate runs this script; no BATS suite drives it
+    zizmor --no-online-audits .github/ examples/consumer/.github/ || rc=1
   else
     rc=1
   fi
