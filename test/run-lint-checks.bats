@@ -27,6 +27,26 @@ function commit_all() {
   git -c user.name=t -c user.email=t@t commit --quiet --message fixture
 }
 
+# @description Untrack paths, keeping them on disk, and commit.
+# @arg $@ paths tracked files to drop from the index
+function untrack_and_commit() {
+  git rm --quiet --cached -- "$@"
+  git -c user.name=t -c user.email=t@t commit --quiet --message 'untrack'
+}
+
+# @description Assert the last run failed because one file list was empty
+#              and that a later linter still ran.
+# @arg $1 label the list's name as the failure message spells it
+# @arg $2 later_tool marker of a linter that runs after that step
+function assert_empty_list_failure() {
+  local -r label="$1"
+  local -r later_tool="$2"
+  assert_failure 1
+  assert_output --partial "no ${label} found; this is a failure, not a clean pass"
+  assert_output --partial "${later_tool}-ran"
+  assert_output --partial 'one or more linters failed'
+}
+
 function setup() {
   load test_helper/common
   make_repo
@@ -142,4 +162,70 @@ function setup() {
   VULN_EXIT=1 run "${REPO_DIR}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'one or more linters failed'
+}
+
+@test 'no shell files at all fails that step and the rest still run' {
+  untrack_and_commit .ci/vuln .ci/x tool test/a.bats
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'shell files' typos
+  refute_output --partial 'shellcheck-ran'
+}
+
+@test 'only bats files as shell files fails the non-bats shfmt step' {
+  untrack_and_commit .ci/vuln .ci/x tool
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'non-bats shell files' typos
+  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
+  assert_output --partial "shfmt-ran ${flags} --language-dialect bats test/a.bats"
+}
+
+@test 'only extensionless shell files fails the bats shfmt step' {
+  untrack_and_commit test/a.bats
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'bats files' typos
+  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
+  assert_line "shfmt-ran ${flags} .ci/vuln .ci/x tool"
+}
+
+@test 'a missing justfile fails that step and the rest still run' {
+  untrack_and_commit .justfile
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'justfile' typos
+  refute_output --partial 'just-ran'
+}
+
+@test 'no workflow files fails the workflow and .github steps' {
+  untrack_and_commit .github/workflows/w.yml
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'workflow files' typos
+  assert_output --partial 'no files under .github/ found; this is a failure, not a clean pass'
+  refute_output --partial 'actionlint-ran'
+  refute_output --partial 'zizmor-ran'
+}
+
+@test 'no yaml files fails that step and the rest still run' {
+  untrack_and_commit .github/workflows/w.yml x.yaml
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'yaml files' typos
+  refute_output --partial 'yamllint-ran'
+}
+
+@test 'no markdown files fails that step and the rest still run' {
+  untrack_and_commit README.md
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_empty_list_failure 'markdown files' typos
+  refute_output --partial 'markdownlint-cli2-ran'
+}
+
+@test 'a repo whose tracked files are all empty fails the typos step' {
+  untrack_and_commit .ci/vuln .ci/x .coverage/y tool
+  : > test/a.bats
+  : > README.md
+  : > notes.txt
+  git -c user.name=t -c user.email=t@t commit --quiet --all --message 'empty'
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_failure 1
+  assert_output --partial 'no text files found; this is a failure, not a clean pass'
+  assert_output --partial 'vuln-ran'
+  refute_output --partial 'typos-ran'
 }

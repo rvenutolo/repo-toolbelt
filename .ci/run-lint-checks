@@ -82,19 +82,19 @@ function load_shell_files() {
         shell_files_ref+=("${path}")
         continue
         ;;
-      *) ;;
+      *) ;; # coverage-exempt: kcov scores this line; it never executes as bash
     esac
     in_scope=0
     case "${path}" in
-      .coverage/*) ;;
+      .coverage/*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
       .ci/* | .githooks/* | examples/consumer/.githooks/* | lints/*) in_scope=1 ;;
-      */*) ;;
+      */*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
       *) in_scope=1 ;;
     esac
     if ((in_scope == 1)) && [[ "${mode}" == '100755' && "${name}" != *.* ]]; then
       shell_files_ref+=("${path}")
     fi
-  done < "${TMP_FILE}"
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
 # @description Fail the run when a file list is empty.
