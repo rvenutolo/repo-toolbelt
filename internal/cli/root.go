@@ -26,9 +26,9 @@ func (r Runner) newRootCmd(getenv func(string) string, stdin io.Reader, stdout, 
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// No subcommand: show the usage, as a usage error.
 			cmd.SetOut(cmd.ErrOrStderr())
-			if err := cmd.Help(); err != nil {
-				return err
-			}
+			// HelpFunc, unlike Help, has no error to check: cobra reports a failed
+			// write on the error stream and carries on.
+			cmd.HelpFunc()(cmd, nil)
 			return usagef("no command given")
 		},
 	}
