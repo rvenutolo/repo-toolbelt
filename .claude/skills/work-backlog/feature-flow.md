@@ -7,8 +7,8 @@ settles everything else and records each call in the spec.
 1. **Brainstorm.** **REQUIRED SUB-SKILL:** superpowers:brainstorming, with the user. A family of features shares one
    brainstorm. Brainstorming ends when the user approves the design in the conversation; if the user opts out of its
    questions, the design is what the conversation already holds. Either way a spec is written: steps 2–5 replace the
-   brainstorming skill's hand-over, its builder-check round with the user and its hard gate, and the user has
-   authorized building once those steps pass.
+   brainstorming skill's hand-over to the user and its hard gate on building (the builder check itself still runs, in
+   step 3, with its questions held for step 5), and the user has authorized building once those steps pass.
 2. **Spec.** Write it to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. The path is gitignored, so the spec
    stays local and is never force-added. For a family, one spec covers every issue and says which issue owns which
    part.
@@ -17,9 +17,9 @@ settles everything else and records each call in the spec.
    hold the rest for step 5.
 4. **Fable review.** Dispatch a subagent with `model: fable` to review the completed spec for soundness: wrong calls,
    conflicts with the settled decisions in `.claude/CLAUDE.md`, risks, and anything in the spec that would build
-   speculative work, such as a check, guard or test for an input nobody writes. The reviewer returns every finding;
-   the filing bar is applied afterwards by the controller, as "Subagents" in `SKILL.md` says. Apply what does not
-   change what gets built; hold the rest for step 5.
+   speculative work, such as a check, guard or test for an input nobody writes. The reviewer returns every finding
+   and filters none, as "Subagents" in `SKILL.md` says; the filing bar does not apply to design findings. Apply what
+   does not change what gets built; hold the rest for step 5.
 5. **One question round.** In a single message, ask everything held from steps 3 and 4, every likely halt question
    for the unattended part (each with a recommended answer and a one-line reason, as the global "Unattended
    Execution" rule requires), any copied rule in `.claude/rules/` the planned code could not satisfy (the repo's
@@ -27,16 +27,23 @@ settles everything else and records each call in the spec.
    need (as the global "Long Multi-Step Tasks" rule requires). The message ends with a one-line list of the calls
    made in steps 3 and 4, which the user may scan but need not answer. Write the answers into the spec. A spec that
    has passed steps 3–5 counts as approved; the user does not review the written document. A rule conflict that
-   only surfaces during the unattended part is settled by satisfying the rule, and reported in the session summary.
-6. **Per issue, in dependency order:**
-   1. Create and enter a worktree, and copy the instruction files and the spec into it ("Worktrees" in `SKILL.md`).
-   2. **Plan.** **REQUIRED SUB-SKILL:** superpowers:writing-plans, for this issue's part of the spec. The plan is
+   only surfaces during the unattended part is settled by satisfying the rule, and reported in the session summary
+   (this is the one place the skill overrides `.claude/CLAUDE.md`'s stop-and-ask, named in the `SKILL.md` intro). A
+   rule fix or override the user chose in this round is written in the main checkout's `.claude/rules/` and copied
+   into every worktree the flow creates afterwards.
+6. **Per issue, in dependency order** (for an umbrella issue, per piece, each piece with its own worktree, plan and
+   PR):
+   1. Check the issue is still open: `gh issue view <number> --json state --jq .state`. `CLOSED` means the user
+      decided against it since the chunk was approved: skip the issue, leave its part of the spec unbuilt, name it in
+      the summary, and go on to the next.
+   2. Create and enter a worktree, and copy the instruction files and the spec into it ("Worktrees" in `SKILL.md`).
+   3. **Plan.** **REQUIRED SUB-SKILL:** superpowers:writing-plans, for this issue's part of the spec. The plan is
       written to `docs/superpowers/plans/`, which is gitignored: write it in the worktree and copy it to the main
       checkout, so it survives the worktree's removal.
-   3. **Execute** in whatever way fits the plan best: superpowers:subagent-driven-development,
+   4. **Execute** in whatever way fits the plan best: superpowers:subagent-driven-development,
       superpowers:executing-plans, or another approach. Choose without asking; the plan header's required-sub-skill
       line names the usual two and does not bind the choice.
-   4. **PR**, reviewed and merged on green CI as `SKILL.md` describes. The next issue's worktree starts from the
+   5. **PR**, reviewed and merged on green CI as `SKILL.md` describes. The next issue's worktree starts from the
       updated `origin/main`.
 
 Then return to `SKILL.md` step 8 for the findings walkthrough, which needs the user.
