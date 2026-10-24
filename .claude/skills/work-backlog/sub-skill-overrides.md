@@ -58,5 +58,5 @@ version no longer has a quoted phrase, follow the entry's intent and say so in t
   the PR body. "Don't know how to test | … Ask your human partner": decide and record a `Ruling:`; the question
   banner only when the answer changes what gets built.
 - **superpowers:systematic-debugging**, Phase 4.5 "Discuss with your human partner before attempting more fixes"
-  (three failed fixes) and "Ask for help": a question-banner halt handled like a bug that fails the bar ("Bugs" in
-  `SKILL.md`): explain what was tried, recommend, and the rest of the chunk goes on after the answer.
+  (three failed fixes) and "Ask for help": a question-banner halt handled like a bug that fails the bar
+  (`bug-flow.md` step 3): explain what was tried, recommend, and the rest of the chunk goes on after the answer.
