@@ -1,7 +1,8 @@
 # Findings walkthrough
 
-Go through `pending-findings.md` one finding at a time. Never present them as a list, and never skip one. There is no
-cap on how many there are.
+Go through `pending-findings.md` one finding at a time, and never skip one. Never present them as a list: the user
+decides each on its own, and a list invites a blanket answer that files or drops findings nobody weighed. There is
+no cap on how many there are.
 
 For each finding:
 
@@ -19,5 +20,6 @@ For each finding:
 6. **Carry it out**: open the issue, make the fix, or add the comment. The user's "fix it now" is the approval for
    that fix's branch, push and merge: it follows `bug-flow.md` (worktree, test, fix, review) and "Merging" in
    `SKILL.md`. A fix made now has no issue to close; its PR body describes the finding instead of using a closing
-   keyword, and still ends with the marker. A known-gap comment also goes through a PR of its own.
+   keyword, and still ends with the marker. A known-gap comment also goes through a PR of its own, since `main` is
+   protected and nothing lands on it without one.
 7. **Remove the entry** from `pending-findings.md` only after the decision is carried out.
