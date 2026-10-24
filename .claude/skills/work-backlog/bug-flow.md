@@ -1,12 +1,14 @@
 # Bug flow
 
 **REQUIRED SUB-SKILLS:** superpowers:systematic-debugging, then superpowers:test-driven-development. Their own pauses
-(three failed fixes, an exception to test-first, not knowing how to test) are settled in `sub-skill-overrides.md`.
+(three failed fixes, an exception to test-first, not knowing how to test, an external cause) are settled in
+`sub-skill-overrides.md`. The halt questions and the permission confirmation were answered with the chunk OK
+("Choosing the chunk" in `SKILL.md`).
 
 Per bug, in the order the chunk proposal gave:
 
 1. Create and enter a worktree, and copy the instruction files into it ("Worktrees" in `SKILL.md`). Closely related
-   bugs that share a PR share one worktree.
+   bugs that share a PR share one worktree, named for the first of them in chunk order ("Branches").
 2. **Confirm it empirically** on the branch, with the realistic input the issue describes.
 3. **Not a bug.** A bug that does not reproduce on current `main`, or that fails the filing bar once examined, is not
    fixed: ask the user right then, with the question banner, before touching the next issue. Explain what was found,
