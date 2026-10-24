@@ -16,6 +16,8 @@ For each finding:
    - drop it
 4. **Recommend one**, with a one-line reason.
 5. **Wait for the user's decision.** Ask with the question banner, one finding per question.
-6. **Carry it out**: open the issue, make the fix through the normal PR flow, or add the comment. A fix made now has
-   no issue to close; its PR body describes the finding instead of using a closing keyword.
+6. **Carry it out**: open the issue, make the fix, or add the comment. The user's "fix it now" is the approval for
+   that fix's branch, push and merge: it follows `bug-flow.md` (worktree, test, fix, review) and "Merging" in
+   `SKILL.md`. A fix made now has no issue to close; its PR body describes the finding instead of using a closing
+   keyword, and still ends with the marker. A known-gap comment also goes through a PR of its own.
 7. **Remove the entry** from `pending-findings.md` only after the decision is carried out.
