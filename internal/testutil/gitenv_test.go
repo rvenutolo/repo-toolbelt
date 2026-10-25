@@ -45,6 +45,7 @@ func TestIsolateGit(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", host)
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(host, "gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "")
+	t.Setenv("GIT_ATTR_NOSYSTEM", "")
 
 	if err := testutil.IsolateGit(); err != nil {
 		t.Fatalf("IsolateGit() = %v, want nil", err)
@@ -64,5 +65,10 @@ func TestIsolateGit(t *testing.T) {
 	}
 	if out, code := git(t, repo, "config", "--get", "toolbelt.probe"); code != 1 {
 		t.Errorf("git config --get = %q, exit %d; want exit 1, the host global config hidden", out, code)
+	}
+	// The system attributes file sits under git's compiled-in prefix, which a
+	// test cannot write, so git is asked where it would read it: nowhere.
+	if out, code := git(t, repo, "var", "GIT_ATTR_SYSTEM"); out != "" || code == 0 {
+		t.Errorf("git var GIT_ATTR_SYSTEM = %q, exit %d; want no path, the system attributes file skipped", out, code)
 	}
 }
