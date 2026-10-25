@@ -13,8 +13,8 @@ buildGoModule {
 
   # Only what the Go build reads, so the source hash ignores docs and bash.
   # The derivation still rebuilds on every commit of a development build,
-  # whose version (0.0.0-<shortRev>) is linked in. lints.toml is embedded in
-  # the runner.
+  # whose version (0.0.0-<shortRev>) is linked in. lints.toml and formatters.toml
+  # are embedded in the runner.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -22,6 +22,7 @@ buildGoModule {
       ../go.sum
       ../lints.go
       ../lints.toml
+      ../formatters.toml
       ../cmd
       ../internal
     ];

@@ -87,7 +87,8 @@ type Runner struct {
 // or "dev" when the build recorded none. Help and version requests return nil.
 // A non-nil error is for the caller to print and pass to ExitCode.
 func Run(ctx context.Context, version string, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return Runner{Lints: manifest.Load(), Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
+	lints, _ := manifest.LoadAll()
+	return Runner{Lints: lints, Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
 }
 
 // Run executes args and reads the environment only through getenv and writes
