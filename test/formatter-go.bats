@@ -226,7 +226,7 @@ function assert_tmpdir_empty() {
   assert_output "$(printf '%s\n' 'z.go: not formatted' 'a.go: not formatted' '2 file(s)')"
 }
 
-@test 'imports group stdlib, third-party and module-local; none is added and none removed' {
+@test 'imports group stdlib, third-party, then paths starting with the root module path; none added or removed' {
   set_mode write
   write_file a.go "${UNGROUPED_GO}"
   write_list a.go
