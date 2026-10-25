@@ -115,6 +115,63 @@ func TestCheck_vendoredFilesAreNotScanned(t *testing.T) {
 	}
 }
 
+func TestCheck_unreadableVendoredFileIsNotRead(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"src/notes.md":              "see #7\n",
+	})
+	locked := filepath.Join(repo, "vendor", "example.com", "lib.go")
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) }) //nolint:errcheck // the temp dir is removed either way
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v, want none: a vendored file is never read", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_vendoredFileGitSkipsIsNotASetupError(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"src/notes.md":              "see #7\n",
+	})
+	gitIn(t, repo, "update-index", "--skip-worktree", "vendor/example.com/lib.go")
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v, want none: a vendored file is not a suspect", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_exemptionOfOnlyVendoredFilesIsStale(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+	})
+	section := `{"exempt":[{"path":"vendor/**","reason":"upstream code"}]}`
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte(section)})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{{Path: ".repo-toolbelt.yml", Message: "stale exemption: vendor/** suppresses nothing"}}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestCheck_noSectionStillScans(t *testing.T) {
 	t.Parallel()
 	repo := makeRepo(t, map[string]string{"CHANGELOG.md": "## 1.0 (#5)\n"})
