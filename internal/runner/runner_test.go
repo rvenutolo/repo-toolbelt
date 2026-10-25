@@ -3,6 +3,7 @@ package runner_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -446,7 +447,7 @@ func TestRun_formatterExecutable(t *testing.T) {
 	lintsDir, formattersDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
 	writeLint(t, formattersDir, "shell", `
 printf 'mode=%s\n' "${TOOLBELT_MODE-unset}"
-printf 'files=%s\n' "$(tr '\0' '|' < "${TOOLBELT_FILES}"; printf x)"
+printf 'files=%s\n' "$(od --address-radix=n --format=x1 --output-duplicates < "${TOOLBELT_FILES}" | tr --delete ' \n')"
 printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`)
 	writeLint(t, formattersDir, "empty", `printf 'size=%s\n' "$(wc --bytes < "${TOOLBELT_FILES}")"`)
 	writeLint(t, formattersDir, "nofiles", `printf 'size=%s\n' "$(wc --bytes < "${TOOLBELT_FILES}")"`)
@@ -477,8 +478,10 @@ printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`)
 
 	results := runner.Run(t.Context(), lints, opts)
 
+	// The formatter prints its file list as hex, so every byte is compared.
+	wantFiles := hex.EncodeToString([]byte("a b\x00c\nd\x00"))
 	want := []runner.Result{
-		{Lint: "check-shell-formatted", Exit: 0, Output: []byte("mode=check\nfiles=a b|c\nd|x\nsection={\"exclude\":[\"x\"]}\n")},
+		{Lint: "check-shell-formatted", Exit: 0, Output: []byte("mode=check\nfiles=" + wantFiles + "\nsection={\"exclude\":[\"x\"]}\n")},
 		{Lint: "check-empty-formatted", Exit: 0, Output: []byte("size=0\n")},
 		{Lint: "check-nofiles-formatted", Exit: 0, Output: []byte("size=0\n")},
 		{Lint: "ordinary", Exit: 0, Output: []byte("mode=unset files=unset\n")},
