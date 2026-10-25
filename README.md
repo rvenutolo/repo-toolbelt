@@ -158,7 +158,9 @@ The runner, not the formatter, picks the files, the same way for the lint and fo
 3. A file belongs to a formatter when its base name matches one of the formatter's include globs, or when it is
    extensionless, no formatter's include claims it, and its first line is a shebang naming one of the formatter's
    interpreters, directly (`#!/bin/bash`) or through `env` (`#!/usr/bin/env -S bash -e`). A base name is extensionless
-   when it holds no `.` after its first character, so `run-tests` and `.envrc` are and `.envrc.local` is not.
+   when it holds no `.` after its first character, so `run-tests` and `.envrc` are and `.envrc.local` is not. A file
+   whose base name the include globs of two formatters match is a setup failure, exit 2, naming the file and both
+   formatters.
 4. Vendored files are skipped by every formatter: a file under a directory named `vendor`, at any depth, or one with
    `linguist-vendored` set in `.gitattributes`.
 5. The excludes of the formatter's config section are removed.
@@ -306,7 +308,8 @@ A release that only adds lints changes nothing in a consuming repo, because each
    which schedules its lint; a one-line `description`; `include`, the non-empty list of globs over a file's base name
    that it owns; and optionally `shebangs`, the interpreters an extensionless file's shebang may name, and `settings`,
    the allowlist a consumer may override. Unknown keys, a lint name that collides with a lint in `lints.toml`, and an
-   include glob or shebang that another formatter also lists are errors.
+   include glob or shebang that another formatter also lists are errors. Distinct globs of two formatters must not
+   match one base name either: a run that finds a tracked file both match fails with exit 2.
 3. For a bash formatter, name the Nix packages that supply its tool in `nix/formatter-tools.nix` (an empty list when it
    needs none beyond the library's), which puts them on its `PATH` in the image, and add them to the devShell in
    `flake.nix`, where `.ci/build-dist` finds them for local runs.

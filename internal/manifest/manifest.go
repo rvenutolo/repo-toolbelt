@@ -139,8 +139,10 @@ func validateCommon(name, language, speed, description string) error {
 // order. It rejects everything Parse rejects, plus a name that is not a
 // lowercase word, an empty include list, an include entry that is not a valid
 // path.Match pattern, and an include glob or shebang that two formatters
-// share, which would let two formatters own one file. Input with no
-// [[formatter]] table yields an empty slice and a nil error.
+// share, which would let two formatters own one file. Distinct globs that
+// match one base name are not caught here; selecting the files fails on the
+// file they both match. Input with no [[formatter]] table yields an empty
+// slice and a nil error.
 func ParseFormatters(data []byte) ([]Formatter, error) {
 	var parsed formatterFile
 	if err := decodeStrict(data, &parsed); err != nil {

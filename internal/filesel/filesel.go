@@ -30,8 +30,9 @@ const shebangPrefix = 256
 // formatter is a key, with an empty list when it owns nothing. A symlink, and
 // a file under a directory that is now a symlink, is skipped rather than
 // followed, so nothing outside root is read and no file is reached by two
-// paths. A git failure, or a candidate file that cannot be stat-ed or read,
-// is an error.
+// paths. A git failure, a candidate file that cannot be stat-ed or read, and
+// a tracked file whose base name the include globs of more than one formatter
+// match, are errors.
 func Select(ctx context.Context, root string, formatters []manifest.Formatter) (map[string][]string, error) {
 	selected := make(map[string][]string, len(formatters))
 	for _, f := range formatters {
@@ -95,16 +96,23 @@ func Exclude(files, globs []string) []string {
 	return kept
 }
 
-// ownersOf names the formatters that own the tracked file: none when it is
+// ownersOf names the formatter that owns the tracked file: none when it is
 // not a regular file on disk. An include match claims the file; only a file
 // that is extensionless and that no formatter's include claims is looked at
-// for a shebang.
+// for a shebang. A file has at most one owner: a base name that the include
+// globs of more than one formatter match is an error naming them, since
+// distinct globs the manifest accepts can still overlap, and the manifest
+// lets no two formatters list one shebang.
 func ownersOf(dir *os.Root, file string, formatters []manifest.Formatter) ([]string, error) {
 	var owners []string
 	for _, f := range formatters {
 		if slices.ContainsFunc(f.Include, func(glob string) bool { return matchesBase(glob, file) }) {
 			owners = append(owners, f.Name)
 		}
+	}
+	if len(owners) > 1 {
+		slices.Sort(owners)
+		return nil, fmt.Errorf("%s: matched by the include globs of more than one formatter: %s", file, strings.Join(owners, ", "))
 	}
 	extensionless := isExtensionless(path.Base(file))
 	if len(owners) == 0 && (!extensionless || !hasShebangFormatter(formatters)) {
