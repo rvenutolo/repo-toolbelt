@@ -47,7 +47,9 @@ func Select(ctx context.Context, root string, formatters []manifest.Formatter) (
 	}
 	owned := make(map[string][]string) // file -> names of the formatters that own it
 	var candidates []string
-	for _, file := range splitNUL(listing) {
+	// git lists a path once per index stage, so an unmerged path repeats; the
+	// listing is sorted, which puts the repeats side by side.
+	for _, file := range slices.Compact(splitNUL(listing)) {
 		if hasVendorSegment(file) {
 			continue
 		}
