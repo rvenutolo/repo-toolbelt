@@ -3,11 +3,12 @@
 # @description Point this clone's core.hooksPath at the tracked .githooks
 #              directory so the repo's commit-msg, pre-commit and pre-push
 #              hooks fire. Repo-local git config cannot be committed, so
-#              without this the hooks sit inert. The flake devShell's shellHook calls it, which
-#              makes entering the shell the one onboarding step nobody skips.
-#              Idempotent and silent once the value is correct, because it runs
-#              on every shell entry. A foreign core.hooksPath is overwritten
-#              and logged: leaving it would mean silently inert hooks.
+#              without this the hooks sit inert. The flake devShell's
+#              shellHook calls it, which makes entering the shell the one
+#              onboarding step nobody skips. Idempotent and silent once the
+#              value is correct, because it runs on every shell entry. A
+#              foreign core.hooksPath is overwritten and logged: leaving it
+#              would mean silently inert hooks.
 #
 #              Standalone on purpose: it runs from the shellHook, including
 #              under `nix develop --ignore-environment`, so it depends on
@@ -15,7 +16,8 @@
 # @noargs
 # @stderr One line naming the change, on the runs that change something.
 # @exitcode 0 the tracked hooks are active, already or as of this run.
-# @exitcode 1 the working directory is not inside a git repo, or an argument was given.
+# @exitcode 1 the working directory is not inside a git repo, or an argument
+#             was given.
 
 set -Eeuo pipefail
 IFS=$'\n\t'
