@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -42,15 +41,10 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, err
 	}
-	text, err := textFiles(ctx, lc.Root, lc.Stderr)
+	files, err := textFiles(ctx, lc.Root, lc.Stderr, tracked)
 	if err != nil {
 		return nil, err
 	}
-	own := make(map[string]bool, len(tracked))
-	for _, file := range tracked {
-		own[file] = true
-	}
-	files := slices.DeleteFunc(text, func(file string) bool { return !own[file] })
 	if err := checkSkipped(ctx, lc.Root, root, tracked, files); err != nil {
 		return nil, err
 	}
@@ -159,17 +153,32 @@ func pathBatches(paths []string) [][]string {
 	return append(batches, paths[start:])
 }
 
-// textFiles lists the tracked files git takes for text, by git's own test,
-// in git's order. A tracked file missing from the working tree is left out;
-// one git cannot read is an error. Any other stderr from git, such as a
-// warning about the repo's .gitattributes, goes to diagnostics unchanged.
-func textFiles(ctx context.Context, dir string, diagnostics io.Writer) ([]string, error) {
-	return grepFiles(ctx, dir, diagnostics, "-I", nil)
+// textFiles lists the files among tracked that git takes for text, by git's
+// own test, in order. Only those files are read, so a vendored file the
+// caller left out is never opened. A tracked file missing from the working
+// tree is left out; one git cannot read is an error. Any other stderr from
+// git, such as a warning about the repo's .gitattributes, goes to diagnostics
+// unchanged. The files go to git grep as pathspecs, in batches.
+func textFiles(ctx context.Context, dir string, diagnostics io.Writer, tracked []string) ([]string, error) {
+	if len(tracked) == 0 {
+		// git grep with no pathspec would read every tracked file.
+		return nil, nil
+	}
+	var text []string
+	for _, batch := range pathBatches(tracked) {
+		found, err := grepFiles(ctx, dir, diagnostics, "-I", batch)
+		if err != nil {
+			return nil, err
+		}
+		text = append(text, found...)
+	}
+	return text, nil
 }
 
-// grepFiles lists the files among pathspecs, or every tracked file when
-// there are none, that git grep reads and finds content in, with binary
-// handled as the flag says: -I skips binary files, -a reads them as text.
+// grepFiles lists the files among pathspecs that git grep reads and finds
+// content in, with binary handled as the flag says: -I skips binary files, -a
+// reads them as text. Callers pass at least one pathspec: with none, git grep
+// reads every tracked file.
 func grepFiles(ctx context.Context, dir string, diagnostics io.Writer, binary string, pathspecs []string) ([]string, error) {
 	// --literal-pathspecs: a tracked name is a name, never a pattern.
 	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
