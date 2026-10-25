@@ -68,8 +68,10 @@ git config core.hooksPath .githooks
 Each hook runs the pinned image with `docker run`, mounting the checkout read-only at its host path, with no network and
 as the caller's user and group. The lints it lists run concurrently in the one container. Hooks normally list only quick
 lints; a slow lint run from pre-commit prints a one-line warning and still runs. The hooks lint the working tree as it
-is on disk and warn when it holds unstaged or uncommitted edits. A pre-commit hook that lists formatters first runs them
-in a container of their own with the checkout read-write (see [In the pre-commit hook](#in-the-pre-commit-hook)).
+is on disk and warn when it holds unstaged or uncommitted edits. The pre-commit hook passes git's `GIT_INDEX_FILE` into
+the container, so under `git commit --all` that warning compares with the index being committed. A pre-commit hook
+that lists formatters first runs them in a container of their own with the checkout read-write (see
+[In the pre-commit hook](#in-the-pre-commit-hook)).
 
 A repo that already has a hook keeps it and adds the `docker run` lines shown in the example hook's header comment.
 

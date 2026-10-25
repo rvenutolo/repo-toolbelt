@@ -18,16 +18,20 @@
 #
 #                root="$(git rev-parse --show-toplevel)"
 #                common="$(git rev-parse --path-format=absolute --git-common-dir)"
+#                index_env=()
+#                if [[ -n "${GIT_INDEX_FILE:-}" ]]; then
+#                  index_env=(--env GIT_INDEX_FILE)
+#                fi
 #                docker run --rm --network=none \
 #                  --user "$(id -u):$(id -g)" \
 #                  --volume "${root}:${root}" --volume "${common}:${common}:ro" \
-#                  --workdir "${root}" \
+#                  --workdir "${root}" "${index_env[@]}" \
 #                  ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
 #                  fmt --fail-on-change shell go
 #                docker run --rm --interactive --network=none \
 #                  --user "$(id -u):$(id -g)" \
 #                  --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
-#                  --workdir "${root}" \
+#                  --workdir "${root}" "${index_env[@]}" \
 #                  ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
 #                  run --hook pre-commit \
 #                  check-workflow-hermetic check-issue-numbers
@@ -63,6 +67,16 @@ if ! command -v docker > '/dev/null' 2>&1; then
 fi
 root="$(git rev-parse --show-toplevel)"
 common="$(git rev-parse --path-format=absolute --git-common-dir)"
+# git names the index it is committing in GIT_INDEX_FILE: a temporary one
+# under `git commit --all` or `git commit <path>`. Docker passes no variable
+# on its own, and without it the runner reads the checkout's own index and
+# warns that the files being committed have unstaged changes. git's path,
+# relative to the checkout root or absolute, resolves the same in the
+# container: the workdir is the root and the git dir is mounted at its own path.
+index_env=()
+if [[ -n "${GIT_INDEX_FILE:-}" ]]; then
+  index_env=(--env GIT_INDEX_FILE)
+fi
 if ((${#FORMATTERS[@]} > 0)); then
   # fmt writes to the checkout, so the root mount is read-write. Under
   # `set -e` a non-zero exit (a rewrite, a finding or an error) ends the hook
@@ -70,7 +84,7 @@ if ((${#FORMATTERS[@]} > 0)); then
   docker run --rm --network=none \
     --user "$(id -u):$(id -g)" \
     --volume "${root}:${root}" --volume "${common}:${common}:ro" \
-    --workdir "${root}" \
+    --workdir "${root}" "${index_env[@]}" \
     "${IMAGE}" fmt --fail-on-change "${FORMATTERS[@]}"
 fi
 # A repo may use the hook for formatting alone, and the runner rejects a run
@@ -81,5 +95,5 @@ fi
 exec docker run --rm --interactive --network=none \
   --user "$(id -u):$(id -g)" \
   --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
-  --workdir "${root}" \
+  --workdir "${root}" "${index_env[@]}" \
   "${IMAGE}" run --hook pre-commit "${LINTS[@]}"
