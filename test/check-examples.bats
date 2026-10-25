@@ -216,6 +216,14 @@ function write_hook() {
 1 example problem'
 }
 
+@test 'reports a derived lint of a slow formatter not marked # slow in the pre-commit example' {
+  sed --in-place 's/^speed = "quick"$/speed = "slow"/' formatters.toml
+  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  assert_failure 1
+  assert_output 'examples/consumer/.githooks/pre-commit:9: check-fx-formatted is slow but not marked # slow
+1 example problem'
+}
+
 @test 'reports a quick lint marked # slow in the pre-commit example' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick # slow' 'lint-slow # slow' 'check-fx-formatted'
   run --separate-stderr "${REPO_DIR}/.ci/check-examples"
