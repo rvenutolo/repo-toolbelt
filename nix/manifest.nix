@@ -1,23 +1,32 @@
-# The lint manifest, read from lints.toml so the packages and the image never
-# keep a second list. Every lint's language must be one the packages know how
-# to build; anything else fails evaluation rather than shipping a lint the
-# image cannot run.
+# The lint and formatter manifests, read from lints.toml and formatters.toml
+# so the packages and the image never keep a second list. Every entry's
+# language must be one the packages know how to build; anything else fails
+# evaluation rather than shipping an executable the image cannot run.
+# formatters.toml may hold no [[formatter]] table at all, and then has no
+# `formatter` attribute.
 let
-  lints = (builtins.fromTOML (builtins.readFile ../lints.toml)).lint;
   known = [
     "bash"
     "go"
   ];
-  checked = map (
-    lint:
-    if builtins.elem lint.language known then
-      lint
-    else
-      throw "lints.toml: lint ${lint.name} has unsupported language ${lint.language}"
-  ) lints;
-  byLanguage = language: builtins.filter (lint: lint.language == language) checked;
+  checked =
+    file: kind: entries:
+    map (
+      entry:
+      if builtins.elem entry.language known then
+        entry
+      else
+        throw "${file}: ${kind} ${entry.name} has unsupported language ${entry.language}"
+    ) entries;
+  lints = checked "lints.toml" "lint" (builtins.fromTOML (builtins.readFile ../lints.toml)).lint;
+  formatters = checked "formatters.toml" "formatter" (
+    (builtins.fromTOML (builtins.readFile ../formatters.toml)).formatter or [ ]
+  );
+  byLanguage = language: builtins.filter (entry: entry.language == language);
 in
 {
-  goLints = byLanguage "go";
-  bashLints = byLanguage "bash";
+  goLints = byLanguage "go" lints;
+  bashLints = byLanguage "bash" lints;
+  goFormatters = byLanguage "go" formatters;
+  bashFormatters = byLanguage "bash" formatters;
 }

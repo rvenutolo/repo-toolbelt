@@ -26,7 +26,8 @@ readonly COVERAGE_DIR='.coverage'
 
 # Directories kcov measures, listed so that a directory that does not exist yet
 # is skipped: kcov errors on a missing directory. Extend this list when a new
-# tree of bash appears.
+# tree of bash appears. Each formatters/<name> directory is measured too,
+# found at run time rather than listed here.
 readonly KCOV_DIRS=(lib lints .ci)
 
 # Root-level runners kcov measures. They are files, not a directory, so they are
@@ -84,17 +85,25 @@ function run_go_tests() {
 #              execute, so walking the directories makes a never-executed
 #              script score 0% instead of vanishing from the denominator. It
 #              takes a comma-separated list and does not recurse, which is why
-#              the root runners are named in --include-path only.
+#              the root runners are named in --include-path only, and why
+#              each formatter's directory is named on its own, so an
+#              untested formatter counts against coverage.
 # @noargs
 function run_bats_under_kcov() {
   local repo_dir
   repo_dir="$(pwd)"
   local -a parse_dirs=()
   local -a include_paths=()
-  local dir root_file
+  local dir formatter_dir root_file
   for dir in "${KCOV_DIRS[@]}"; do
     if [[ -d "${dir}" ]]; then
       parse_dirs+=("${repo_dir}/${dir}")
+    fi
+  done
+  # With no match the glob stays the literal pattern, which is no directory.
+  for formatter_dir in formatters/*/; do
+    if [[ -d "${formatter_dir}" ]]; then
+      parse_dirs+=("${repo_dir}/${formatter_dir%/}")
     fi
   done
   include_paths=("${parse_dirs[@]}")

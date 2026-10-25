@@ -2,8 +2,9 @@
 
 # @description The full verification gate, verify-only: formatting (nix flake
 #              check), the lint suite, the example consumer files' check, the
-#              Go and BATS test suites, then this repo's lints through the
-#              built runner, the coverage lints on the reports the tests
+#              Go and BATS test suites, then this repo's lints, formatter
+#              checks among them, through the runner and formatters built
+#              from this commit, the coverage lints on the reports the tests
 #              wrote, the baseline-slack check, and check-toolbelt-pins over the example files.
 #              Exit codes aggregate, so one run surfaces every failing
 #              category. Every caller (the pre-push hook, the .justfile and
@@ -81,13 +82,15 @@ function warn_untracked() {
 
 # @description Run the dogfooded lints through the built runner, judging the
 #              change since the fork point from origin/main. The coverage
-#              lints read the reports the tests just wrote.
+#              lints read the reports the tests just wrote. A formatter's
+#              check runs the formatter's executable, so the runner finds the
+#              formatters in the built layout as it finds the lints.
 # @arg $@ lints names of the lints to run
 function run_dogfood_lints() {
   # Only --hook ci takes an explicit --base and --head; outside Actions its
   # ::stop-commands:: and ::error lines are expected noise.
-  TOOLBELT_LINTS_DIR="${DIST_DIR}/lints" "${DIST_DIR}/bin/toolbelt" run --hook ci \
-    --base origin/main --head HEAD --default-branch main "$@"
+  TOOLBELT_LINTS_DIR="${DIST_DIR}/lints" TOOLBELT_FORMATTERS_DIR="${DIST_DIR}/formatters" \
+    "${DIST_DIR}/bin/toolbelt" run --hook ci --base origin/main --head HEAD --default-branch main "$@"
 }
 
 # @description Fail when the committed coverage baseline differs from what the

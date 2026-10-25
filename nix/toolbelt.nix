@@ -1,11 +1,12 @@
-# The runner and every Go lint, built from the one Go module.
+# The runner, every Go lint and every Go formatter, built from the one Go
+# module. A Go formatter's package is cmd/fmt-<name>.
 {
   lib,
   buildGoModule,
   version,
 }:
 let
-  inherit (import ./manifest.nix) goLints;
+  inherit (import ./manifest.nix) goLints goFormatters;
 in
 buildGoModule {
   pname = "repo-toolbelt";
@@ -30,7 +31,11 @@ buildGoModule {
 
   vendorHash = "sha256-rToWHTNECWOQGODP/eZL0q+qFgxLeI2PKzUnaaBcA7o=";
 
-  subPackages = [ "cmd/toolbelt" ] ++ map (lint: "cmd/${lint.name}") goLints;
+  subPackages = [
+    "cmd/toolbelt"
+  ]
+  ++ map (lint: "cmd/${lint.name}") goLints
+  ++ map (formatter: "cmd/fmt-${formatter.name}") goFormatters;
 
   # Static binaries: the image carries no libc for them to load.
   env.CGO_ENABLED = 0;
@@ -46,7 +51,7 @@ buildGoModule {
   doCheck = false;
 
   meta = {
-    description = "repo-toolbelt runner and Go lints";
+    description = "repo-toolbelt runner, Go lints and Go formatters";
     mainProgram = "toolbelt";
   };
 }

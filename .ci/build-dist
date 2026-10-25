@@ -2,18 +2,24 @@
 
 # @description Build the image's /opt/toolbelt layout into a directory: the
 #              runner at bin/toolbelt, each Go lint at lints/<name>/<name>,
-#              each bash lint's directory at lints/<name>/ and lib/. Which
-#              lints exist, and in which language, comes from lints.toml, so
-#              the manifest is the only list. Run it inside the repo to
-#              build; the repo is the one containing the working directory. Local runs and the image share
-#              this layout, so what runs here is what ships.
+#              each bash lint's directory at lints/<name>/, each Go formatter
+#              at formatters/<name>/<name>, each bash formatter's directory at
+#              formatters/<name>/, and lib/. Which lints and formatters exist,
+#              and in which language, comes from lints.toml and
+#              formatters.toml, so the manifests are the only lists; lints/
+#              and formatters/ exist even when empty. Run it inside the repo
+#              to build; the repo is the one containing the working
+#              directory. Local runs and the image share this layout, so what
+#              runs here is what ships; a formatter's tool comes from the
+#              devShell here.
 # @arg $1 out_dir An empty or not-yet-existing directory to build into,
 #                 relative to the current directory or absolute.
 # @stdout Nothing.
 # @stderr Progress, and the reason for a failure.
 # @exitcode 0 the layout was built.
 # @exitcode 1 a wrong argument count, a non-empty out dir (nothing is written
-#             then), an unsupported language in lints.toml, or a build failure.
+#             then), an unsupported language in either manifest, or a build
+#             failure.
 
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -22,6 +28,47 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
+
+# @description Build every entry of one manifest, <kind>s.toml, into its
+#              layout directory: a Go entry from ./cmd/<go_prefix><name>, a
+#              bash entry by copying its source directory.
+# @arg $1 repo_dir the repo root
+# @arg $2 out_dir the absolute directory the layout is built into
+# @arg $3 kind the manifest's table name: lint or formatter
+# @arg $4 dir the layout directory, which is also the bash entries' source
+#         tree in the repo: lints or formatters
+# @arg $5 go_prefix what precedes a Go entry's name in its cmd/ package
+function build_entries() {
+  local -r repo_dir="$1"
+  local -r out_dir="$2"
+  local -r kind="$3"
+  local -r dir="$4"
+  local -r go_prefix="$5"
+  local entries
+  entries="$(yq --input-format toml --output-format tsv ".${kind}[] | [.name, .language]" "${repo_dir}/${kind}s.toml")"
+  readonly entries
+  # A manifest with no entries prints nothing, and a here-string of nothing
+  # is still one empty line.
+  if [[ -z "${entries}" ]]; then
+    return 0
+  fi
+
+  local name language
+  while IFS=$'\t' read -r name language; do
+    case "${language}" in
+      go)
+        (cd "${repo_dir}" && go build -o "${out_dir}/${dir}/${name}/${name}" "./cmd/${go_prefix}${name}")
+        ;;
+      bash)
+        cp --recursive -- "${repo_dir}/${dir}/${name}" "${out_dir}/${dir}/${name}"
+        ;;
+      *)
+        printf '%s: %s %s has unsupported language %s\n' "${0##*/}" "${kind}" "${name}" "${language}" >&2
+        exit 1
+        ;;
+    esac
+  done <<< "${entries}"
+}
 
 # @description Build the layout into the out dir.
 # @arg $1 out_dir directory to build into
@@ -40,29 +87,12 @@ function main() {
     exit 1
   fi
 
-  local lints
-  lints="$(yq --input-format toml --output-format tsv '.lint[] | [.name, .language]' "${repo_dir}/lints.toml")"
-  readonly lints
-
-  mkdir --parents -- "${out_dir}/bin" "${out_dir}/lints"
+  mkdir --parents -- "${out_dir}/bin" "${out_dir}/lints" "${out_dir}/formatters"
   (cd "${repo_dir}" && go build -o "${out_dir}/bin/toolbelt" ./cmd/toolbelt)
   cp --recursive -- "${repo_dir}/lib" "${out_dir}/lib"
 
-  local name language
-  while IFS=$'\t' read -r name language; do
-    case "${language}" in
-      go)
-        (cd "${repo_dir}" && go build -o "${out_dir}/lints/${name}/${name}" "./cmd/${name}")
-        ;;
-      bash)
-        cp --recursive -- "${repo_dir}/lints/${name}" "${out_dir}/lints/${name}"
-        ;;
-      *)
-        printf '%s: lint %s has unsupported language %s\n' "${0##*/}" "${name}" "${language}" >&2
-        exit 1
-        ;;
-    esac
-  done <<< "${lints}"
+  build_entries "${repo_dir}" "${out_dir}" lint lints ''
+  build_entries "${repo_dir}" "${out_dir}" formatter formatters fmt-
 }
 
 if (($# != 1)); then

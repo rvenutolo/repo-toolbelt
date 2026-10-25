@@ -41,6 +41,12 @@ function setup() {
   done
 }
 
+@test 'fmt with an unknown formatter is a usage error naming it' {
+  run docker run --rm --network=none "${TOOLBELT_TEST_IMAGE}" fmt nope
+  assert_failure 2
+  assert_output --partial 'unknown formatter "nope"'
+}
+
 @test 'check-workflow-hermetic finds an unwrapped run step' {
   make_consumer "${BATS_TEST_TMPDIR}/repo"
   run hook_run run --hook pre-commit check-workflow-hermetic

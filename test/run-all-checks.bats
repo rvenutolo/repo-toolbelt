@@ -20,20 +20,26 @@ function setup() {
   mkdir --parents examples/consumer
   write_stub run-tests TESTS_STATUS
   # The build-dist stub lays out a runner that records its arguments and
-  # whether TOOLBELT_LINTS_DIR points at the lints directory beside it, and a
-  # check-toolbelt-pins that records where it ran and what it was handed.
+  # whether TOOLBELT_LINTS_DIR and TOOLBELT_FORMATTERS_DIR point at the lints
+  # and formatters directories beside it, and a check-toolbelt-pins that
+  # records where it ran and what it was handed.
   cat > .ci/build-dist << 'STUB'
 #!/usr/bin/env bash
 printf 'build-dist %s\n' "$*" >> "${CALLS}"
 if [[ -n "${BUILD_STATUS:-}" ]]; then
   exit "${BUILD_STATUS}"
 fi
-mkdir --parents "$1/bin" "$1/lints"
+mkdir --parents "$1/bin" "$1/lints" "$1/formatters"
 cat > "$1/bin/toolbelt" << 'RUNNER'
 #!/usr/bin/env bash
 printf 'toolbelt %s\n' "$*" >> "${CALLS}"
-if [[ "$(realpath "${TOOLBELT_LINTS_DIR}")" == "$(realpath "$(dirname "$0")/../lints")" ]]; then
-  printf 'lints dir ok\n' >> "${CALLS}"
+if [[ "$1" == run ]]; then
+  if [[ "$(realpath "${TOOLBELT_LINTS_DIR}")" == "$(realpath "$(dirname "$0")/../lints")" ]]; then
+    printf 'lints dir ok\n' >> "${CALLS}"
+  fi
+  if [[ "$(realpath "${TOOLBELT_FORMATTERS_DIR:-}")" == "$(realpath "$(dirname "$0")/../formatters")" ]]; then
+    printf 'formatters dir ok\n' >> "${CALLS}"
+  fi
 fi
 if [[ "$1" == update-coverage-baseline ]]; then
   exit "${BASELINE_STATUS:-0}"
@@ -84,8 +90,9 @@ STUB
   assert_line --index 5 \
     "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-coverage-drop check-patch-coverage"
   assert_line --index 6 'lints dir ok'
-  assert_line --index 7 'toolbelt update-coverage-baseline --check'
-  assert_line --index 8 'check-toolbelt-pins in examples/consumer/ section null hook ci'
+  assert_line --index 7 'formatters dir ok'
+  assert_line --index 8 'toolbelt update-coverage-baseline --check'
+  assert_line --index 9 'check-toolbelt-pins in examples/consumer/ section null hook ci'
 }
 
 @test 'leaves no scratch directory behind' {
@@ -105,7 +112,7 @@ STUB
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
-    assert_output 9
+    assert_output 10
   done
 }
 
