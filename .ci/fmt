@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # @description Format this repo's files in place: `nix fmt` formats the Nix,
-#              YAML, JSON and Go files .treefmt.nix covers, then the runner
+#              YAML and JSON files .treefmt.nix covers, then the runner
 #              built from the working tree runs `fmt` with the formatters this
 #              repo dogfoods (.ci/dogfood-formatters.bash), which format the
 #              files they take the way their check lints in run-all-checks and

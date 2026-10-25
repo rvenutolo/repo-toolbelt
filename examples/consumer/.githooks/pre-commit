@@ -51,6 +51,7 @@ readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:000000000000000000
 # result. With every lint deleted from LINTS, the hook only formats.
 readonly FORMATTERS=(
   # shell
+  # go
 )
 readonly LINTS=(
   check-workflow-hermetic
@@ -59,6 +60,7 @@ readonly LINTS=(
   check-patch-coverage
   check-toolbelt-pins
   check-shell-formatted
+  check-go-formatted
 )
 
 if ! command -v docker > '/dev/null' 2>&1; then

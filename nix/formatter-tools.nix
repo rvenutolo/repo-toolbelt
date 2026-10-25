@@ -4,6 +4,35 @@
 # names no package. Every bash formatter in formatters.toml needs an entry,
 # an empty list when it calls nothing beyond the library's tools; nix/dist.nix
 # fails evaluation on a missing one.
-pkgs: {
+pkgs:
+let
+  # goimports alone out of gotools. nixpkgs ships it as a wrapper that puts
+  # the Go toolchain on PATH, and the binary embeds the toolchain's path as
+  # its default GOROOT; with -format-only it never runs go nor reads GOROOT.
+  # The guard names gotools.go, the Go that built gotools, so it still holds
+  # when that differs from pkgs.go.
+  # Copying the unwrapped binary and stripping that path keeps the rest of
+  # gotools and the whole toolchain out of the image, and keeps every other
+  # gotools command off the formatter's PATH.
+  goimports =
+    pkgs.runCommand "goimports-${pkgs.gotools.version}"
+      {
+        nativeBuildInputs = [ pkgs.removeReferencesTo ];
+        disallowedReferences = [
+          pkgs.gotools.go
+          pkgs.gotools
+        ];
+        meta.mainProgram = "goimports";
+      }
+      ''
+        install -D --mode=0755 ${pkgs.gotools}/bin/.goimports-wrapped "$out/bin/goimports"
+        remove-references-to -t ${pkgs.gotools.go} "$out/bin/goimports"
+      '';
+in
+{
+  go = [
+    pkgs.gofumpt
+    goimports
+  ];
   shell = [ pkgs.shfmt ];
 }

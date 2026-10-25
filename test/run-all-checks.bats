@@ -88,8 +88,8 @@ STUB
   assert_line --index 3 'run-tests '
   assert_line --index 4 --regexp '^build-dist /.+/dist$'
   assert_line --index 5 \
-    "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-shell-formatted check-coverage-drop \
-check-patch-coverage"
+    "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-shell-formatted check-go-formatted \
+check-coverage-drop check-patch-coverage"
   assert_line --index 6 'lints dir ok'
   assert_line --index 7 'formatters dir ok'
   assert_line --index 8 'toolbelt update-coverage-baseline --check'
@@ -123,7 +123,7 @@ check-patch-coverage"
   assert_output --partial 'skipping the coverage lints: the tests failed'
   assert_output --partial 'one or more checks failed'
   run grep '^toolbelt ' "${CALLS}"
-  assert_output "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-shell-formatted"
+  assert_output "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-shell-formatted check-go-formatted"
   run grep --count '^check-toolbelt-pins ' "${CALLS}"
   assert_output 1
 }

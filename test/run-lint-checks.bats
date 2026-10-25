@@ -87,7 +87,7 @@ function setup() {
   assert_success
   local -a expected=(
     shellcheck just statix deadnix actionlint zizmor yamllint markdownlint-cli2
-    golangci-lint golangci-lint go go vuln typos
+    golangci-lint go go vuln typos
   )
   local -a ran=()
   local line
@@ -127,6 +127,15 @@ function setup() {
   assert_line 'actionlint-ran .github/workflows/w.yml'
   assert_line 'yamllint-ran --strict .github/workflows/w.yml x.yaml'
   assert_line 'markdownlint-cli2-ran README.md'
+}
+
+@test 'golangci-lint runs as the lint gate only, never as a formatter' {
+  # check-go-formatted holds Go formatting, so no second gate with
+  # golangci-lint's bundled formatter versions can disagree with it.
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_success
+  assert_line 'golangci-lint-ran run ./...'
+  refute_output --partial 'golangci-lint-ran fmt'
 }
 
 @test 'typos gets every tracked text file' {

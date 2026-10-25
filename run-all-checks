@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # @description The full verification gate, verify-only: the formatting of the
-#              Nix, YAML, JSON and Go files (nix flake check), the lint suite,
+#              Nix, YAML and JSON files (nix flake check), the lint suite,
 #              the example consumer files' check, the Go and BATS test suites,
 #              then this repo's lints through the runner built from this
 #              commit, the dogfooded formatters' checks among them (each runs

@@ -72,6 +72,29 @@ function rw_hook_run() {
     "${TOOLBELT_TEST_IMAGE}" "$@"
 }
 
+# @description Write text to a file in the current repo, exactly, creating its
+#              directory.
+# @arg $1 path the file's repo-relative path
+# @arg $2 text the content
+function write_file() {
+  local -r path="$1"
+  local -r text="$2"
+  mkdir --parents -- "$(dirname -- "${path}")"
+  printf '%s' "${text}" > "${path}"
+}
+
+# @description Assert a file in the current repo holds exactly the given text.
+# @arg $1 path the file's repo-relative path
+# @arg $2 text the expected content
+function assert_content() {
+  local -r path="$1"
+  local -r text="$2"
+  local actual
+  # The x keeps any trailing newlines through the command substitution.
+  actual="$(cat -- "${path}" && printf 'x')"
+  assert_equal "${actual%x}" "${text}"
+}
+
 # @description Commit everything in the current repo.
 # @arg $1 message the commit message
 function commit_all() {

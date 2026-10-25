@@ -368,6 +368,13 @@ func TestLoadAll(t *testing.T) {
 			Shebangs:    []string{"bash"},
 			Settings:    []string{"indent"},
 		},
+		{
+			Name:        "go",
+			Language:    "bash",
+			Speed:       "quick",
+			Description: "Go files are formatted with gofumpt and goimports",
+			Include:     []string{"*.go"},
+		},
 	}
 	if diff := cmp.Diff(wantFormatters, formatters); diff != "" {
 		t.Errorf("LoadAll() formatters mismatch (-want +got):\n%s", diff)
@@ -378,6 +385,12 @@ func TestLoadAll(t *testing.T) {
 		Speed:       "quick",
 		Description: "Shell and BATS files are formatted with shfmt",
 		Formatter:   "shell",
+	}, manifest.Lint{
+		Name:        "check-go-formatted",
+		Language:    "bash",
+		Speed:       "quick",
+		Description: "Go files are formatted with gofumpt and goimports",
+		Formatter:   "go",
 	})
 	if diff := cmp.Diff(wantLints, lints); diff != "" {
 		t.Errorf("LoadAll() lints mismatch (-want +got):\n%s", diff)

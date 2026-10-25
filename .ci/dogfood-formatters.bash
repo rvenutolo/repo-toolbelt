@@ -6,7 +6,7 @@
 # that fits this repo is one more word in DOGFOOD_FORMATTERS.
 
 # The formatter names, as `toolbelt fmt` takes them.
-readonly DOGFOOD_FORMATTERS=(shell)
+readonly DOGFOOD_FORMATTERS=(shell go)
 
 # Each formatter's check-mode lint, as `toolbelt run` takes it.
 DOGFOOD_FORMATTER_CHECKS=()

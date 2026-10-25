@@ -3,8 +3,6 @@ _: {
 
   programs = {
     nixfmt.enable = true;
-    gofumpt.enable = true;
-    goimports.enable = true;
     yamlfmt.enable = true;
     prettier = {
       enable = true;

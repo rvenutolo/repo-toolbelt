@@ -151,11 +151,3 @@ linters:
         linters: [gosec, unparam, gochecknoglobals, forbidigo]
       - path: cmd/
         linters: [forbidigo] # main prints the final error line with fmt.Fprintln
-formatters:
-  enable:
-    - gofumpt
-    - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/rvenutolo/repo-toolbelt

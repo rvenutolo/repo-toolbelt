@@ -9,3 +9,10 @@ description = "Shell and BATS files are formatted with shfmt"
 include = ["*.sh", "*.bash", "*.bats", ".envrc", ".envrc.*"]
 shebangs = ["bash"]
 settings = ["indent"]
+
+[[formatter]]
+name = "go"
+language = "bash"
+speed = "quick"
+description = "Go files are formatted with gofumpt and goimports"
+include = ["*.go"]
