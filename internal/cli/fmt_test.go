@@ -237,6 +237,21 @@ func TestRun_fmtListsAFileGoneAfterTheRunAsFormatted(t *testing.T) {
 	}
 }
 
+func TestRun_fmtAFileUnreadableAfterTheRunIsASetupFailure(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with no read permission")
+	}
+	repo, formattersDir := fmtRepo(t, ""), t.TempDir()
+	writeLint(t, formattersDir, "x", `chmod 000 b.x`)
+
+	got := runFmt(t, repo, formattersDir, "x")
+
+	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, "hash b.x after formatting") {
+		t.Errorf("got %+v, want exit 2 naming b.x and nothing on stdout", got)
+	}
+}
+
 func TestRun_fmtUsageErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
