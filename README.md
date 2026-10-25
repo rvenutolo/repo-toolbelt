@@ -327,8 +327,8 @@ A release that only adds lints changes nothing in a consuming repo, because each
    globs of two formatters must not match one base name either: a run that finds a tracked file both match fails with
    exit 2.
 3. For a bash formatter, name the Nix packages that supply its tool in `nix/formatter-tools.nix` (an empty list when it
-   needs none beyond the library's), which puts them on its `PATH` in the image, and add them to the devShell in
-   `flake.nix`, where `.ci/build-dist` finds them for local runs.
+   needs none beyond the library's), which puts them on its `PATH` in the image. The devShell includes every list in
+   that file, so `.ci/build-dist` finds the tools there for local runs.
 4. Add its coverage units to `.coverage-baseline.txt` in the same commit, or the baseline check in `run-all-checks`
    fails: `cobertura formatters/<name> 0` for bash, whose directory `run-tests` measures with kcov, or
    `go cmd/fmt-<name> 0` and a line for its `internal/` package for Go.
