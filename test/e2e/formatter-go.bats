@@ -119,6 +119,8 @@ function commit_unformatted() {
 @test 'a file under vendor is neither reported nor rewritten' {
   write_file vendor/example.org/lib/lib.go "${UNFORMATTED_GO}"
   commit_all 'vendored'
+  run git ls-files vendor
+  assert_output 'vendor/example.org/lib/lib.go'
   run hook_run run --hook pre-commit check-go-formatted
   assert_success
   assert_line '== check-go-formatted: pass =='

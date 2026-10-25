@@ -17,7 +17,8 @@ function setup() {
 @test "a fixture repo ignores the host's global excludes file" {
   mkdir vendor
   printf 'x\n' > vendor/lib.txt
-  git add vendor/lib.txt
+  run git add vendor/lib.txt
+  assert_success
 
   run git ls-files
   assert_success
