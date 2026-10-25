@@ -229,6 +229,19 @@ function assert_tmpdir_empty() {
   assert_stderr ''
 }
 
+@test 'a .sh file with a #!/bin/sh shebang is held to POSIX; with no shebang it parses as bash' {
+  local -r body=$'function f() {\n  echo PAYLOAD_RAN\n}\n'
+  write_file posix.sh "#!/bin/sh"$'\n'"${body}"
+  write_file plain.sh "${body}"
+  write_list posix.sh plain.sh
+  run --separate-stderr "${FORMATTER_PATH}"
+  assert_failure 1
+  assert_line --index 0 --regexp '^posix\.sh: cannot be parsed: 2:[0-9]+: .*a bash feature.*posix'
+  assert_line --index 1 '1 file(s)'
+  assert_equal "${#lines[@]}" 2
+  assert_stderr ''
+}
+
 @test 'settings.indent replaces the default indent' {
   write_section <<< '{"settings": {"indent": 4}}'
   write_file four.sh "${FORMATTED_SH_INDENT_4}"
