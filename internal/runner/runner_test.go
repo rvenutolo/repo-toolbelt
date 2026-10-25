@@ -470,6 +470,9 @@ printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`)
 			// An ordinary lint's entry is ignored.
 			"ordinary": {"ignored"},
 		},
+		// Neither reaches the ordinary lint, and the formatter gets the
+		// runner's own values.
+		Env: []string{"TOOLBELT_MODE=write", "TOOLBELT_FILES=/from-options"},
 	}
 
 	results := runner.Run(t.Context(), lints, opts)
