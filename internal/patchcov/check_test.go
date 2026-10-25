@@ -270,6 +270,21 @@ func TestCheck_trackedSymlinkIsNotScanned(t *testing.T) {
 	diffFindings(t, nil, got)
 }
 
+func TestCheck_vendoredMarkersAreNotJudged(t *testing.T) {
+	t.Parallel()
+	root, base := newFixture(t)
+	writeFile(t, filepath.Join(root, "vendor", "example.com", "lib", "lib.go"),
+		"package lib\n\n// coverage-exempt: upstream code\nfunc F() {}\n")
+	writeFile(t, filepath.Join(root, ".gitattributes"), "third_party/** linguist-vendored\n")
+	writeFile(t, filepath.Join(root, "third_party", "x.go"), "package x\n\n// coverage-exempt: upstream code\nfunc G() {}\n")
+	git(t, root, "add", ".gitattributes", "vendor", "third_party")
+	got, err := check(t, root, section, base)
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	diffFindings(t, nil, got)
+}
+
 func TestCheck_trackedFileReplacedByAFIFOIsNotRead(t *testing.T) {
 	t.Parallel()
 	root, base := newFixture(t)

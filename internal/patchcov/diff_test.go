@@ -12,8 +12,9 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/patchcov"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+// gitEnv isolates fixture git commands from the machine's git config,
+// including the global excludes file, which may list vendor/.
+var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
 
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
