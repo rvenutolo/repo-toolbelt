@@ -44,7 +44,7 @@ func (r Runner) newFmtCmd(getenv func(string) string) *cobra.Command {
 			"pass (exit 0, nothing changed), formatted (exit 0, files changed),\n" +
 			"fail (exit 1), error (exit 2).\n\n" +
 			"Exit codes: 0 every formatter passed or formatted its files;\n" +
-			"1 a formatter reported a finding (an unparseable file, a bad config section),\n" +
+			"1 a formatter reported a finding (an unparsable file, a bad config section),\n" +
 			"the config file has problems, or with --fail-on-change a file was rewritten;\n" +
 			"2 a formatter errored, or a usage or setup error (a read-only checkout among\n" +
 			"them).",
