@@ -159,12 +159,13 @@ func readOnlyError(root string, formatters []manifest.Formatter, err error) erro
 }
 
 // derivedLints is the lint that checks each formatter's files, from r.Lints.
+// A formatter whose lint r.Lints lacks is a setup failure.
 func (r Runner) derivedLints(formatters []manifest.Formatter) ([]manifest.Lint, error) {
 	lints := make([]manifest.Lint, len(formatters))
 	for i, f := range formatters {
 		j := slices.IndexFunc(r.Lints, func(lint manifest.Lint) bool { return lint.Name == f.LintName() })
 		if j < 0 {
-			return nil, fmt.Errorf("formatter %q has no lint %q in the manifest", f.Name, f.LintName())
+			return nil, setupf("formatter %q has no lint %q in the manifest", f.Name, f.LintName())
 		}
 		lints[i] = r.Lints[j]
 	}

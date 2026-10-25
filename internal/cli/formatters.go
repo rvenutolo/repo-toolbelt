@@ -30,8 +30,8 @@ type formatterPlan struct {
 // and removes the excludes. Other lints are left alone. Files are selected
 // once, for every formatter in r.Formatters, since which formatter owns a file
 // depends on the others' includes; nothing is selected when lints holds no
-// derived lint. A derived lint naming a formatter r.Formatters lacks is an
-// error, and a failed selection a setup failure.
+// derived lint. A derived lint naming a formatter r.Formatters lacks, and a
+// failed selection, are setup failures.
 func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.Config, lints []manifest.Lint) (formatterPlan, error) {
 	plan := formatterPlan{files: map[string][]string{}, failed: map[string]runner.Result{}}
 	type derived struct {
@@ -47,7 +47,7 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 		named = true
 		i := slices.IndexFunc(r.Formatters, func(f manifest.Formatter) bool { return f.Name == lint.Formatter })
 		if i < 0 {
-			return formatterPlan{}, fmt.Errorf("lint %q checks formatter %q, which the manifest lacks", lint.Name, lint.Formatter)
+			return formatterPlan{}, setupf("lint %q checks formatter %q, which the manifest lacks", lint.Name, lint.Formatter)
 		}
 		section, problems := fmtconfig.Parse(cfg.Section(lint.Name), r.Formatters[i])
 		if len(problems) > 0 {
