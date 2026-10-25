@@ -83,17 +83,35 @@ STUB
   assert_success
   run cat "${CALLS}"
   assert_line --index 0 "nix flake check --no-eval-cache ${FIXTURE_REPO}"
-  assert_line --index 1 'run-lint-checks '
-  assert_line --index 2 'check-examples '
-  assert_line --index 3 'run-tests '
-  assert_line --index 4 --regexp '^build-dist /.+/dist$'
-  assert_line --index 5 \
+  assert_line --index 1 "nix build --no-link ${FIXTURE_REPO}#toolbelt.goModules"
+  assert_line --index 2 'run-lint-checks '
+  assert_line --index 3 'check-examples '
+  assert_line --index 4 'run-tests '
+  assert_line --index 5 --regexp '^build-dist /.+/dist$'
+  assert_line --index 6 \
     "${TOOLBELT_RUN} check-workflow-hermetic check-issue-numbers check-shell-formatted check-go-formatted \
 check-coverage-drop check-patch-coverage"
-  assert_line --index 6 'lints dir ok'
-  assert_line --index 7 'formatters dir ok'
-  assert_line --index 8 'toolbelt update-coverage-baseline --check'
-  assert_line --index 9 'check-toolbelt-pins in examples/consumer/ section null hook ci'
+  assert_line --index 7 'lints dir ok'
+  assert_line --index 8 'formatters dir ok'
+  assert_line --index 9 'toolbelt update-coverage-baseline --check'
+  assert_line --index 10 'check-toolbelt-pins in examples/consumer/ section null hook ci'
+}
+
+@test 'a stale Go vendor hash fails the gate and the later checks still run' {
+  # A nix whose build of the Go modules fails, as a hash mismatch does, and
+  # whose flake check passes.
+  cat > "${BATS_TEST_TMPDIR}/bin/nix" << 'STUB'
+#!/usr/bin/env bash
+printf 'nix %s\n' "$*" >> "${CALLS}"
+[[ "$1" != build ]]
+STUB
+  run "${REPO_DIR}/run-all-checks"
+  assert_failure 1
+  assert_output --partial 'one or more checks failed'
+  run cat "${CALLS}"
+  assert_line --index 1 "nix build --no-link ${FIXTURE_REPO}#toolbelt.goModules"
+  run grep --count '' "${CALLS}"
+  assert_output 11
 }
 
 @test 'leaves no scratch directory behind' {
@@ -113,7 +131,7 @@ check-coverage-drop check-patch-coverage"
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
-    assert_output 10
+    assert_output 11
   done
 }
 

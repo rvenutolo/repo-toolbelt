@@ -362,7 +362,7 @@ Every tool runs through the devShell wrapper, so nothing needs installing but Ni
 
 ```bash
 ./.ci/in-devshell ./run-tests          # Go tests and BATS under kcov; reports go to .coverage/
-./.ci/in-devshell ./run-all-checks     # the full gate: linters, tests, then the coverage lints
+./.ci/in-devshell ./run-all-checks     # the full gate (needs network): formatting, Go vendor hash, linters, tests
 ./.ci/in-devshell ./.ci/test-image     # builds the image, loads it into Docker and runs the e2e suite
 ./.ci/in-devshell ./.ci/fmt            # formats what nix fmt covers, then what the dogfooded formatters take
 git config core.hooksPath .githooks    # commit-msg, pre-commit and pre-push hooks
