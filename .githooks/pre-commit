@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+# @description Git pre-commit hook: checks the working tree's formatting with
+#              the check lints of the formatters this repo dogfoods
+#              (.ci/dogfood-formatters.bash), run by the runner built from the
+#              working tree inside the devShell, and aborts the commit on a
+#              finding. A check, never a rewrite: ./.ci/in-devshell ./.ci/fmt
+#              rewrites.
+# @noargs
+# @exitcode 0 the check passed.
+# @exitcode 1 the check found a file to format, or could not run.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# shellcheck source=.ci/dogfood-formatters.bash
+source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/../.ci/dogfood-formatters.bash"
+
+# @description Run the formatter checks inside the devShell; abort the commit
+#              on failure.
+# @noargs
+function main() {
+  local repo_dir
+  repo_dir="$(git rev-parse --show-toplevel)"
+  printf 'pre-commit: checking formatting\n' >&2
+  if ! "${repo_dir}/.ci/in-devshell" ./.ci/run-built-toolbelt run --hook pre-commit \
+    "${DOGFOOD_FORMATTER_CHECKS[@]}"; then
+    printf 'pre-commit: formatting check failed; run ./.ci/in-devshell ./.ci/fmt and stage the result\n' >&2
+    exit 1
+  fi
+  printf 'pre-commit: formatting check passed\n' >&2
+}
+
+main "$@"

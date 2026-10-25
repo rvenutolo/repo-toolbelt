@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+# @description Format every tracked file in place: `nix fmt` formats the Nix,
+#              YAML, JSON and Go files, then the runner built from the working
+#              tree runs `fmt` with the formatters this repo dogfoods
+#              (.ci/dogfood-formatters.bash), which format the rest the way
+#              their check lints in run-all-checks and the pre-commit hook
+#              expect. Stops at the first step that fails. Run it inside the
+#              devShell: ./.ci/in-devshell ./.ci/fmt
+# @noargs
+# @exitcode 0 every file is formatted, rewritten or not.
+# @exitcode * a step failed: its exit status.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# shellcheck source=.ci/dogfood-formatters.bash
+source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/dogfood-formatters.bash"
+
+# `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
+shopt -s inherit_errexit
+
+# @description Run nix fmt, then the built runner's fmt.
+# @noargs
+function main() {
+  nix fmt
+  local rc=0
+  "${REPO_DIR}/.ci/run-built-toolbelt" fmt "${DOGFOOD_FORMATTERS[@]}" || rc=$?
+  # The runner's verdict is not a crash: drop the ERR trap so its output is
+  # the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+if (($# > 0)); then
+  printf '%s: expected no arguments, got %s\n' "${0##*/}" "$#" >&2
+  exit 1
+fi
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+# nix fmt formats the flake in the working directory.
+cd "${REPO_DIR}" || exit 1
+
+main "$@"

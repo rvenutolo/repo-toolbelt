@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
-# @description The full verification gate, verify-only: formatting (nix flake
-#              check), the lint suite, the example consumer files' check, the
-#              Go and BATS test suites, then this repo's lints through the
-#              runner built from this commit (a listed formatter check runs
+# @description The full verification gate, verify-only: the formatting of the
+#              Nix, YAML, JSON and Go files (nix flake check), the lint suite,
+#              the example consumer files' check, the Go and BATS test suites,
+#              then this repo's lints through the runner built from this
+#              commit, the dogfooded formatters' checks among them (each runs
 #              the formatter built beside it), the coverage lints on the
 #              reports the tests wrote, the baseline-slack check, and
 #              check-toolbelt-pins over the example files. Exit codes
-#              aggregate, so one run surfaces every failing
-#              category. Every caller (the pre-push hook, the .justfile and
-#              CI) runs it through .ci/in-devshell, so local and CI runs
-#              cannot drift.
+#              aggregate, so one run surfaces every failing category. Every
+#              caller (the pre-push hook, the .justfile and CI) runs it
+#              through .ci/in-devshell, so local and CI runs cannot drift.
 # @noargs
 # @exitcode 0 every check passed.
 # @exitcode 1 one or more checks failed.
@@ -20,13 +20,17 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+# shellcheck source=.ci/dogfood-formatters.bash
+source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/.ci/dogfood-formatters.bash"
+
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
 # Every lint that fits this repo, run through the built runner as CI runs
-# them. check-toolbelt-pins is not among them: it checks consumers' pins, so it
-# runs over the example consumer files instead.
-readonly DOGFOOD_LINTS=(check-workflow-hermetic check-issue-numbers)
+# them, the dogfooded formatters' check lints included. check-toolbelt-pins is
+# not among them: it checks consumers' pins, so it runs over the example
+# consumer files instead.
+readonly DOGFOOD_LINTS=(check-workflow-hermetic check-issue-numbers "${DOGFOOD_FORMATTER_CHECKS[@]}")
 readonly COVERAGE_LINTS=(check-coverage-drop check-patch-coverage)
 
 # Scratch directory: command output (no process substitution) and the built

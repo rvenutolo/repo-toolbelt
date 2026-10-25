@@ -17,6 +17,6 @@ lint:
 test:
     ./.ci/in-devshell ./run-tests
 
-# Format every tracked file: ./.ci/in-devshell nix fmt
+# Format every tracked file: ./.ci/in-devshell ./.ci/fmt
 fmt:
-    ./.ci/in-devshell nix fmt
+    ./.ci/in-devshell ./.ci/fmt

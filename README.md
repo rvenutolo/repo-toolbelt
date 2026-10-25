@@ -340,9 +340,12 @@ Every tool runs through the devShell wrapper, so nothing needs installing but Ni
 ./.ci/in-devshell ./run-tests          # Go tests and BATS under kcov; reports go to .coverage/
 ./.ci/in-devshell ./run-all-checks     # the full gate: linters, tests, then the coverage lints
 ./.ci/in-devshell ./.ci/test-image     # builds the image, loads it into Docker and runs the e2e suite
-./.ci/in-devshell nix fmt              # formats every tracked file
-git config core.hooksPath .githooks    # commit-msg and pre-push hooks
+./.ci/in-devshell ./.ci/fmt            # formats every tracked file: nix fmt, then the dogfooded formatters
+git config core.hooksPath .githooks    # commit-msg, pre-commit and pre-push hooks
 ```
+
+The pre-commit hook checks the working tree's formatting with the dogfooded formatters' check lints, run by the
+runner built from the working tree; `./.ci/in-devshell ./.ci/fmt` rewrites what it finds.
 
 `just test`, `just check`, `just lint` and `just fmt` are shortcuts for the first, second, linter-only and formatter
 commands. Nothing requires `just`.
