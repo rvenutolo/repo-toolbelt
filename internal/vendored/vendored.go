@@ -37,8 +37,10 @@ func ByAttribute(ctx context.Context, root string, files []string) (map[string]b
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		first, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-		return nil, fmt.Errorf("git check-attr: %w: %s", err, first)
+		if first, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n"); first != "" {
+			return nil, fmt.Errorf("git check-attr: %w: %s", err, first)
+		}
+		return nil, fmt.Errorf("git check-attr: %w", err)
 	}
 	// Each record is path, attribute, value, all NUL-terminated.
 	fields := strings.Split(strings.TrimSuffix(stdout.String(), "\x00"), "\x00")
