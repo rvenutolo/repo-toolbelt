@@ -73,8 +73,12 @@ func ExitCode(err error) int {
 
 // Runner runs toolbelt commands against a fixed set of lints.
 type Runner struct {
-	// Lints is the manifest of lints the commands operate on.
+	// Lints is the manifest of lints the commands operate on, the formatters'
+	// derived lints included.
 	Lints []manifest.Lint
+	// Formatters is the manifest of formatters. Each derived lint in Lints
+	// names one of them.
+	Formatters []manifest.Formatter
 	// Version is the string --version prints.
 	Version string
 	// Dir is the directory run starts in; empty means the process's working
@@ -87,8 +91,8 @@ type Runner struct {
 // or "dev" when the build recorded none. Help and version requests return nil.
 // A non-nil error is for the caller to print and pass to ExitCode.
 func Run(ctx context.Context, version string, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
-	lints, _ := manifest.LoadAll()
-	return Runner{Lints: lints, Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
+	lints, formatters := manifest.LoadAll()
+	return Runner{Lints: lints, Formatters: formatters, Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
 }
 
 // Run executes args and reads the environment only through getenv and writes

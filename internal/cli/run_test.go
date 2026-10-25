@@ -27,8 +27,11 @@ var runLints = []manifest.Lint{
 	{Name: "c", Language: "go", Speed: "quick", Description: "third"},
 }
 
-// gitEnv isolates fixture git commands from the machine's git config.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+// gitEnv isolates fixture git commands from the machine's git config. Git
+// reads a global excludes and attributes file under XDG_CONFIG_HOME even with
+// GIT_CONFIG_GLOBAL set, and an exclude there would hide fixture files from
+// git add.
+var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent/repo-toolbelt-test"}
 
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -147,9 +150,15 @@ func runIn(ctx context.Context, t *testing.T, dir, lintsDir string, args ...stri
 // runStdin is runIn with the given standard input.
 func runStdin(ctx context.Context, t *testing.T, dir, lintsDir, stdin string, args ...string) result {
 	t.Helper()
-	var stdout, stderr bytes.Buffer
-	env := map[string]string{"TOOLBELT_LINTS_DIR": lintsDir}
 	runner := cli.Runner{Lints: runLints, Version: "1.2.3", Dir: dir}
+	return runWith(ctx, t, runner, map[string]string{"TOOLBELT_LINTS_DIR": lintsDir}, stdin, args...)
+}
+
+// runWith runs toolbelt as runner with the given environment and standard
+// input, mirroring main.
+func runWith(ctx context.Context, t *testing.T, runner cli.Runner, env map[string]string, stdin string, args ...string) result {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
 	err := runner.Run(ctx, args, func(k string) string { return env[k] }, strings.NewReader(stdin), &stdout, &stderr)
 	if err != nil {
 		stderr.WriteString("error: " + err.Error() + "\n")
@@ -810,5 +819,235 @@ func TestRun_runPrePushInputReadFailure(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Errorf("stdout = %q, want no lint run after the failed read", stdout.String())
+	}
+}
+
+// runFormatters are the formatters the derived-lint tests select from: x
+// takes a setting and claims extensionless xsh scripts, y is slow.
+var runFormatters = []manifest.Formatter{
+	{Name: "x", Language: "bash", Speed: "quick", Description: "formats x", Include: []string{"*.x"}, Shebangs: []string{"xsh"}, Settings: []string{"width"}},
+	{Name: "y", Language: "go", Speed: "slow", Description: "formats y", Include: []string{"*.y"}},
+}
+
+// formatterRunner is a Runner over runLints plus runFormatters and their
+// derived lints, run from dir.
+func formatterRunner(t *testing.T, dir string) cli.Runner {
+	t.Helper()
+	merged, err := manifest.Merge(runLints, runFormatters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cli.Runner{Lints: merged, Formatters: runFormatters, Version: "1.2.3", Dir: dir}
+}
+
+// listFiles is a fixture formatter's body: it prints its mode and each file
+// it was given, then runs exit.
+func listFiles(exit string) string {
+	return `printf 'mode=%s\n' "${TOOLBELT_MODE}"
+while IFS= read -r -d '' f; do printf 'file=[%s]\n' "${f}"; done < "${TOOLBELT_FILES}"
+` + exit
+}
+
+func commitAll(t *testing.T, repo string) {
+	t.Helper()
+	gitIn(t, repo, "add", "--all")
+	gitIn(t, repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "--message=more")
+}
+
+// formatterEnv points the runner at fixture lints and formatters.
+func formatterEnv(lintsDir, formattersDir string) map[string]string {
+	return map[string]string{"TOOLBELT_LINTS_DIR": lintsDir, "TOOLBELT_FORMATTERS_DIR": formattersDir}
+}
+
+func TestRun_runDerivedLintRunsItsFormatterInCheckMode(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		exit, verdict, summary string
+		wantCode               int
+	}{
+		{exit: "exit 0", verdict: "pass", summary: "1 passed, 0 failed, 0 errored", wantCode: 0},
+		{exit: "exit 1", verdict: "fail", summary: "0 passed, 1 failed, 0 errored", wantCode: 1},
+		{exit: "exit 2", verdict: "error", summary: "0 passed, 0 failed, 1 errored", wantCode: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.verdict, func(t *testing.T) {
+			t.Parallel()
+			repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+			for _, name := range []string{"a.x", "dir with space/b c.x", "-lead.x", "new\nline.x", "notes.txt", "c.y"} {
+				writeFile(t, filepath.Join(repo, name), "content\n")
+			}
+			writeFile(t, filepath.Join(repo, "run"), "#!/usr/bin/env xsh\n")
+			commitAll(t, repo)
+			writeLint(t, formattersDir, "x", listFiles(tt.exit))
+
+			got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), "",
+				"run", "--hook", "pre-commit", "check-x-formatted")
+
+			want := "== check-x-formatted: " + tt.verdict + " ==\nmode=check\n" +
+				"file=[-lead.x]\nfile=[a.x]\nfile=[dir with space/b c.x]\nfile=[new\nline.x]\nfile=[run]\n" +
+				"toolbelt: " + tt.summary + "\n"
+			if diff := cmp.Diff(want, got.stdout); diff != "" {
+				t.Errorf("stdout (-want +got):\n%s", diff)
+			}
+			if got.code != tt.wantCode {
+				t.Errorf("exit %d, want %d (stderr %q)", got.code, tt.wantCode, got.stderr)
+			}
+		})
+	}
+}
+
+func TestRun_runDerivedLintAppliesItsSection(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+	for _, name := range []string{"a.x", "skip/z.x", "skip/deep/w.x", "keep/skip.x"} {
+		writeFile(t, filepath.Join(repo, name), "content\n")
+	}
+	writeFile(t, filepath.Join(repo, ".repo-toolbelt.yml"), "check-x-formatted:\n  exclude:\n    - skip\n  settings:\n    width: 80\n")
+	commitAll(t, repo)
+	writeLint(t, formattersDir, "x", `printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`+"\n"+listFiles("exit 0"))
+
+	got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), "",
+		"run", "--hook", "pre-commit", "check-x-formatted")
+
+	want := "== check-x-formatted: pass ==\n" +
+		`section={"exclude":["skip"],"settings":{"width":80}}` + "\nmode=check\n" +
+		"file=[a.x]\nfile=[keep/skip.x]\n" +
+		"toolbelt: 1 passed, 0 failed, 0 errored\n"
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+	if got.code != 0 {
+		t.Errorf("exit %d, want 0 (stderr %q)", got.code, got.stderr)
+	}
+}
+
+// badXSection is a check-x-formatted section with two problems.
+const badXSection = "check-x-formatted:\n  settings:\n    width: 0\n    bogus: 1\n"
+
+// badXBlock is the body of the failing block a run prints for badXSection.
+const badXBlock = ".repo-toolbelt.yml: check-x-formatted: settings: unknown setting 'bogus'; allowed: width\n" +
+	".repo-toolbelt.yml: check-x-formatted: settings.width: must be a positive integer\n" +
+	"2 problem(s)\n"
+
+func TestRun_runBadSectionFailsOnlyItsLint(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir, formattersDir, markers := makeRepo(t), t.TempDir(), t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(repo, ".repo-toolbelt.yml"), badXSection)
+	writeFile(t, filepath.Join(repo, "a.x"), "content\n")
+	commitAll(t, repo)
+	ran := filepath.Join(markers, "x-ran")
+	writeLint(t, lintsDir, "a", "echo a-out")
+	writeLint(t, lintsDir, "c", "echo c-out")
+	writeLint(t, formattersDir, "x", `touch '`+ran+`'`)
+
+	got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), "",
+		"run", "--hook", "pre-commit", "a", "check-x-formatted", "c")
+
+	want := "== a: pass ==\na-out\n" +
+		"== check-x-formatted: fail ==\n" + badXBlock +
+		"== c: pass ==\nc-out\n" +
+		"toolbelt: 2 passed, 1 failed, 0 errored\n"
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+	if got.code != 1 {
+		t.Errorf("exit %d, want 1 (stderr %q)", got.code, got.stderr)
+	}
+	if _, err := os.Stat(ran); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the formatter ran despite its bad section (stat: %v)", err)
+	}
+}
+
+func TestRun_runPrePushBadSectionFailsOncePerRef(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(repo, ".repo-toolbelt.yml"), badXSection)
+	commitAll(t, repo)
+	flags, _ := withRemote(t, repo)
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	zeros := strings.Repeat("0", 40)
+	stdin := "refs/heads/one " + head + " refs/heads/one " + zeros + "\n" +
+		"refs/heads/two " + head + " refs/heads/two " + zeros + "\n"
+	writeLint(t, lintsDir, "a", "exit 0")
+
+	got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), stdin,
+		append(append([]string{"run", "--hook", "pre-push"}, flags...), "check-x-formatted", "a")...)
+
+	want := "== check-x-formatted (refs/heads/one): fail ==\n" + badXBlock +
+		"== a (refs/heads/one): pass ==\n" +
+		"== check-x-formatted (refs/heads/two): fail ==\n" + badXBlock +
+		"== a (refs/heads/two): pass ==\n" +
+		"toolbelt: 2 passed, 2 failed, 0 errored (2 lints x 2 refs)\n"
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("stdout (-want +got):\n%s", diff)
+	}
+	if got.code != 1 {
+		t.Errorf("exit %d, want 1 (stderr %q)", got.code, got.stderr)
+	}
+}
+
+func TestRun_runValidatesOnlyNamedFormatterSections(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(repo, ".repo-toolbelt.yml"), badXSection+"check-y-formatted:\n  exclude: nope\n")
+	commitAll(t, repo)
+	writeLint(t, lintsDir, "a", "exit 0")
+
+	got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), "",
+		"run", "--hook", "pre-commit", "a")
+	if want := "== a: pass ==\ntoolbelt: 1 passed, 0 failed, 0 errored\n"; got.code != 0 || got.stdout != want {
+		t.Errorf("got %+v, want exit 0 and stdout %q", got, want)
+	}
+}
+
+func TestRun_runSelectsFilesOnlyForNamedFormatters(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with no read permission")
+	}
+	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+	// Of the two formatters, only x reads an extensionless file, to look for
+	// its shebang.
+	script := filepath.Join(repo, "script")
+	writeFile(t, script, "#!/usr/bin/env xsh\n")
+	writeFile(t, filepath.Join(repo, "c.y"), "content\n")
+	commitAll(t, repo)
+	if err := os.Chmod(script, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	writeLint(t, formattersDir, "x", "exit 0")
+	writeLint(t, formattersDir, "y", listFiles("exit 0"))
+	runner, env := formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir)
+
+	got := runWith(t.Context(), t, runner, env, "", "run", "--hook", "pre-commit", "check-y-formatted")
+	if want := "== check-y-formatted: pass ==\nmode=check\nfile=[c.y]\ntoolbelt: 1 passed, 0 failed, 0 errored\n"; got.code != 0 || got.stdout != want {
+		t.Errorf("run check-y-formatted: got %+v, want exit 0 and stdout %q", got, want)
+	}
+
+	got = runWith(t.Context(), t, runner, env, "", "run", "--hook", "pre-commit", "check-y-formatted", "check-x-formatted")
+	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, "script") {
+		t.Errorf("run check-x-formatted: got %+v, want exit 2 naming the unreadable file and no lint run", got)
+	}
+}
+
+func TestRun_runDefaultFormattersDir(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir := makeRepo(t), t.TempDir()
+	got := runWith(t.Context(), t, formatterRunner(t, repo), map[string]string{"TOOLBELT_LINTS_DIR": lintsDir}, "",
+		"run", "--hook", "pre-commit", "check-x-formatted")
+	if got.code != 2 || !strings.Contains(got.stderr, "/opt/toolbelt/formatters/x/x") {
+		t.Errorf("got %+v, want exit 2 naming the default formatter path", got)
+	}
+}
+
+func TestRun_runDerivedLintWithoutItsFormatter(t *testing.T) {
+	t.Parallel()
+	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+	runner := formatterRunner(t, repo)
+	runner.Formatters = runFormatters[1:]
+	got := runWith(t.Context(), t, runner, formatterEnv(lintsDir, formattersDir), "",
+		"run", "--hook", "pre-commit", "check-x-formatted")
+	if got.code != 1 || got.stdout != "" || !strings.Contains(got.stderr, `"x"`) {
+		t.Errorf("got %+v, want exit 1 naming the missing formatter and no lint run", got)
 	}
 }

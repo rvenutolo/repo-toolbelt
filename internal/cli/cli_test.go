@@ -124,6 +124,26 @@ func TestRun_plan(t *testing.T) {
 	}
 }
 
+func TestRun_listAndPlanCarryDerivedLints(t *testing.T) {
+	t.Parallel()
+	runner := formatterRunner(t, "")
+
+	got := runWith(t.Context(), t, runner, nil, "", "list")
+	want := "a\tquick\tfirst\nb\tslow\tsecond\nc\tquick\tthird\n" +
+		"check-x-formatted\tquick\tformats x\ncheck-y-formatted\tslow\tformats y\n"
+	if got.code != 0 {
+		t.Errorf("list: exit %d, want 0 (stderr %q)", got.code, got.stderr)
+	}
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("list stdout (-want +got):\n%s", diff)
+	}
+
+	got = runWith(t.Context(), t, runner, nil, "", "plan", "check-y-formatted", "a", "check-x-formatted")
+	if want := `{"groups":[["a","check-x-formatted"],["check-y-formatted"]]}` + "\n"; got.code != 0 || got.stdout != want {
+		t.Errorf("plan: got %+v, want exit 0 and %q", got, want)
+	}
+}
+
 func TestRun_planUsageErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
