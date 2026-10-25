@@ -16,7 +16,7 @@ function setup() {
 # @arg $1 changelog the changelog's path
 function nix_version() {
   local -r changelog="$1"
-  nix eval --impure --raw --expr "import \"${REPO_DIR}/nix/release-version.nix\" {
+  nix eval --extra-experimental-features nix-command --impure --raw --expr "import \"${REPO_DIR}/nix/release-version.nix\" {
     changelog = builtins.readFile \"${changelog}\";
     script = builtins.readFile \"${REPO_DIR}/.ci/release-version\";
     fallback = \"dev\";
