@@ -105,7 +105,7 @@ func (r Runner) updateBaseline(ctx context.Context, root string, check bool, std
 	}
 	defer dir.Close()
 	reports, err = coverage.WithoutVendored(ctx, root, reports)
-	if err != nil { // coverage-exempt: repoRoot has already run git in this checkout
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return "", setupf("%w", err)
 	}
 	tally := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))

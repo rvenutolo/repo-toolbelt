@@ -2,6 +2,7 @@ package coverage
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
@@ -22,7 +23,7 @@ func WithoutVendored(ctx context.Context, root string, reports []Report) ([]Repo
 	slices.Sort(files)
 	own, err := vendored.Filter(ctx, root, slices.Compact(files))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find vendored files: %w", err)
 	}
 	kept := make([]Report, len(reports))
 	for i, r := range reports {
