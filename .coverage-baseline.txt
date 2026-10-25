@@ -12,6 +12,7 @@ go internal/cli 0
 go internal/config 0
 go internal/coverage 0
 go internal/coveragedrop 0
+go internal/filesel 0
 go internal/fmtconfig 0
 go internal/issuerefs 0
 go internal/lintkit 0
