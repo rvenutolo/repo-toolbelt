@@ -46,8 +46,10 @@ func runFmt(t *testing.T, repo, formattersDir string, args ...string) result {
 func TestRun_fmtVerdictsAndExitStatus(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name         string
-		body         string
+		name string
+		body string
+		// bodyY, when set, is a second formatter y, run after x.
+		bodyY        string
 		failOnChange bool
 		wantStdout   string
 		wantCode     int
@@ -93,6 +95,14 @@ func TestRun_fmtVerdictsAndExitStatus(t *testing.T) {
 			wantA:      "content\n",
 		},
 		{
+			name:       "an error outranks a finding",
+			body:       "exit 2",
+			bodyY:      "exit 1",
+			wantStdout: "== x: error ==\n== y: fail ==\ntoolbelt: 0 file(s) formatted, 1 failed, 1 errored\n",
+			wantCode:   2,
+			wantA:      "content\n",
+		},
+		{
 			name: "a rewrite is listed even when the formatter fails",
 			body: `printf 'formatted\n' > b.x; echo 'a.x: cannot be parsed: boom'; exit 1`,
 			wantStdout: "== x: fail ==\nb.x: formatted\na.x: cannot be parsed: boom\n" +
@@ -107,6 +117,10 @@ func TestRun_fmtVerdictsAndExitStatus(t *testing.T) {
 			repo, formattersDir := fmtRepo(t, ""), t.TempDir()
 			writeLint(t, formattersDir, "x", tt.body)
 			args := []string{"x"}
+			if tt.bodyY != "" {
+				writeLint(t, formattersDir, "y", tt.bodyY)
+				args = append(args, "y")
+			}
 			if tt.failOnChange {
 				args = append([]string{"--fail-on-change"}, args...)
 			}
