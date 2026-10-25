@@ -27,17 +27,10 @@ var runLints = []manifest.Lint{
 	{Name: "c", Language: "go", Speed: "quick", Description: "third"},
 }
 
-// gitEnv isolates fixture git commands from the machine's git config. Git
-// reads a global excludes and attributes file under XDG_CONFIG_HOME even with
-// GIT_CONFIG_GLOBAL set, and an exclude there would hide fixture files from
-// git add.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
-
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), gitEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
@@ -120,7 +113,6 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), gitEnv...)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git %v: %v", args, err)
@@ -536,12 +528,9 @@ func TestRun_runNotAGitRepository(t *testing.T) {
 }
 
 func TestRun_runCheckoutOwnedByAnotherUser(t *testing.T) {
-	// Not parallel: git reads these from the process environment. Git's own
-	// test hook makes it treat the repository as owned by another user, which
-	// a non-root test cannot arrange with chown.
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("XDG_CONFIG_HOME", "/nonexistent")
+	// Not parallel: git reads its test hook from the process environment. The
+	// hook makes git treat the repository as owned by another user, which a
+	// non-root test cannot arrange with chown.
 	repo, lintsDir := makeRepo(t), t.TempDir()
 	t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
 	writeLint(t, lintsDir, "a", "exit 0")

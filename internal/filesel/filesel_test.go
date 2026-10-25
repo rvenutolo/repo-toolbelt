@@ -15,16 +15,10 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config and from
-// its default global ignore file ($XDG_CONFIG_HOME/git/ignore), which would
-// otherwise keep fixture paths such as vendor/ out of the index.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
-
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), gitEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
@@ -431,7 +425,6 @@ func TestSelect_conflictedFileIsListedOnce(t *testing.T) {
 	// The merge stops on the conflict in a.sh, leaving it at three index stages.
 	cmd := exec.CommandContext(t.Context(), "git", "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "--quiet", "other")
 	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), gitEnv...)
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("git merge succeeded, want a conflict\n%s", out)
 	}

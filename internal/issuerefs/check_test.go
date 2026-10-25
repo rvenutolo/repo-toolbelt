@@ -18,15 +18,10 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config,
-// including the global excludes file, which may list vendor/.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
-
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), gitEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
