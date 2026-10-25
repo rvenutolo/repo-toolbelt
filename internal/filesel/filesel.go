@@ -31,8 +31,8 @@ const shebangPrefix = 256
 // a file under a directory that is now a symlink, is skipped rather than
 // followed, so nothing outside root is read and no file is reached by two
 // paths. A git failure, a candidate file that cannot be stat-ed or read, and
-// a tracked file whose base name the include globs of more than one formatter
-// match, are errors.
+// a tracked file outside a vendor directory whose base name the include globs
+// of more than one formatter match, are errors.
 func Select(ctx context.Context, root string, formatters []manifest.Formatter) (map[string][]string, error) {
 	selected := make(map[string][]string, len(formatters))
 	for _, f := range formatters {
@@ -102,7 +102,10 @@ func Exclude(files, globs []string) []string {
 // for a shebang. A file has at most one owner: a base name that the include
 // globs of more than one formatter match is an error naming them, since
 // distinct globs the manifest accepts can still overlap, and the manifest
-// lets no two formatters list one shebang.
+// lets no two formatters list one shebang. That error comes before the file
+// is stat-ed, and Select checks linguist-vendored only after, so it holds
+// whatever the file's state on disk and whether or not it is vendored by
+// attribute.
 func ownersOf(dir *os.Root, file string, formatters []manifest.Formatter) ([]string, error) {
 	var owners []string
 	for _, f := range formatters {

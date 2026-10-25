@@ -158,9 +158,12 @@ The runner, not the formatter, picks the files, the same way for the lint and fo
 3. A file belongs to a formatter when its base name matches one of the formatter's include globs, or when it is
    extensionless, no formatter's include claims it, and its first line is a shebang naming one of the formatter's
    interpreters, directly (`#!/bin/bash`) or through `env` (`#!/usr/bin/env -S bash -e`). A base name is extensionless
-   when it holds no `.` after its first character, so `run-tests` and `.envrc` are and `.envrc.local` is not. A file
-   whose base name the include globs of two formatters match is a setup failure, exit 2, naming the file and both
-   formatters.
+   when it holds no `.` after its first character, so `run-tests` and `.envrc` are and `.envrc.local` is not.
+
+   A tracked file whose base name the include globs of two formatters match is a setup failure, exit 2, naming the
+   file and both formatters. This is checked before steps 2 and 4 skip anything, so it holds whatever the file's state
+   on disk (deleted, a symlink) and when it has `linguist-vendored` set; only a file under a `vendor` directory is
+   skipped first.
 4. Vendored files are skipped by every formatter: a file under a directory named `vendor`, at any depth, or one with
    `linguist-vendored` set in `.gitattributes`.
 5. The excludes of the formatter's config section are removed.
