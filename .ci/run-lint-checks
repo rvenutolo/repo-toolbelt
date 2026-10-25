@@ -66,8 +66,8 @@ function load_tracked() {
 
 # @description Load the tracked shell scripts into an array: every `*.bash` and
 #              `*.bats`, plus the extensionless executables under `.ci/`,
-#              `.githooks/`, `examples/consumer/.githooks/`, `lints/` and the
-#              repo root. `.coverage/` holds
+#              `.githooks/`, `examples/consumer/.githooks/`, `lints/`,
+#              `formatters/` and the repo root. `.coverage/` holds
 #              kcov's generated helper scripts, so it is never in scope.
 # @arg $1 array_name name of the array to fill
 function load_shell_files() {
@@ -87,7 +87,7 @@ function load_shell_files() {
     in_scope=0
     case "${path}" in
       .coverage/*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
-      .ci/* | .githooks/* | examples/consumer/.githooks/* | lints/*) in_scope=1 ;;
+      .ci/* | .githooks/* | examples/consumer/.githooks/* | lints/* | formatters/*) in_scope=1 ;;
       */*) ;; # coverage-exempt: kcov scores this line; it never executes as bash
       *) in_scope=1 ;;
     esac
