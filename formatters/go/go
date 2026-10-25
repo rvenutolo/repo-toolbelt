@@ -59,7 +59,7 @@ IFS=$'\n\t'
 # setup-failure status rather than errexit's status of the failed command.
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2; exit 2' ERR
 
-# `inherit_errexit`, namerefs and associative arrays need bash 4.4+; the image's bash provides it.
+# `inherit_errexit` and namerefs need bash 4.4+; the image's bash provides it.
 
 # Found relative to this script's resolved path, never through the environment,
 # so the source tree and the image share one layout.
