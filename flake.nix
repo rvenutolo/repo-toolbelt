@@ -124,7 +124,6 @@
               [
                 # linters
                 shellcheck
-                shfmt
                 actionlint
                 # zizmor audits workflows for security where actionlint audits
                 # them for syntax; they overlap nowhere.
