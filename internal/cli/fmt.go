@@ -179,14 +179,15 @@ func (r Runner) derivedLints(formatters []manifest.Formatter) ([]manifest.Lint, 
 }
 
 // changedFiles is the files, in their order, whose hash no longer matches
-// before. A file that is gone counts as changed; one that cannot be hashed
-// for any other reason is a setup failure, since whether it changed is
-// unknown.
+// before. A file that is gone, deleted or with a parent that is no longer a
+// directory, counts as changed; one that cannot be hashed for any other
+// reason is a setup failure, since whether it changed is unknown.
 func changedFiles(tree *os.Root, files []string, before map[string][sha256.Size]byte) ([]string, error) {
 	var changed []string
 	for _, file := range files {
 		sum, err := hashFile(tree, file)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		gone := errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+		if err != nil && !gone {
 			return nil, setupf("hash %s after formatting: %w", file, err)
 		}
 		if err != nil || sum != before[file] {
