@@ -54,9 +54,10 @@ function setup() {
   done
 }
 
-@test 'a layout that does not build fails without running the runner and leaves no scratch directory' {
+@test 'a layout that does not build is a setup failure: exit 2, no runner, no scratch directory' {
   BUILD_STATUS=1 run "${REPO_DIR}/.ci/run-built-toolbelt" fmt x
-  assert_failure 1
+  assert_failure 2
+  assert_output --partial 'run-built-toolbelt: the layout did not build'
   run grep --count '^toolbelt ' "${CALLS}"
   assert_output 0
   local built
@@ -70,4 +71,12 @@ function setup() {
   assert_failure 1
   assert_output 'usage: run-built-toolbelt <toolbelt-argument>...'
   assert [ ! -e "${CALLS}" ]
+}
+
+@test 'checks the arguments before making a scratch directory' {
+  # With no usable TMPDIR, making the scratch directory fails, so only a run
+  # that checks its arguments first can print the usage.
+  TMPDIR="${BATS_TEST_TMPDIR}/no-such-dir" run "${REPO_DIR}/.ci/run-built-toolbelt"
+  assert_failure 1
+  assert_output 'usage: run-built-toolbelt <toolbelt-argument>...'
 }

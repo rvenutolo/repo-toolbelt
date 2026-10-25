@@ -9,8 +9,9 @@
 # its arguments in CALLS and exits with BUILD_STATUS when that is set; otherwise
 # it lays out a runner stub at bin/toolbelt. The runner stub records its
 # arguments, whether TOOLBELT_LINTS_DIR and TOOLBELT_FORMATTERS_DIR point at the
-# lints and formatters directories beside it, and the directory it ran in, then
-# exits with RUNNER_STATUS (0 when unset). Neither stub runs anything else.
+# lints and formatters directories beside it, the directory it ran in and,
+# when GIT_INDEX_FILE is set, its value, then exits with RUNNER_STATUS (0 when
+# unset). Neither stub runs anything else.
 
 # @description Write the build-dist stub to .ci/build-dist.
 # @noargs
@@ -33,6 +34,9 @@ if [[ "$(realpath "${TOOLBELT_FORMATTERS_DIR:-}")" == "$(realpath "$(dirname "$0
   printf 'formatters dir ok\n' >> "${CALLS}"
 fi
 printf 'ran in %s\n' "$(pwd)" >> "${CALLS}"
+if [[ -n "${GIT_INDEX_FILE:-}" ]]; then
+  printf 'index %s\n' "${GIT_INDEX_FILE}" >> "${CALLS}"
+fi
 exit "${RUNNER_STATUS:-0}"
 RUNNER
 chmod +x "$1/bin/toolbelt"

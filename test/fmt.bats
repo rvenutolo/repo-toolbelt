@@ -67,9 +67,9 @@ STUB
   assert_output 0
 }
 
-@test 'a layout that does not build fails' {
+@test 'a layout that does not build fails with the setup-failure status' {
   BUILD_STATUS=1 run "${REPO_DIR}/.ci/fmt"
-  assert_failure 1
+  assert_failure 2
   run grep --count '^toolbelt ' "${CALLS}"
   assert_output 0
 }
