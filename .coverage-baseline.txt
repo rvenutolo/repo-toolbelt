@@ -16,6 +16,7 @@ go internal/issuerefs 0
 go internal/lintkit 0
 go internal/manifest 0
 go internal/patchcov 0
+go internal/pathglob 0
 go internal/pins 0
 go internal/refs 0
 go internal/runner 0
