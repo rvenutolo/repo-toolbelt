@@ -14,7 +14,8 @@ import (
 func Staged(ctx context.Context, root string) (staged, partly []string, err error) {
 	// --no-renames reports a rename as an addition and a deletion, so the new
 	// path is kept; --no-ext-diff and --name-only keep any diff driver from
-	// running; -O/dev/null overrides a diff.orderFile in the repo's config.
+	// running; -O/dev/null overrides a diff.orderFile in the repo's config,
+	// which may name a file the container lacks, and git then refuses to diff.
 	cached, err := git(ctx, root, "diff", "--cached", "--name-only", "-z", "--no-renames", "--no-ext-diff",
 		"-O/dev/null", "--diff-filter=d", "--ignore-submodules")
 	if err != nil {
@@ -26,7 +27,9 @@ func Staged(ctx context.Context, root string) (staged, partly []string, err erro
 	}
 	unstaged, err := git(ctx, root, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "-O/dev/null",
 		"--ignore-submodules")
-	if err != nil { // coverage-exempt: the cached diff just read the same index in the same checkout
+	// The working-tree diff runs a file's clean filter, which the cached diff
+	// never does, so it can fail alone.
+	if err != nil {
 		return nil, nil, err
 	}
 	changed := make(map[string]bool)

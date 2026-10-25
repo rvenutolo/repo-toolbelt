@@ -83,11 +83,11 @@ func TestStaged_edgeCases(t *testing.T) {
 			wantPartly: []string{"a.sh"},
 		},
 		{
-			name: "a diff.orderFile in the repo's config does not reorder the result",
+			name: "a diff.orderFile in the repo's config neither reorders the result nor fails",
 			prepare: func(t *testing.T, repo string) {
 				t.Helper()
-				writeFile(t, filepath.Join(repo, ".git", "order"), "z.sh\n*\n")
-				gitIn(t, repo, "config", "diff.orderFile", ".git/order")
+				// The container never has the host path a repo's config may name.
+				gitIn(t, repo, "config", "diff.orderFile", filepath.Join(t.TempDir(), "missing"))
 				writeFile(t, filepath.Join(repo, "a.sh"), "b\n")
 				writeFile(t, filepath.Join(repo, "z.sh"), "b\n")
 				gitIn(t, repo, "add", "a.sh", "z.sh")
@@ -148,6 +148,22 @@ func TestStaged_readsTheIndexGitIndexFileNames(t *testing.T) {
 	gitIn(t, repo, "read-tree", "HEAD")
 	gitIn(t, repo, "add", "a.sh")
 	assertStaged(t, repo, []string{"a.sh"}, nil)
+}
+
+func TestStaged_aFailingCleanFilterIsAnError(t *testing.T) {
+	t.Parallel()
+	repo := newRepo(t, map[string]string{".gitattributes": "*.bin filter=f\n", "y.bin": "a\n", "a.sh": "a\n"})
+	writeFile(t, filepath.Join(repo, "a.sh"), "b\n")
+	gitIn(t, repo, "add", "a.sh")
+	// Set only now, so git add never runs it: the shape `git lfs install`
+	// leaves where git-lfs is missing. Only the working-tree diff cleans
+	// y.bin once its stat data changes.
+	gitIn(t, repo, "config", "filter.f.clean", "false")
+	gitIn(t, repo, "config", "filter.f.required", "true")
+	writeFile(t, filepath.Join(repo, "y.bin"), "a\n")
+	if _, _, err := filesel.Staged(t.Context(), repo); err == nil {
+		t.Error("Staged with a failing clean filter error = nil, want the git failure")
+	}
 }
 
 func TestStaged_gitFailureIsAnError(t *testing.T) {
