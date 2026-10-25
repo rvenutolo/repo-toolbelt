@@ -39,8 +39,9 @@ type file struct {
 
 // Formatter is one entry of the formatter manifest.
 type Formatter struct {
-	// Name is the language the formatter formats, a lowercase word. It yields
-	// the lint name through LintName.
+	// Name is the language the formatter formats: lowercase letters and
+	// digits, starting with a letter. It yields the lint name through
+	// LintName.
 	Name string `toml:"name"`
 	// Language is the language the formatter is written in: "bash" or "go".
 	Language string `toml:"language"`
@@ -136,13 +137,13 @@ func validateCommon(name, language, speed, description string) error {
 }
 
 // ParseFormatters decodes formatter manifest TOML into its formatters, in file
-// order. It rejects everything Parse rejects, plus a name that is not a
-// lowercase word, an empty include list, an include entry that is not a valid
-// path.Match pattern, and an include glob or shebang that two formatters
-// share, which would let two formatters own one file. Distinct globs that
-// match one base name are not caught here; selecting the files fails on the
-// file they both match. Input with no [[formatter]] table yields an empty
-// slice and a nil error.
+// order. It rejects everything Parse rejects, plus a name that is not
+// lowercase letters and digits starting with a letter, an empty include list,
+// an include entry that is not a valid path.Match pattern, and an include
+// glob or shebang that two formatters share, which would let two formatters
+// own one file. Distinct globs that match one base name are not caught here;
+// selecting the files fails on the file they both match. Input with no
+// [[formatter]] table yields an empty slice and a nil error.
 func ParseFormatters(data []byte) ([]Formatter, error) {
 	var parsed formatterFile
 	if err := decodeStrict(data, &parsed); err != nil {

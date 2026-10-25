@@ -214,19 +214,22 @@ refuses a read-only one with exit 2 and the line above. It runs as the caller's 
 stay theirs.
 
 The named formatters run concurrently, and each prints one block, in the order named: a header giving its verdict
-(`pass` when nothing changed, `formatted` when it rewrote files, `fail` or `error`), a `<path>: formatted` line for each
-file it rewrote, then its own findings, such as a file it cannot parse. The runner finds the rewritten files by hashing
-every selected file before and after: a file gone after the run, deleted or under a directory that is now a file,
-counts as rewritten, and one it cannot read then is a setup failure, exit 2. A summary line follows, such as
+(`pass` when it exited 0 and nothing changed, `formatted` when it exited 0 after rewriting files, `fail` when it exited
+1 and `error` when it errored), a `<path>: formatted` line for each file it rewrote, whatever the verdict, so a failing
+block can list rewritten files too, then its own findings, such as a file it cannot parse. The runner finds the
+rewritten files by hashing every selected file before and after: a file gone after the run, deleted or under a
+directory that is now a file, counts as rewritten, and one it cannot read then is a setup failure, exit 2. A summary
+line follows, such as
 `toolbelt: 2 file(s) formatted, 0 failed, 0 errored; review and stage them`; the advice to review and stage appears
 whenever a file was rewritten.
 
 Exit codes:
 
 - 0: every formatter passed or rewrote its files.
-- 1: a formatter reported a finding (a file it cannot parse, a bad config section), the config file has problems, or
-  `--fail-on-change` is given and a file was rewritten.
+- 1: a formatter reported a finding (a file it cannot parse, a bad config section), the config file has problems,
+  `--fail-on-change` is given and a file was rewritten, or a runtime error such as a failed write of the output.
 - 2: a formatter errored, or a usage or setup error, a read-only checkout among them.
+- 130: the run was interrupted.
 
 Run by hand, `fmt` exits 0 after a successful rewrite, like `gofmt -w`. `--fail-on-change` is for a hook: it makes a
 rewrite exit 1, so the commit stops for the rewritten files to be reviewed and staged.
@@ -310,13 +313,14 @@ A release that only adds lints changes nothing in a consuming repo, because each
 1. Write the executable to the formatter calling convention: bash at `formatters/<name>/<name>`, sourcing
    `lib/toolbelt.bash` by a path relative to itself, with any config files for its tool beside it; or Go at
    `cmd/fmt-<name>/main.go`, with the logic in a package under `internal/`.
-2. Add a `[[formatter]]` entry to `formatters.toml`: `name`, the language it formats as a lowercase word (it names
-   both `fmt <name>` and the lint `check-<name>-formatted`); `language`, `bash` or `go`; `speed`, `quick` or `slow`,
-   which schedules its lint; a one-line `description`; `include`, the non-empty list of globs over a file's base name
-   that it owns; and optionally `shebangs`, the interpreters an extensionless file's shebang may name, and `settings`,
-   the allowlist a consumer may override. Unknown keys, a lint name that collides with a lint in `lints.toml`, and an
-   include glob or shebang that another formatter also lists are errors. Distinct globs of two formatters must not
-   match one base name either: a run that finds a tracked file both match fails with exit 2.
+2. Add a `[[formatter]]` entry to `formatters.toml`: `name`, the language it formats, in lowercase letters and digits
+   starting with a letter (it names both `fmt <name>` and the lint `check-<name>-formatted`); `language`, `bash` or
+   `go`; `speed`, `quick` or `slow`, which schedules its lint; a one-line `description`; `include`, the non-empty list
+   of globs over a file's base name that it owns; and optionally `shebangs`, the interpreters an extensionless file's
+   shebang may name, and `settings`, the allowlist a consumer may override. Unknown keys, a lint name that collides
+   with a lint in `lints.toml`, and an include glob or shebang that another formatter also lists are errors. Distinct
+   globs of two formatters must not match one base name either: a run that finds a tracked file both match fails with
+   exit 2.
 3. For a bash formatter, name the Nix packages that supply its tool in `nix/formatter-tools.nix` (an empty list when it
    needs none beyond the library's), which puts them on its `PATH` in the image, and add them to the devShell in
    `flake.nix`, where `.ci/build-dist` finds them for local runs.
