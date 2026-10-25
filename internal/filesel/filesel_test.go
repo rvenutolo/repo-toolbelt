@@ -441,6 +441,25 @@ func TestSelect_conflictedFileIsListedOnce(t *testing.T) {
 	assertSelected(t, got, map[string][]string{"shell": {"a.sh", "keep.sh"}})
 }
 
+func TestSelect_aFileTheIncludesOfTwoFormattersMatchIsAnError(t *testing.T) {
+	t.Parallel()
+	repo := newRepo(t, map[string]string{"a.sh": "echo\n", "b.sh": "echo\n"})
+	// Distinct globs, which the manifest accepts, that both match a.sh.
+	overlapping := []manifest.Formatter{
+		{Name: "zsh", Language: "bash", Speed: "quick", Description: "zsh", Include: []string{"a*.sh"}},
+		{Name: "shell", Language: "bash", Speed: "quick", Description: "shell", Include: []string{"*.sh"}},
+	}
+
+	got, err := filesel.Select(t.Context(), repo, overlapping)
+	if err == nil {
+		t.Fatalf("Select = %v, want an error", got)
+	}
+
+	if want := "a.sh: matched by the include globs of more than one formatter: shell, zsh"; !strings.Contains(err.Error(), want) {
+		t.Errorf("Select error = %q, want it to hold %q", err, want)
+	}
+}
+
 func TestSelect_noFormatters(t *testing.T) {
 	t.Parallel()
 	repo := newRepo(t, map[string]string{"a.sh": "echo\n"})
