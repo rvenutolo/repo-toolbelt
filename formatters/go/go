@@ -4,7 +4,8 @@
 #              calling convention (README "The formatter calling convention").
 #              The files come NUL-terminated in the file TOOLBELT_FILES names.
 #              A generated file, one with a `// Code generated ... DO NOT
-#              EDIT.` line before its package clause, is dropped from the list
+#              EDIT.` line before its package clause, that line ending in LF
+#              or CRLF, is dropped from the list
 #              before any tool runs; with no file left, nothing else happens,
 #              and no go.mod is needed.
 #
@@ -72,8 +73,9 @@ readonly USAGE="usage: ${FORMATTER} [--help]"
 readonly GO_MOD='go.mod'
 
 # Go's convention for a generated file (https://go.dev/s/generatedcode), which
-# counts only before the package clause.
-readonly GENERATED_PATTERN='^// Code generated .* DO NOT EDIT\.$'
+# counts only before the package clause. A CR may end the line, as Go's scanner
+# drops it from a comment, so a CRLF file is generated too.
+readonly GENERATED_PATTERN=$'^// Code generated .* DO NOT EDIT\\.\r?$'
 readonly PACKAGE_PATTERN='^[[:space:]]*package([[:space:]]|$)'
 # A module line, its path bare, double-quoted or backquoted, and an optional
 # trailing comment.
