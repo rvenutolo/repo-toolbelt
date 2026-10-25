@@ -124,3 +124,31 @@ refs/heads/feature ${second} refs/heads/feature ${zeros}"
   assert_line '== check-issue-numbers (refs/heads/main): pass =='
   assert_line '== check-issue-numbers (refs/heads/feature): pass =='
 }
+
+@test 'the runner compares the working tree with the index GIT_INDEX_FILE names' {
+  make_consumer "${BATS_TEST_TMPDIR}/repo"
+  printf '# PAYLOAD_RAN marker\n' >> src/hello.sh
+  # As `git commit --all` does: stage the edit in a temporary index inside the
+  # git dir and leave .git/index as it was.
+  cp -- .git/index .git/index.e2e
+  GIT_INDEX_FILE=.git/index.e2e git add src/hello.sh
+  # shellcheck disable=SC2034 # read by shape_run in e2e_helper.bash
+  DOCKER_EXTRA=(--env GIT_INDEX_FILE)
+  # git hands a hook a path relative to the checkout root or an absolute one.
+  local index
+  for index in .git/index.e2e "${PWD}/.git/index.e2e"; do
+    export GIT_INDEX_FILE="${index}"
+    run --separate-stderr hook_run run --hook pre-commit check-issue-numbers
+    unset GIT_INDEX_FILE
+    assert_success
+    assert_output --partial '== check-issue-numbers: pass =='
+    refute_stderr --partial 'unstaged changes'
+  done
+  # Without the variable the runner reads .git/index, where the edit is
+  # unstaged; the warning shows the case above is not vacuous.
+  # shellcheck disable=SC2034 # read by shape_run in e2e_helper.bash
+  DOCKER_EXTRA=()
+  run --separate-stderr hook_run run --hook pre-commit check-issue-numbers
+  assert_success
+  assert_stderr --partial 'toolbelt: 1 tracked file(s) have unstaged changes'
+}
