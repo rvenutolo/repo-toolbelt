@@ -44,11 +44,12 @@ STUB
   FMT_RUN+=" --volume ${COMMON}:${COMMON}:ro --workdir ${ROOT} ${IMAGE} fmt --fail-on-change fx"
 }
 
-# @description List the formatter fx, and a commented-out go, in the copy of
-#              the pre-commit hook's FORMATTERS block.
+# @description List the formatter fx in the copy of the pre-commit hook's
+#              FORMATTERS block, above the block's own commented-out entries,
+#              so every run that expects only fx also shows those are skipped.
 # @noargs
 function enable_formatter() {
-  sed --in-place 's/^readonly FORMATTERS=($/&\n  fx\n  # go/' .githooks/pre-commit
+  sed --in-place 's/^readonly FORMATTERS=($/&\n  fx/' .githooks/pre-commit
 }
 
 @test 'the shipped pre-commit example lists the shell and go formatters commented out and none active' {
