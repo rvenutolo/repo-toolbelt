@@ -18,8 +18,9 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+// gitEnv isolates fixture git commands from the machine's git config,
+// including the global excludes file, which may list vendor/.
+var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
 
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -86,6 +87,29 @@ func TestCheck(t *testing.T) {
 		ref("t.md", 2, "#4"),
 		{Path: ".repo-toolbelt.yml", Message: "stale exemption: old.md suppresses nothing"},
 	}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_vendoredFilesAreNotScanned(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		".gitattributes":            "third_party/** linguist-vendored\n",
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"third_party/notes.md":      "see upstream #5\n",
+		"src/notes.md":              "see #7\n",
+	})
+	tracked := exec.CommandContext(t.Context(), "git", "ls-files", "vendor", "third_party")
+	tracked.Dir = repo
+	if out, err := tracked.Output(); err != nil || strings.Count(string(out), "\n") != 2 {
+		t.Fatalf("fixture: vendored files not tracked: %q, %v", out, err)
+	}
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
 		t.Errorf("Check mismatch (-want +got):\n%s", diff)
 	}
