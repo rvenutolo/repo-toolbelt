@@ -6,8 +6,9 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
 1. **Wait for CI** with `gh pr checks <number> --watch --fail-fast`, then read the result from
    `gh pr checks <number> --json bucket`, since the exit code alone does not tell the cases apart (a cancelled check
    exits 0). CI is green when every bucket is `pass` or `skipping`. Otherwise:
-   - `[]` means no checks reported yet, which happens right after the PR opens: wait a minute and run again, up to
-     three times; still none is a failed `gh` call (blocked banner).
+   - A non-zero exit saying `no checks reported on the '<branch>' branch` means no check has started yet, which
+     happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
+     run again, up to three times; still none is a failed `gh` call (blocked banner).
    - A `fail` bucket is a check to fix: fix the cause and push again. A coverage-ratchet failure is fixed by a test
      where one is possible, otherwise by a new signed commit (never an amend) that raises the baseline and carries the
      `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it.
@@ -15,11 +16,16 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
      check runs, or a job that hangs until its timeout), gets one `gh run rerun <run-id> --failed`, with the id from
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
      step repeats once from the watch. If CI is still red after the rerun, blocked banner.
-   - A non-zero exit with no JSON is a failed `gh` call (blocked banner).
-2. **Merge** with `gh pr merge <number> --merge`: the repo allows merge commits only and deletes the remote branch
-   itself. Do not pass `--delete-branch`; the local branch is checked out in the worktree and the delete would fail.
-   Confirm with `gh pr view <number> --json state --jq .state` printing `MERGED`. A refused merge is read from
+   - A non-zero exit with no JSON and any other message is a failed `gh` call (blocked banner).
+2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this
+   step (record it in `current-session.md` if missing and go to step 3). Otherwise `gh pr merge <number> --merge`:
+   the repo allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local
+   branch is checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing
+   `MERGED`, and record the merge in `current-session.md` at once, before the cleanup, so a compaction here does not
+   lead to a second merge attempt. A refused merge is read from
    `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
+   - `UNKNOWN`: GitHub is still computing the status after a push. Wait a minute and read it again, up to three
+     times.
    - `BEHIND`: the ruleset requires the branch to be up to date with `main`, and Renovate merges its own PRs
      unattended, so a branch that was current when CI started can fall behind. Rebase as the global GitHub rule
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
@@ -28,6 +34,9 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
      hook runs the full gate again), and go back to step 1 for the new CI run. A rebase that conflicts is a change
      the user must see: `git rebase --abort`, blocked banner. Never `gh pr update-branch`; it rewrites the commits
      unsigned.
+   - `DIRTY`: the branch conflicts with `main` (a Renovate merge touched the same file). Take the `BEHIND` path; the
+     rebase conflicts and ends in its blocked banner, or resolves cleanly and runs CI again.
+   - `UNSTABLE`, or any status not named here: blocked banner naming the status.
    - `BLOCKED` with green CI: a rule other than up-to-date refused it, such as an unresolved review thread (the
      ruleset requires every thread resolved) or an unsigned commit. Blocked banner, saying which. Never pass
      `--admin`, which `gh` itself suggests, and never resolve a thread; both are the user's.
@@ -40,4 +49,4 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
    <type/N-description>`. Either may refuse: the delete does when local `main` does not yet hold the merge (step 3's
    refused pull), the remove when the worktree has a stray file. Leave a refused one in place and name it in the
    summary; never pass `--force` or `-D`. The next session's step 3 classifies it once `main` is current. Record the
-   merge in `current-session.md`.
+   cleanup in `current-session.md`.

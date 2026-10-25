@@ -19,16 +19,16 @@ before the first sub-skill invocation of the session; its first two entries (the
 never invoked) apply to every session, plan-driven or not.
 
 **After a context compaction**, re-read this file and `.claude/backlog/current-session.md` ("State"), which records
-the approved chunk and where the session is in it. Nothing else about the session survives the compaction, and the
-skill cannot be re-invoked by the model.
+the approved chunk and where the session is in it, then the spec, plan and ledger it names, if any. Nothing else
+about the session survives the compaction, and the skill cannot be re-invoked by the model.
 
 ## How the session runs
 
 The user takes part at fixed points and the rest runs unattended. A decision needs the user only when it changes
-what gets built; everything else the session settles itself and records as a `Ruling:`. The user's points:
+what gets built; everything else the session settles itself and records as a `Ruling:` ("Terms"). The user's points:
 
-- **Bug chunk:** the chunk OK (which also answers the halt questions the proposal carries), then the findings
-  walkthrough at the end.
+- **Bug chunk:** the chunk OK (which also answers the halt questions the proposal carries), the permission request,
+  then the findings walkthrough at the end.
 - **Feature chunk:** the chunk OK, the brainstorm, one batched question round, then the findings walkthrough.
 - **Either:** a question-banner halt when a decision changes what gets built, and a blocked-banner halt when
   something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge).
@@ -42,7 +42,14 @@ what gets built; everything else the session settles itself and records as a `Ru
 - **Controller:** this session, as opposed to the subagents it dispatches.
 - **Banners:** the `❓❓❓❓❓` (question) and `🚧🚧🚧🚧🚧` (blocked) lines the global "Attention Banners" rule
   requires on a message that waits for the user. A question-banner halt resumes after the answer; a blocked-banner
-  halt ends the unattended part until the user has acted.
+  halt ends the unattended part until the user has acted. Before sending either, append the halt (the issue, the
+  question, the options) to `current-session.md`, and the answer once it arrives: a compaction while the message
+  waits would otherwise hand the user's one-word reply to a session that no longer knows the question.
+- **Halt question:** a question the unattended part would otherwise stop to ask; the global "Unattended Execution /
+  Pre-Answer Halt Questions" rule calls them halt points. The chunk proposal (bugs) or the question round (features)
+  asks every likely one in advance, each with a recommended answer and a one-line reason.
+- **Permission request:** the message that lists the commands the unattended part runs outside the permission
+  allowlist and asks the user to allow them before it starts ("Permissions" under "Doing the work").
 - **Filing bar:** the two-part test a finding must pass to be recorded ("The filing bar").
 - **Known-gap comment:** a one-line comment beside code stating a gap in the present tense. It cites no issue or PR
   number because the repo's own issue-numbers lint fails CI on one, and because the docs rules bar history from
@@ -54,7 +61,9 @@ what gets built; everything else the session settles itself and records as a `Ru
 - **Ledger sweep:** the controller's pass over the ledger before a plan-driven PR merges: in-scope deferred findings
   are fixed, known-gap-commented or dropped, and out-of-scope notes go through the filing bar.
 - **`Ruling:`:** one line recording a decision the session made where a sub-skill would have asked the user. Every
-  ruling goes in the PR body, since nothing else survives the worktree.
+  ruling goes in the PR body, since nothing else survives the worktree; a ruling made after the PR opened is added
+  with `gh pr edit <number> --body` while the ledger that holds it still exists ("PRs"). Calls made before approval
+  (`feature-flow.md` steps 3 and 4) are recorded in the spec instead; they are design decisions, not rulings.
 - **The marker:** the line `Backlog-Session: YYYY-MM-DD` that ends every PR body this skill writes. The user never
   writes it, so it is what tells this skill's PRs from the user's.
 
@@ -66,8 +75,10 @@ global git excludes, not this repo's `.gitignore`. So the state files, specs, pl
 copies never appear in `git status` and are never force-added. Step 2 creates the directory and the first two files
 if any is missing.
 
-- `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start. No
-  header or other lines, because the stall check (step 5) counts lines.
+- `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start; step 9
+  appends the word `done` when the session reaches its summary, so a line without it is a session that died before
+  it chose work and says nothing about the backlog. No header or other lines, because the stall check (step 5) counts
+  lines.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision, one entry each:
 
   ```markdown
@@ -79,10 +90,14 @@ if any is missing.
   - Found while: <issue or PR being worked>
   ```
 
-- `current-session.md`: written at step 6 once the chunk is approved and deleted at step 9. It holds the date, the
-  flow (bug or feature), the issues in order, the halt answers from the chunk OK, and one line per issue as it
-  reaches a PR and as it merges. A copy left by an earlier date is a dead session: step 2 deletes it, since step 3
-  recovers that session's work from git and GitHub.
+- `current-session.md`: the resume record, written as soon as the session has anything to resume: at step 6 once the
+  chunk is approved, or earlier when a "fix it now" in step 4 makes a worktree. It holds the date, the flow (bug or
+  feature), the issues in order, the halt answers from the chunk OK, the spec path once `feature-flow.md` step 2
+  writes it, `spec approved` plus the confirmed commands after `feature-flow.md` step 5, each issue's plan path,
+  every banner halt with its answer ("Banners"), and one line per issue as it reaches a PR, as its PR merges, and as
+  its worktree is removed. Step 2 reads a copy of any date as the point to resume from, step 3 reconciles it against
+  git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
+  answers and spec paths survive only in this file and under `docs/superpowers/`.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`; the
@@ -94,22 +109,25 @@ state files are written there and nowhere else.
    after `git switch main` (the user's branch stays as it was, checked out nowhere), `git fetch --prune origin` and
    `git pull --ff-only` succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any of these
    fails, stop and tell the user (blocked banner) before doing anything else. The same holds for every later `gh`
-   call this skill makes: if one fails, stop with the blocked banner, and never log a count or choose work from a
-   partial or guessed result.
-2. **Log.** Create the state files if any is missing, and delete a `current-session.md` from an earlier date. Append
-   today's line to `session-log.md`, with the count from `gh issue list --state open --limit 1000 --json number --jq
-   length`. If today's line already exists (a session restarted), keep it and add none.
-3. **Unfinished work.** Normally there is none: `git worktree prune`, then `git worktree list` shows only the main
-   checkout, `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
-   Otherwise follow `leftovers.md`, which sorts what is there into this skill's unfinished work (finished before
-   anything new is chosen), merged branches to delete, and the user's own work, which is left alone.
+   call this skill makes: if one fails, retry it once after a minute (a long run meets transient network errors);
+   if it fails again, stop with the blocked banner, and never log a count or choose work from a partial or guessed
+   result.
+2. **Log.** Create the state files if any is missing. If `current-session.md` exists, from any date, read it: it is
+   the resume record step 3 reconciles, and only step 9 deletes it. Append today's line to `session-log.md`, with
+   the count from `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already
+   exists (a session restarted), keep it and add none.
+3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, and after `git worktree prune`,
+   `git worktree list` shows only the main checkout, `gh pr list --author @me --state open` is empty, and
+   `git branch` shows `main` alone. Then go to step 4. Otherwise follow `leftovers.md`, which sorts what is there
+   into this skill's unfinished work (finished before anything new is chosen), merged branches to delete, and the
+   user's own work, which is left alone.
 4. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
    This runs after step 3 so that a "fix it now" decision does not start new work while a leftover is unfinished.
-5. **Stall check.** Compare today's line with the one three lines above it (today's is line N; the line at N-3 is
-   three logged sessions earlier, however many calendar days apart). If that line exists and today's count is not
-   lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
+5. **Stall check.** Compare today's line with the third line above it ending in `done` (three finished sessions
+   earlier, however many calendar days apart; lines without `done` are skipped). If that line exists and today's count
+   is not lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it. Then write
-   `current-session.md`.
+   `current-session.md`, or add the chunk to the one a step 4 fix started.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** One message that names: what merged and which issues it closed; any merged change that alters an
@@ -117,9 +135,11 @@ state files are written there and nowhere else.
    worktrees step 3 deleted; a refused `git branch --delete` or `git worktree remove` left in place; a local `main`
    left behind because its pull was refused, with the note that the next run is blocked until the user reconciles it;
    a CI rerun and why; a piece skipped because the user closed its issue; an issue the brainstorm added to or dropped
-   from the chunk; a copied-rule conflict settled by satisfying the rule (`feature-flow.md` step 5); and a sub-skill
-   pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`). Then
-   delete `current-session.md`.
+   from the chunk; a copied-rule conflict settled by satisfying the rule (`feature-flow.md` step 5); a sub-skill
+   pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`); every chunk
+   issue that did not merge and why (a halt, a skipped piece, an issue the user closed); and every issue the user's
+   decision opened or closed this session (the walkthrough, `bug-flow.md` step 3, `triage.md`). Then append `done`
+   to today's line in `session-log.md` and delete `current-session.md`.
 
 ## Choosing the chunk
 
@@ -141,18 +161,19 @@ whatever other labels the issues carry.
   shared helper designed so the rest can reuse it.
 - **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments`. A decision the
   user left in a comment changes the proposal, and the list query returns bodies only.
+- **Earlier pieces:** for each issue in the proposed chunk, also run
+  `gh pr list --state merged --search "Part of #<number> in:body" --json number,title`. A merged piece means an
+  earlier session built part of this family or umbrella from a spec under `docs/superpowers/specs/` that names the
+  issue: name that spec in the proposal, and `feature-flow.md` step 1 extends it instead of starting over.
 
 The proposal is one message, ending with the question banner, that names:
 
 - the issues, why they belong together, and why they come first by the three ordering factors;
 - the runner-up chunk and why it lost, so the user can swap with one word;
 - the user's own work step 3 saw and left alone, or "none";
-- for a bug chunk, every likely halt question for the unattended part, each with a recommended answer and a one-line
-  reason (the global "Unattended Execution" rule), and the commands the flow will run that may prompt for
-  permission: `git worktree add`, `git worktree remove`, `git branch --delete`, `git pull --ff-only`, `git rebase`,
-  `git push --force-with-lease`, `rm -rf` of a plan workspace. The OK on the chunk answers the questions and asks the
-  user to confirm the commands are allowed, since a prompt mid-run stalls the unattended part (the global "Long
-  Multi-Step Tasks" rule). A feature chunk asks both in `feature-flow.md` step 5 instead;
+- for a bug chunk, every likely halt question for the unattended part ("Terms") and the permission request
+  ("Permissions" below). The OK on the chunk answers the questions; the permission request needs its own answer. A
+  feature chunk asks both in `feature-flow.md` step 5 instead;
 - an issue whose own text asks the session to do something this skill forbids (open further issues, change another
   repo, cut a release), with the question it raises, so the user settles it with the chunk. An issue that describes
   a product which does such things, such as a workflow that opens issues, raises no question;
@@ -169,7 +190,22 @@ piece's code.
 
 - **Branches:** `<type>/<N>-<description>`, where N is the issue number, so a branch or worktree can be tied to its
   issue without a PR. Related bugs sharing one PR use the first issue in chunk order. An umbrella's pieces use the
-  umbrella's number with their own descriptions. The worktree directory is `.claude/worktrees/<N-description>`.
+  umbrella's number with their own descriptions. The worktree directory is `.claude/worktrees/<N-description>`. A
+  fix with no issue (a "fix it now" from `findings-walkthrough.md`) has no N: its branch is `fix/finding-<slug>` and
+  its worktree `.claude/worktrees/finding-<slug>`, with the slug taken from the finding's symptom line, so
+  `leftovers.md` can tell it apart from the user's branches.
+- **Permissions:** the unattended part runs commands outside the user's permission allowlist, and a prompt mid-run
+  stalls it until the user comes back (the global "Long Multi-Step Tasks" rule). Saying "allowed" in chat does not
+  stop the harness from prompting; only an allow rule or a session run with permissions bypassed does. So the
+  permission request ("Terms") lists the commands the flow will run that the allowlists in
+  `$CLAUDE_CONFIG_DIR/settings.json` and the main checkout's `.claude/settings*.json` do not cover, and asks the
+  user to add them to `.claude/settings.local.json` (a local file, ignored like the rest of "State") or to restart
+  with permissions bypassed before the unattended part starts. Check the allowlists rather than assuming; the
+  candidates are `cp` (the instruction-file copy on every worktree entry), `./.ci/in-devshell` (baseline tests and
+  lint checks), `git worktree add`, `git worktree remove`, `git worktree prune`, `git branch --delete`,
+  `git pull --ff-only`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
+  needs beyond the devShell's. A deferral ("do whatever you think") answers no permission question; a follow-up
+  message carrying only this request is allowed and is not a second question round.
 - **Worktrees:** every branch is a worktree.
   - Create from the main checkout with
     `git worktree add --no-track -b <type/N-description> .claude/worktrees/<N-description> origin/main`. Without
@@ -196,6 +232,8 @@ piece's code.
   stays findable. The body uses only `Closes #N` or `Part of #N`, never another closing keyword, because
   `leftovers.md` matches exactly those two strings to tie a PR to its issue. It carries every `Ruling:` the work
   made (from the ledger for plan-driven work, from the session's own calls otherwise), and ends with the marker.
+  Since the PR opens early, rulings made after that are added with `gh pr edit <number> --body`: at the ledger
+  sweep for plan-driven work, before the sub-skill deletes the ledger, and before the merge for other work.
 - **PR title:** `type: subject`, at most 65 characters. The merge commit's header is the title followed by the PR
   number in parentheses, and `ci.yml` runs commitlint over every push to `main`, so a longer or unconventional title
   turns `main` red after a green merge.
@@ -203,8 +241,9 @@ piece's code.
   - Work done through superpowers:subagent-driven-development or superpowers:executing-plans is reviewed by their
     own loops, which run as those skills define them; no extra PR review follows. Before the PR merges, and before
     the sub-skill deletes its workspace, the controller runs the ledger sweep: every in-scope finding the ledger
-    deferred or parked is handled as "Findings about the change itself" says, and every out-of-scope note is judged
-    by the filing bar, the ones that pass moving to `pending-findings.md`. For plan-driven work this sweep is the
+    deferred or parked is handled as "Findings about the change itself" says, every out-of-scope note is judged
+    by the filing bar, the ones that pass moving to `pending-findings.md`, and the PR body is updated with the
+    rulings the ledger holds. For plan-driven work this sweep is the
     only time out-of-scope findings are written; a finding a subagent reports mid-plan goes in the ledger, not
     straight to the file, so nothing is recorded twice.
   - All other work gets superpowers:requesting-code-review before merge, with the base at
@@ -217,7 +256,9 @@ piece's code.
     way it was built, since no record of an earlier review survives a session.
 - **Findings about the change itself** (a hole in the session's own fix, a gap in its own new test, a finding a plan
   sub-skill parked or deferred) are fixed in the branch, given a known-gap comment, or dropped. They never become an
-  issue or a pending finding, even when they pass the filing bar. Anything else a review turns up, such as a bug in
+  issue or a pending finding. The filing bar does not apply to them: like design findings in `feature-flow.md`
+  step 4, they are judged on whether the change is sound, so a hole in the session's own fix may be fixed even when
+  only an unlikely input opens it. Anything else a review turns up, such as a bug in
   nearby code the change did not touch, is an ordinary finding: judge it by the filing bar and the out-of-scope
   rules. Every other place in this skill that says "fixed, known-gap-commented or dropped" means this item.
 - **Subagents:** every subagent prompt that implements or reviews tells the subagent to return every finding to the
@@ -238,7 +279,8 @@ A finding counts only if both hold:
 A finding that fails the bar is never fixed: a guard or test for an input nobody writes is the speculative work the
 spec review strikes. It gets a known-gap comment when the code is in a file the PR already changes, or is dropped. It
 is never reported, recorded or filed. (A finding that passes the bar may also end as a known-gap comment, but only
-by the user's choice in `findings-walkthrough.md`.)
+by the user's choice in `findings-walkthrough.md`.) The bar judges findings about other code; findings about the
+change itself and design findings are judged on soundness instead ("Findings about the change itself").
 
 ## Out-of-scope findings
 
@@ -246,8 +288,9 @@ A finding that passes the bar but lies outside the chunk:
 
 - **Same PR** when it is a bug, the fix is under about 20 changed lines plus its test, and the fix lands in files or a
   shared helper the PR already changes: its own `test:` commit, then its own `fix:` commit.
-- **Otherwise** append it to `pending-findings.md` the moment it is found (for plan-driven work, at the ledger sweep
-  in "Review"), and carry on.
+- **Otherwise** append it to `pending-findings.md` in the main checkout's `.claude/backlog/` (from inside a worktree,
+  resolve the main checkout as "State" says) the moment it is found (for plan-driven work, at the ledger sweep in
+  "Review"), and carry on.
 
 The session never opens an issue, PR comment or `TODO` for an out-of-scope finding. In this skill, "report them" in
 the global "Fixing Findings" rule means `pending-findings.md` and nothing else. The known-gap comment, and the global
@@ -256,10 +299,13 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 ## Merging
 
 Approval ("Terms") covers every push and merge in the chunk, so none waits for the user. The normal case: watch CI,
-confirm every check's bucket is `pass` or `skipping`, `gh pr merge <number> --merge`, pull `main` in the main
-checkout, exit and remove the worktree, delete the branch. `merging.md` gives the commands and handles the
+confirm every check's bucket is `pass` or `skipping`, `gh pr merge <number> --merge`, record the merge in
+`current-session.md` as soon as it is confirmed, pull `main` in the main checkout, exit and remove the worktree,
+delete the branch. Two traps at the watch: right after the PR opens, `gh pr checks` exits non-zero with "no checks
+reported" until the first check starts, which is a wait and not a failed call; and a cancelled check exits 0, so
+green is read from the buckets, never from the exit code. `merging.md` gives the commands and handles the
 exceptions: a check that fails, a coverage-ratchet failure, an infrastructure failure worth one rerun, a branch
-that fell behind `main`, a merge the ruleset refuses, and a pull or delete that is refused.
+that fell behind `main` or conflicts with it, a merge the ruleset refuses, and a pull or delete that is refused.
 
 A blocked-banner halt in `merging.md` stops the chunk at that issue. Tell the user what stopped it and what the
 session would do next; after the user's reply, go on with the issues that do not depend on the halted one, or stop,
@@ -268,8 +314,9 @@ as the user says. Record the halt in `current-session.md`.
 ## Ending early
 
 If the session ends before the chunk is done, the unfinished issues stay open and step 3 of the next session picks up
-their worktrees or PRs. Findings already judged are in `pending-findings.md`; findings a plan sub-skill parked may
-still be in the leftover worktree's ledger, which `leftovers.md` has the next session sweep on resume.
+their worktrees or PRs, with the approval, halt answers and spec path from `current-session.md` ("State"). Findings
+already judged are in `pending-findings.md`; findings a plan sub-skill parked may still be in the leftover
+worktree's ledger, which `leftovers.md` has the next session sweep before that PR merges.
 
 ## Never
 
@@ -292,3 +339,6 @@ still be in the leftover worktree's ledger, which `leftovers.md` has the next se
 | "`gh` says to merge with `--admin`" | Bypassing a rule is the user's call. Blocked banner. |
 | "The reviewer found another hole in my fix; that's a new issue" | Fix it in the branch, known-gap it, or drop it. |
 | "The push timed out, so it failed" | The pre-push gate takes minutes; run it in the background and read the result. |
+| "`gh pr checks` errored right after the PR opened" | "No checks reported" means none has started; wait, run again. |
+| "The leftover ledger has open tasks; sweep and merge" | Open tasks mean the plan resumes first, then the sweep. |
+| "The user said the commands are allowed, so no prompt" | Only an allow rule or bypass mode stops one; "Permissions". |
