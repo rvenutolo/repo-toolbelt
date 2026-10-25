@@ -19,7 +19,9 @@ For each finding:
 5. **Wait for the user's decision.** Ask with the question banner, one finding per question.
 6. **Carry it out**: open the issue, make the fix, or add the comment. The user's "fix it now" is the approval for
    that fix's branch, push and merge: it follows `bug-flow.md` (worktree, test, fix, review) and "Merging" in
-   `SKILL.md`. A fix made now has no issue to close; its PR body describes the finding instead of using a closing
-   keyword, and still ends with the marker. A known-gap comment also goes through a PR of its own, since `main` is
-   protected and nothing lands on it without one.
+   `SKILL.md`, after the permission request ("Permissions" in `SKILL.md`) if this session has not made it yet. A fix
+   made now has no issue: its branch is `fix/finding-<slug>` ("Branches" in `SKILL.md`), its PR body describes the
+   finding instead of using a closing keyword, and still ends with the marker. Write `current-session.md` as soon as
+   the worktree exists ("State" in `SKILL.md`); step 6 of the session adds the chunk to it later. A known-gap comment
+   also goes through a PR of its own, since `main` is protected and nothing lands on it without one.
 7. **Remove the entry** from `pending-findings.md` only after the decision is carried out.

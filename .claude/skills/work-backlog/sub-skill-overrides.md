@@ -58,8 +58,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   that norms say you ask about first (a merge, a push to a shared branch, a publish); and a plan so broken that every
   path forward is a guess": pushing the branch and merging its PR on green CI are approved ("Merging" in `SKILL.md`).
   An irreversible, destructive or security-sensitive step the plan did not name is a blocked-banner halt. A plan so
-  broken that every path is a guess is a question-banner halt, handled like a bug that fails the bar (`bug-flow.md`
-  step 3): explain, recommend, and the rest of the chunk goes on after the answer.
+  broken that every path is a guess is a question-banner halt in the shape of `bug-flow.md` step 3 (explain,
+  recommend, the rest of the chunk goes on after the answer) with options that fit: re-plan the issue, change the
+  spec, or drop the issue from the chunk.
 - **superpowers:subagent-driven-development**, deferred minors and parked findings left in the ledger for the user:
   the ledger sweep ("Review" in `SKILL.md`) handles them before the PR merges. The fix loops keep their own round
   counts; the two-round cap in `SKILL.md` is only for superpowers:requesting-code-review. "Never fix findings
@@ -76,7 +77,8 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, rulings reported to the user in
   the final message, and **superpowers:requesting-code-review**, "Declined to judge … The executor rules on each
   line": every ruling goes in the PR body ("PRs" in `SKILL.md`), for every PR, since the ledger is deleted with the
-  worktree and non-plan work has no ledger at all.
+  worktree and non-plan work has no ledger at all. The PR is open before most rulings exist, so the body is updated
+  with `gh pr edit <number> --body` at the ledger sweep, before the workspace is deleted.
 - **superpowers:subagent-driven-development**, an implementer's question ("Ask them now", "It's always OK to pause
   and clarify"): the controller answers it. A question whose answer changes what gets built is a question-banner halt
   to the user; any other is a `Ruling:`.
@@ -88,8 +90,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   the PR body. "Don't know how to test | … Ask your human partner": decide and record a `Ruling:`; the question
   banner only when the answer changes what gets built.
 - **superpowers:systematic-debugging**, Phase 4.5 "Discuss with your human partner before attempting more fixes"
-  (three failed fixes) and "Ask for help": a question-banner halt handled like a bug that fails the bar
-  (`bug-flow.md` step 3): explain what was tried, recommend, and the rest of the chunk goes on after the answer.
+  (three failed fixes) and "Ask for help": a question-banner halt in the shape of `bug-flow.md` step 3 (explain what
+  was tried, recommend, the rest of the chunk goes on after the answer) with options that fit: try a named
+  different approach, leave the issue open for a later session, or close it as not planned.
 - **superpowers:systematic-debugging**, a cause found to be "truly environmental, timing-dependent, or external"
   with "Implement appropriate handling (retry, timeout, error message); Add monitoring/logging": no handling is
   added on that finding alone. The bug is re-judged by the filing bar; one that fails it goes to the user as
