@@ -88,8 +88,10 @@ restores it into the checkout at the same paths.
 
 - **Ratchet.** `check-coverage-drop` compares the count of uncovered statements (Go) or lines (Cobertura) per unit, a Go
   package or a directory, against the committed baseline, `.coverage-baseline.txt` by default. Any rise fails, and a
-  fall passes. It skips uncovered code that a `coverage-exempt` marker with a reason covers (see Patch coverage). The
-  ratchet does not police markers: only `check-patch-coverage` reports a marker with no reason, one on no measured
+  fall passes. It skips uncovered code that a `coverage-exempt` marker with a reason covers (see Patch coverage), and
+  vendored files (under a `vendor` directory, or with `linguist-vendored` set or `true` in `.gitattributes`) are not
+  counted, even when a report measures them; `update-coverage-baseline` counts the same way. The ratchet does not police
+  markers: only `check-patch-coverage` reports a marker with no reason, one on no measured
   line, or a stale one, so a repo running only `check-coverage-drop` gets none of that. The trade is deliberate: a
   marker on a real but untested line passes the ratchet with no `Coverage-Drop:` trailer, and `check-patch-coverage`
   reports the marker as stale once a test covers the line.

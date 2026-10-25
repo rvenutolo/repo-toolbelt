@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -33,8 +34,9 @@ func (r Runner) newBaselineCmd() *cobra.Command {
 		Short: "Rewrite the coverage baseline from the current coverage reports",
 		Long: "Rewrite the coverage baseline from the current coverage reports.\n\n" +
 			"Reads the reports and the baseline path from the " + coverageDropLint + " section\n" +
-			"of " + config.FileName + ", counts the uncovered statements in each unit, and\n" +
-			"writes the baseline, recording falls and rises alike. A rise also needs a\n" +
+			"of " + config.FileName + ", counts the uncovered statements in each unit,\n" +
+			"leaving out vendored files as " + coverageDropLint + " does, and writes the\n" +
+			"baseline, recording falls and rises alike. A rise also needs a\n" +
 			"Coverage-Drop trailer on the commit. Run the tests first, so the reports\n" +
 			"are current.\n\n" +
 			"With --check, writes nothing: it compares the committed baseline (an absent\n" +
@@ -49,7 +51,7 @@ func (r Runner) newBaselineCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			written, err := r.updateBaseline(root, check, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			written, err := r.updateBaseline(cmd.Context(), root, check, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -68,7 +70,7 @@ func (r Runner) newBaselineCmd() *cobra.Command {
 
 // updateBaseline writes the baseline under root and returns its path. With
 // check set it writes nothing and fails when the committed baseline differs.
-func (r Runner) updateBaseline(root string, check bool, stdout, stderr io.Writer) (string, error) {
+func (r Runner) updateBaseline(ctx context.Context, root string, check bool, stdout, stderr io.Writer) (string, error) {
 	cfg, err := r.loadConfig(root, stdout)
 	if err != nil {
 		return "", err
@@ -102,6 +104,10 @@ func (r Runner) updateBaseline(root string, check bool, stdout, stderr io.Writer
 		return "", setupf("open repository root: %w", err)
 	}
 	defer dir.Close()
+	reports, err = coverage.WithoutVendored(ctx, root, reports)
+	if err != nil { // coverage-exempt: repoRoot has already run git in this checkout
+		return "", setupf("%w", err)
+	}
 	tally := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))
 	if check {
 		return section.Baseline, checkBaseline(dir, section.Baseline, tally, stdout)

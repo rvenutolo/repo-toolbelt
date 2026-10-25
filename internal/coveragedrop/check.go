@@ -23,7 +23,8 @@ import (
 
 // Check runs both checks. The tree check reads the reports the section names
 // and reports every unit whose uncovered count is above its baseline, a unit
-// missing from the baseline counting as 0. The history check, run only when
+// missing from the baseline counting as 0; vendored files are not counted, so
+// lc.Root must be a git checkout. The history check, run only when
 // lc.Range names commits, reports every non-merge commit in the range that
 // raises a baseline line without a Coverage-Drop trailer for that unit
 // giving a reason.
@@ -35,7 +36,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	if len(problems) > 0 {
 		return problems, nil
 	}
-	findings, err := checkTree(lc.Root, section)
+	findings, err := checkTree(ctx, lc.Root, section)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +50,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	return append(findings, history...), nil
 }
 
-func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error) {
+func checkTree(ctx context.Context, root string, section coverage.Section) ([]lintkit.Finding, error) {
 	reports, findings, err := coverage.ReadReports(root, section)
 	if err != nil || len(findings) > 0 {
 		return findings, err
@@ -59,6 +60,10 @@ func checkTree(root string, section coverage.Section) ([]lintkit.Finding, error)
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer dir.Close()
+	reports, err = coverage.WithoutVendored(ctx, root, reports)
+	if err != nil {
+		return nil, err
+	}
 	current := coverage.Tally(section.Reports, reports, coverage.SourceMarkers(dir))
 	baseline, err := readBaseline(dir, section.Baseline)
 	if err != nil {
