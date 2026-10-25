@@ -21,10 +21,11 @@ const (
 	exitCancelled = 130
 )
 
-const rootLong = `toolbelt runs the lints this image ships.
+const rootLong = `toolbelt runs the lints and formatters this image ships.
 
-Exit codes: 0 success, 1 findings, a config problem or a runtime error, 2 a
-usage or setup error or a lint that errored, 130 interrupted.`
+Exit codes: 0 success, 1 findings, a config problem, a runtime error or a file
+fmt --fail-on-change rewrote, 2 a usage or setup error or a lint or formatter
+that errored, 130 interrupted.`
 
 // usageError is the caller's mistake: a bad argument, flag or lint selection.
 type usageError struct{ err error }

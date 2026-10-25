@@ -58,7 +58,7 @@ func TestRun_usage(t *testing.T) {
 			if got.code != 0 || got.stderr != "" || !strings.Contains(got.stdout, "Usage:") {
 				t.Errorf("got %+v, want exit 0, usage on stdout only", got)
 			}
-			for _, sub := range []string{"plan", "list"} {
+			for _, sub := range []string{"plan", "list", "fmt"} {
 				if !strings.Contains(got.stdout, sub) {
 					t.Errorf("usage does not mention %q:\n%s", sub, got.stdout)
 				}
