@@ -92,3 +92,62 @@ func TestParse_errors(t *testing.T) {
 		})
 	}
 }
+
+var knownFormatters = []manifest.Formatter{
+	{Name: "go", Language: "bash", Speed: "quick", Description: "formats go", Include: []string{"*.go"}},
+	{Name: "shell", Language: "bash", Speed: "quick", Description: "formats shell", Include: []string{"*.sh"}},
+}
+
+func TestParseFormatters_selects(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+		env  string
+		want []manifest.Formatter
+	}{
+		{name: "arguments keep the given order", args: []string{"shell", "go"}, want: []manifest.Formatter{knownFormatters[1], knownFormatters[0]}},
+		{name: "environment lines with comments", env: "# note\n  go # why\n\nshell\r\n", want: knownFormatters},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := selection.ParseFormatters(tt.args, tt.env, knownFormatters)
+			if err != nil {
+				t.Fatalf("ParseFormatters: %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("formatters (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestParseFormatters_errors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+		env  string
+		want string
+	}{
+		{name: "nothing named", want: "no formatter named"},
+		{name: "only comments and blanks", env: "# x\n\n", want: "no formatter named"},
+		{name: "both sources", args: []string{"go"}, env: "shell", want: "formatters given both as arguments and in TOOLBELT_FORMATTERS"},
+		{name: "unknown argument", args: []string{"x"}, want: `unknown formatter "x"`},
+		{name: "a lint name is not a formatter name", args: []string{"check-go-formatted"}, want: `unknown formatter "check-go-formatted"`},
+		{name: "repeated in environment", env: "go\ngo", want: `formatter "go" named twice`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := selection.ParseFormatters(tt.args, tt.env, knownFormatters)
+			if err == nil {
+				t.Fatalf("ParseFormatters = %v, want error", got)
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error = %q, want %q", err, tt.want)
+			}
+		})
+	}
+}

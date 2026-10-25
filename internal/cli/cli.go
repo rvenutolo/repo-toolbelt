@@ -21,10 +21,11 @@ const (
 	exitCancelled = 130
 )
 
-const rootLong = `toolbelt runs the lints this image ships.
+const rootLong = `toolbelt runs the lints and formatters this image ships.
 
-Exit codes: 0 success, 1 findings, a config problem or a runtime error, 2 a
-usage or setup error or a lint that errored, 130 interrupted.`
+Exit codes: 0 success, 1 findings, a config problem, a runtime error or a file
+fmt --fail-on-change rewrote, 2 a usage or setup error or a lint or formatter
+that errored, 130 interrupted.`
 
 // usageError is the caller's mistake: a bad argument, flag or lint selection.
 type usageError struct{ err error }
@@ -73,8 +74,12 @@ func ExitCode(err error) int {
 
 // Runner runs toolbelt commands against a fixed set of lints.
 type Runner struct {
-	// Lints is the manifest of lints the commands operate on.
+	// Lints is the manifest of lints the commands operate on, the formatters'
+	// derived lints included.
 	Lints []manifest.Lint
+	// Formatters is the manifest of formatters. Each derived lint in Lints
+	// names one of them.
+	Formatters []manifest.Formatter
 	// Version is the string --version prints.
 	Version string
 	// Dir is the directory run starts in; empty means the process's working
@@ -87,7 +92,8 @@ type Runner struct {
 // or "dev" when the build recorded none. Help and version requests return nil.
 // A non-nil error is for the caller to print and pass to ExitCode.
 func Run(ctx context.Context, version string, args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return Runner{Lints: manifest.Load(), Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
+	lints, formatters := manifest.LoadAll()
+	return Runner{Lints: lints, Formatters: formatters, Version: cmp.Or(version, buildVersion())}.Run(ctx, args, getenv, stdin, stdout, stderr)
 }
 
 // Run executes args and reads the environment only through getenv and writes

@@ -2,7 +2,8 @@
 
 # build-dist builds the repo containing its working directory, so most tests
 # run it from the real repo and the rest from a fixture repo; a `go` stub on PATH stands in for the
-# compiler: it creates the file named by -o and records its arguments.
+# compiler: it creates the file named by -o and records its arguments. A
+# fixture repo's formatters.toml is empty unless the test is about formatters.
 
 function setup() {
   load test_helper/common
@@ -44,6 +45,23 @@ STUB
   done < <(yq --input-format toml --output-format tsv '.lint[].name' "${REPO_DIR}/lints.toml")
 }
 
+@test 'the formatters dir holds exactly the formatters.toml entries' {
+  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  assert_success
+  assert [ -d "${OUT}/formatters" ]
+  local -r want_file="${BATS_TEST_TMPDIR}/want"
+  local -r got_file="${BATS_TEST_TMPDIR}/got"
+  yq --input-format toml --output-format tsv '.formatter[].name' "${REPO_DIR}/formatters.toml" \
+    | sort > "${want_file}"
+  find "${OUT}/formatters" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort > "${got_file}"
+  run diff "${want_file}" "${got_file}"
+  assert_success
+  local name
+  while IFS= read -r name; do
+    assert [ -x "${OUT}/formatters/${name}/${name}" ]
+  done < "${want_file}"
+}
+
 @test 'accepts an existing empty out dir' {
   mkdir "${OUT}"
   run "${REPO_DIR}/.ci/build-dist" "${OUT}"
@@ -73,6 +91,7 @@ STUB
   make_repo
   mkdir --parents lib sub
   printf '[[lint]]\nname = "check-x"\nlanguage = "go"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
+  touch formatters.toml
   cd sub
   run "${REPO_DIR}/.ci/build-dist" rel-out
   assert_success
@@ -85,6 +104,7 @@ STUB
   make_repo
   mkdir lib
   printf '[[lint]]\nname = "check-x"\nlanguage = "rust"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
+  touch formatters.toml
   run "${REPO_DIR}/.ci/build-dist" "${OUT}"
   assert_failure 1
   assert_output --partial 'lint check-x has unsupported language rust'
@@ -94,6 +114,7 @@ STUB
   make_repo
   mkdir lib
   printf '[[lint]]\nname = "check-x"\nlanguage = "go"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
+  touch formatters.toml
   cat > "${BATS_TEST_TMPDIR}/bin/go" << 'STUB'
 #!/usr/bin/env bash
 printf 'go %s\n' "$*" >> "${CALLS}"
@@ -104,4 +125,32 @@ STUB
   assert_output --partial 'ERROR: line'
   run grep --count '^go ' "${CALLS}"
   assert_output 1
+}
+
+@test 'builds a bash formatter and a Go formatter at formatters/<name>/<name>' {
+  make_repo
+  mkdir --parents lib formatters/shell
+  touch lints.toml
+  printf '[[formatter]]\nname = "shell"\nlanguage = "bash"\n[[formatter]]\nname = "go"\nlanguage = "go"\n' \
+    > formatters.toml
+  printf '#!/usr/bin/env bash\n' > formatters/shell/shell
+  chmod +x formatters/shell/shell
+  touch formatters/shell/helper.bash
+  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  assert_success
+  assert [ -x "${OUT}/formatters/shell/shell" ]
+  assert [ -f "${OUT}/formatters/shell/helper.bash" ]
+  assert [ -x "${OUT}/formatters/go/go" ]
+  run grep --count "^go build -o ${OUT}/formatters/go/go ./cmd/fmt-go\$" "${CALLS}"
+  assert_output 1
+}
+
+@test 'a formatter in an unsupported language fails with its name' {
+  make_repo
+  mkdir lib
+  touch lints.toml
+  printf '[[formatter]]\nname = "rust"\nlanguage = "rust"\n' > formatters.toml
+  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  assert_failure 1
+  assert_output --partial 'formatter rust has unsupported language rust'
 }

@@ -4,16 +4,26 @@
 #              the pre-commit when any reports a problem. Turn the hooks on with
 #              `git config core.hooksPath .githooks`. Delete the lints that do
 #              not fit the repo; each runs in the one container, concurrently.
+#              When FORMATTERS lists a language, its formatter first runs in a
+#              container of its own that may rewrite files.
 #
 #              The image here and in the CI workflow must be the same
 #              reference; Renovate updates every copy in one PR.
 #
 #              A repo that already has a pre-commit hook keeps it and adds these
 #              lines to it instead (no `exec`, so the rest of the hook still
-#              runs, and under `set -e` a failure fails the hook):
+#              runs, and under `set -e` a failure fails the hook). The first
+#              `docker run` is only for a repo that rewrites with formatters
+#              (see FORMATTERS below); it mounts the checkout read-write:
 #
 #                root="$(git rev-parse --show-toplevel)"
 #                common="$(git rev-parse --path-format=absolute --git-common-dir)"
+#                docker run --rm --network=none \
+#                  --user "$(id -u):$(id -g)" \
+#                  --volume "${root}:${root}" --volume "${common}:${common}:ro" \
+#                  --workdir "${root}" \
+#                  ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+#                  fmt --fail-on-change shell go
 #                docker run --rm --interactive --network=none \
 #                  --user "$(id -u):$(id -g)" \
 #                  --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
@@ -22,14 +32,21 @@
 #                  run --hook pre-commit \
 #                  check-workflow-hermetic check-issue-numbers
 # @noargs
-# @exitcode 0 every lint passed.
-# @exitcode 1 a lint reported a problem, or docker is not on PATH.
+# @exitcode 0 every formatter and lint passed.
+# @exitcode 1 a formatter or lint reported a problem, a formatter rewrote a
+#             file, or docker is not on PATH.
 # @exitcode 2 a usage or setup error in the runner.
 
 set -Eeuo pipefail
 IFS=$'\n\t'
 
 readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+# To have the hook rewrite files instead of only failing, uncomment the
+# languages below and delete their check-<lang>-formatted lines from LINTS.
+# The hook then stops whenever it rewrote a file, so review and stage the
+# result. With every lint deleted from LINTS, the hook only formats.
+readonly FORMATTERS=(
+)
 readonly LINTS=(
   check-workflow-hermetic
   check-issue-numbers
@@ -44,6 +61,21 @@ if ! command -v docker > '/dev/null' 2>&1; then
 fi
 root="$(git rev-parse --show-toplevel)"
 common="$(git rev-parse --path-format=absolute --git-common-dir)"
+if ((${#FORMATTERS[@]} > 0)); then
+  # fmt writes to the checkout, so the root mount is read-write. Under
+  # `set -e` a non-zero exit (a rewrite, a finding or an error) ends the hook
+  # with that status before the lints run.
+  docker run --rm --network=none \
+    --user "$(id -u):$(id -g)" \
+    --volume "${root}:${root}" --volume "${common}:${common}:ro" \
+    --workdir "${root}" \
+    "${IMAGE}" fmt --fail-on-change "${FORMATTERS[@]}"
+fi
+# A repo may use the hook for formatting alone, and the runner rejects a run
+# that names no lint.
+if ((${#LINTS[@]} == 0)); then
+  exit 0
+fi
 exec docker run --rm --interactive --network=none \
   --user "$(id -u):$(id -g)" \
   --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \

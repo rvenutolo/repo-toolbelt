@@ -23,7 +23,7 @@
 #                  check-workflow-hermetic check-issue-numbers
 # @arg $1 remote the remote being pushed to, supplied by git
 # @arg $2 url the remote's URL, supplied by git
-# @exitcode 0 every lint passed.
+# @exitcode 0 every lint passed, or LINTS is empty.
 # @exitcode 1 a lint reported a problem, or docker is not on PATH.
 # @exitcode 2 a usage or setup error in the runner.
 
@@ -40,6 +40,11 @@ readonly LINTS=(
   check-toolbelt-pins
 )
 
+# The runner rejects a run that names no lint, so with every lint deleted
+# there is nothing to start.
+if ((${#LINTS[@]} == 0)); then
+  exit 0
+fi
 if ! command -v docker > '/dev/null' 2>&1; then
   printf 'pre-push: docker is not on PATH; the repo-toolbelt lints run in Docker\n' >&2
   exit 1

@@ -1,6 +1,8 @@
-# The image: the runner as entrypoint, every lint, and the tools the lints
-# call, with no base distro. Streamed rather than written to the store, so a
-# build costs no image-sized store path; `./result | docker load` loads it.
+# The image: the runner as entrypoint, every lint and formatter, and the
+# tools they call, with no base distro. A bash formatter's own tool arrives
+# through its wrapper's closure in dist. Streamed rather than written to the
+# store, so a build costs no image-sized store path; `./result | docker load`
+# loads it.
 {
   dockerTools,
   dist,
@@ -45,6 +47,7 @@ dockerTools.streamLayeredImage {
       "HOME=/tmp"
       "PATH=/bin"
       "TOOLBELT_LINTS_DIR=/opt/toolbelt/lints"
+      "TOOLBELT_FORMATTERS_DIR=/opt/toolbelt/formatters"
     ];
   };
 }

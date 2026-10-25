@@ -3,6 +3,7 @@ package runner_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -434,5 +435,130 @@ echo out`)
 	}
 	if pid := readPID(t, pidFile); !waitGone(t, pid) {
 		t.Errorf("child %d outlived the run", pid)
+	}
+}
+
+func formatterLint(name, formatter string) manifest.Lint {
+	return manifest.Lint{Name: name, Language: "bash", Speed: "quick", Description: name, Formatter: formatter}
+}
+
+func TestRun_formatterExecutable(t *testing.T) {
+	t.Parallel()
+	lintsDir, formattersDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
+	writeLint(t, formattersDir, "shell", `
+printf 'mode=%s\n' "${TOOLBELT_MODE-unset}"
+printf 'files=%s\n' "$(od --address-radix=n --format=x1 --output-duplicates < "${TOOLBELT_FILES}" | tr --delete ' \n')"
+printf 'section=%s\n' "$(cat "${TOOLBELT_SECTION}")"`)
+	writeLint(t, formattersDir, "empty", `printf 'size=%s\n' "$(wc --bytes < "${TOOLBELT_FILES}")"`)
+	writeLint(t, formattersDir, "nofiles", `printf 'size=%s\n' "$(wc --bytes < "${TOOLBELT_FILES}")"`)
+	writeLint(t, lintsDir, "ordinary", `printf 'mode=%s files=%s\n' "${TOOLBELT_MODE-unset}" "${TOOLBELT_FILES-unset}"`)
+	// A lint executable named like the derived lint must not be the one that runs.
+	writeLint(t, lintsDir, "check-shell-formatted", "echo WRONG_EXECUTABLE")
+	lints := []manifest.Lint{
+		formatterLint("check-shell-formatted", "shell"),
+		formatterLint("check-empty-formatted", "empty"),
+		formatterLint("check-nofiles-formatted", "nofiles"),
+		lintsNamed("ordinary")[0],
+	}
+	opts := runner.Options{
+		LintsDir:      lintsDir,
+		FormattersDir: formattersDir,
+		RepoRoot:      repo,
+		Sections:      map[string][]byte{"check-shell-formatted": []byte(`{"exclude":["x"]}`)},
+		Files: map[string][]string{
+			"check-shell-formatted": {"a b", "c\nd"},
+			"check-empty-formatted": {},
+			// An ordinary lint's entry is ignored.
+			"ordinary": {"ignored"},
+		},
+		// Neither reaches the ordinary lint, and the formatter gets the
+		// runner's own values.
+		Env: []string{"TOOLBELT_MODE=write", "TOOLBELT_FILES=/from-options"},
+	}
+
+	results := runner.Run(t.Context(), lints, opts)
+
+	// The formatter prints its file list as hex, so every byte is compared.
+	wantFiles := hex.EncodeToString([]byte("a b\x00c\nd\x00"))
+	want := []runner.Result{
+		{Lint: "check-shell-formatted", Exit: 0, Output: []byte("mode=check\nfiles=" + wantFiles + "\nsection={\"exclude\":[\"x\"]}\n")},
+		{Lint: "check-empty-formatted", Exit: 0, Output: []byte("size=0\n")},
+		{Lint: "check-nofiles-formatted", Exit: 0, Output: []byte("size=0\n")},
+		{Lint: "ordinary", Exit: 0, Output: []byte("mode=unset files=unset\n")},
+	}
+	if diff := cmp.Diff(want, results, cmp.Comparer(bytes.Equal)); diff != "" {
+		t.Errorf("results (-want +got):\n%s", diff)
+	}
+}
+
+func TestRun_formatterModeReachesFormatter(t *testing.T) {
+	t.Parallel()
+	formattersDir := t.TempDir()
+	writeLint(t, formattersDir, "shell", `printf 'mode=%s\n' "${TOOLBELT_MODE}"`)
+
+	results := runner.Run(t.Context(), []manifest.Lint{formatterLint("check-shell-formatted", "shell")},
+		runner.Options{FormattersDir: formattersDir, RepoRoot: t.TempDir(), Mode: "write"})
+
+	want := []runner.Result{{Lint: "check-shell-formatted", Exit: 0, Output: []byte("mode=write\n")}}
+	if diff := cmp.Diff(want, results, cmp.Comparer(bytes.Equal)); diff != "" {
+		t.Errorf("results (-want +got):\n%s", diff)
+	}
+}
+
+func TestRun_inheritedFormatterVariables(t *testing.T) {
+	// Not parallel: t.Setenv.
+	t.Setenv("TOOLBELT_MODE", "write")
+	t.Setenv("TOOLBELT_FILES", "/inherited")
+	lintsDir, formattersDir := t.TempDir(), t.TempDir()
+	writeLint(t, lintsDir, "ordinary", `printf 'mode=%s files=%s\n' "${TOOLBELT_MODE-unset}" "${TOOLBELT_FILES-unset}"`)
+	writeLint(t, formattersDir, "shell", `printf 'mode=%s inherited-files=%s\n' "${TOOLBELT_MODE}" "$([[ "${TOOLBELT_FILES}" == /inherited ]] && echo yes || echo no)"`)
+	lints := []manifest.Lint{lintsNamed("ordinary")[0], formatterLint("check-shell-formatted", "shell")}
+
+	results := runner.Run(t.Context(), lints,
+		runner.Options{LintsDir: lintsDir, FormattersDir: formattersDir, RepoRoot: t.TempDir()})
+
+	want := []runner.Result{
+		{Lint: "ordinary", Exit: 0, Output: []byte("mode=unset files=unset\n")},
+		{Lint: "check-shell-formatted", Exit: 0, Output: []byte("mode=check inherited-files=no\n")},
+	}
+	if diff := cmp.Diff(want, results, cmp.Comparer(bytes.Equal)); diff != "" {
+		t.Errorf("results (-want +got):\n%s", diff)
+	}
+}
+
+func TestRun_missingFormatterExecutable(t *testing.T) {
+	t.Parallel()
+	lintsDir, formattersDir := t.TempDir(), t.TempDir()
+	// A lint of the formatter's name is not what runs.
+	writeLint(t, lintsDir, "shell", "echo WRONG_EXECUTABLE")
+
+	results := runner.Run(t.Context(), []manifest.Lint{formatterLint("check-shell-formatted", "shell")},
+		runner.Options{LintsDir: lintsDir, FormattersDir: formattersDir, RepoRoot: t.TempDir()})
+
+	if len(results) != 1 || results[0].Exit != 2 || len(results[0].Output) != 0 {
+		t.Fatalf("got %+v, want one errored result that never ran", results)
+	}
+	wantPath := filepath.Join(formattersDir, "shell", "shell")
+	if got := string(results[0].Stderr); !strings.Contains(got, wantPath) {
+		t.Errorf("Stderr = %q, want it to name %q", got, wantPath)
+	}
+}
+
+func TestRun_fileListWriteFailure(t *testing.T) {
+	t.Parallel()
+	formattersDir := t.TempDir()
+	writeLint(t, formattersDir, "shell", "echo ran")
+	// <name>.json fits the longest file name the file system allows and
+	// <name>.files, one byte longer, does not.
+	long := strings.Repeat("a", 250)
+
+	results := runner.Run(t.Context(), []manifest.Lint{formatterLint(long, "shell")},
+		runner.Options{FormattersDir: formattersDir, RepoRoot: t.TempDir()})
+
+	if len(results) != 1 || results[0].Exit != 2 || len(results[0].Output) != 0 {
+		t.Fatalf("got %+v, want one errored result that never ran", results)
+	}
+	if got := string(results[0].Stderr); !strings.HasPrefix(got, "toolbelt: cannot write file list: ") {
+		t.Errorf("Stderr = %q, want the reason", got)
 	}
 }

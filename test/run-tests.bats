@@ -68,6 +68,20 @@ ${FIXTURE_REPO}/.ci"
   assert_output --partial "--include-path=${FIXTURE_REPO}/lib,${FIXTURE_REPO}/.ci,"
 }
 
+@test 'measures each formatter directory, which kcov does not reach by recursion' {
+  mkdir --parents formatters/go formatters/shell
+  touch formatters/not-a-dir
+  run --separate-stderr "${REPO_DIR}/run-tests"
+  assert_success
+  local -r include="--include-path=${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,${FIXTURE_REPO}/.ci,\
+${FIXTURE_REPO}/formatters/go,${FIXTURE_REPO}/formatters/shell,${FIXTURE_REPO}/run-all-checks,${FIXTURE_REPO}/run-tests"
+  local -r parse="--bash-parse-files-in-dir=${FIXTURE_REPO},${FIXTURE_REPO}/lib,${FIXTURE_REPO}/lints,\
+${FIXTURE_REPO}/.ci,${FIXTURE_REPO}/formatters/go,${FIXTURE_REPO}/formatters/shell "
+  assert_output --partial "${include} "
+  assert_output --partial "${parse}"
+  refute_output --partial 'not-a-dir'
+}
+
 @test 'checks the kcov report' {
   run --separate-stderr "${REPO_DIR}/run-tests"
   assert_success

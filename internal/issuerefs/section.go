@@ -3,12 +3,12 @@ package issuerefs
 import (
 	"encoding/json"
 	"fmt"
-	"path"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
+	"github.com/rvenutolo/repo-toolbelt/internal/pathglob"
 )
 
 // configFile is the consumer config file, named in stale-exemption findings.
@@ -22,10 +22,9 @@ type Exemptions struct {
 }
 
 type exemption struct {
-	pattern []string // the path glob, split on `/`
-	path    string
-	match   *regexp.Regexp // nil exempts the whole file
-	used    bool
+	path  string         // the path glob
+	match *regexp.Regexp // nil exempts the whole file
+	used  bool
 }
 
 // ParseSection validates the lint's config section, given as JSON, and returns
@@ -82,11 +81,10 @@ func parseEntry(index int, item any) (*exemption, []lintkit.Finding) {
 		problems = append(problems, lintkit.SectionError(where, problem))
 	case pathSpellingProblem(pattern) != "":
 		problems = append(problems, lintkit.SectionError(where, pathSpellingProblem(pattern)))
-	case !validGlob(pattern):
+	case !pathglob.Valid(pattern):
 		problems = append(problems, lintkit.SectionError(where, fmt.Sprintf("path '%s' is not a valid glob", pattern)))
 	default:
 		entry.path = pattern
-		entry.pattern = strings.Split(pattern, "/")
 	}
 
 	if value, present := fields["match"]; present {
@@ -165,24 +163,13 @@ func pathSpellingProblem(pattern string) string {
 	}
 }
 
-// validGlob reports whether every segment of pattern is a valid path.Match
-// pattern; `**` is always valid.
-func validGlob(pattern string) bool {
-	for segment := range strings.SplitSeq(pattern, "/") {
-		if _, err := path.Match(segment, ""); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
 // Exempts reports whether a reference on line, in the file at the
 // repo-relative path, is exempt, and marks every exemption that covers it as
 // used.
 func (e *Exemptions) Exempts(file, line string) bool {
 	exempt := false
 	for _, entry := range e.entries {
-		if !globMatch(entry.pattern, strings.Split(file, "/")) {
+		if !pathglob.Match(entry.path, file) {
 			continue
 		}
 		if entry.match != nil && !entry.match.MatchString(line) {
@@ -208,29 +195,4 @@ func (e *Exemptions) Stale() []lintkit.Finding {
 		stale = append(stale, lintkit.Finding{Path: configFile, Message: "stale exemption: " + name + " suppresses nothing"})
 	}
 	return stale
-}
-
-// globMatch matches a git pathspec glob, split into segments, against a path:
-// `*`, `?` and classes stay within a segment, and a `**` segment matches any
-// number of segments, none included. As with a git pathspec, a pattern that
-// matches a leading directory of the path matches every file under it.
-func globMatch(pattern, segments []string) bool {
-	if len(pattern) == 0 {
-		return true
-	}
-	if pattern[0] == "**" {
-		for skip := range len(segments) + 1 {
-			if globMatch(pattern[1:], segments[skip:]) {
-				return true
-			}
-		}
-		return false
-	}
-	if len(segments) == 0 {
-		return false
-	}
-	if ok, _ := path.Match(pattern[0], segments[0]); !ok { //nolint:errcheck // the pattern was validated when the section was parsed
-		return false
-	}
-	return globMatch(pattern[1:], segments[1:])
 }

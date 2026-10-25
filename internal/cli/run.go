@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -27,8 +28,9 @@ const (
 	hookPrePush   = "pre-push"
 	hookCI        = "ci"
 
-	defaultLintsDir = "/opt/toolbelt/lints"
-	speedSlow       = "slow"
+	defaultLintsDir      = "/opt/toolbelt/lints"
+	defaultFormattersDir = "/opt/toolbelt/formatters"
+	speedSlow            = "slow"
 )
 
 // Finding lines GitHub can annotate: "<path>:<line>: <message>",
@@ -57,7 +59,9 @@ func (r Runner) newRunCmd(getenv func(string) string) *cobra.Command {
 			"one block, in the order named, then a summary.\n\n" +
 			"With no lints as arguments, reads them from TOOLBELT_LINTS: one per line,\n" +
 			"blank lines and # comments ignored. Lint executables are found under\n" +
-			"TOOLBELT_LINTS_DIR (default " + defaultLintsDir + ").\n\n" +
+			"TOOLBELT_LINTS_DIR (default " + defaultLintsDir + "). A formatter's check,\n" +
+			"check-<name>-formatted, runs the formatter's executable in check mode, found\n" +
+			"under TOOLBELT_FORMATTERS_DIR (default " + defaultFormattersDir + ").\n\n" +
 			"Exit codes: 0 every lint passed, 1 a lint reported findings or the config\n" +
 			"file has problems, 2 a lint errored or a usage or setup error.\n\n" +
 			"What the lints judge (TOOLBELT_BASE, TOOLBELT_RANGE) follows the hook:\n" +
@@ -111,6 +115,10 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	if err != nil {
 		return err
 	}
+	plan, err := r.prepareFormatters(ctx, root, cfg, lints)
+	if err != nil {
+		return err
+	}
 
 	if err := warn(ctx, root, flags.hook, lints, stderr); err != nil {
 		return err
@@ -120,10 +128,10 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 	for _, lint := range lints {
 		sections[lint.Name] = cfg.Section(lint.Name)
 	}
-	lintsDir := getenv("TOOLBELT_LINTS_DIR")
-	if lintsDir == "" {
-		lintsDir = defaultLintsDir
-	}
+	// An empty value takes the default: an empty directory would resolve
+	// against the checkout.
+	lintsDir := cmp.Or(getenv("TOOLBELT_LINTS_DIR"), defaultLintsDir)
+	formattersDir := cmp.Or(getenv("TOOLBELT_FORMATTERS_DIR"), defaultFormattersDir)
 
 	var stopToken string
 	if flags.hook == hookCI {
@@ -135,13 +143,14 @@ func (r Runner) run(ctx context.Context, cmd *cobra.Command, args []string, flag
 		if len(targets) > 1 {
 			label = t.Ref
 		}
-		results := runner.Run(ctx, lints, runner.Options{
-			LintsDir: lintsDir,
-			RepoRoot: root,
-			Hook:     flags.hook,
-			Base:     t.Base,
-			Range:    t.Range,
-			Sections: sections,
+		results := plan.run(ctx, lints, runner.Options{
+			LintsDir:      lintsDir,
+			FormattersDir: formattersDir,
+			RepoRoot:      root,
+			Hook:          flags.hook,
+			Base:          t.Base,
+			Range:         t.Range,
+			Sections:      sections,
 		})
 		for _, result := range results {
 			tally.add(result.Exit)

@@ -1,6 +1,9 @@
 // Package runner runs lint executables concurrently, each with its own
 // buffered output, following the lint calling convention: the repo root as the
-// working directory, no arguments, and its inputs in TOOLBELT_* variables.
+// working directory, no arguments, and its inputs in TOOLBELT_* variables. A
+// derived lint runs its formatter's executable instead, which follows the
+// formatter calling convention: the same, plus TOOLBELT_MODE and
+// TOOLBELT_FILES.
 package runner
 
 import (
@@ -11,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -49,6 +54,10 @@ type Result struct {
 type Options struct {
 	// LintsDir holds each lint's executable at <LintsDir>/<name>/<name>.
 	LintsDir string
+	// FormattersDir holds each formatter's executable at
+	// <FormattersDir>/<name>/<name>. A lint with a Formatter runs that
+	// executable instead of its own.
+	FormattersDir string
 	// RepoRoot is every lint's working directory.
 	RepoRoot string
 	// Hook, Base and Range become TOOLBELT_HOOK, TOOLBELT_BASE and
@@ -57,8 +66,18 @@ type Options struct {
 	// Sections maps a lint's name to its config section as JSON. A lint with
 	// no entry gets the JSON null.
 	Sections map[string][]byte
+	// Mode becomes TOOLBELT_MODE for a lint with a Formatter: "check" or
+	// "write". Empty means "check". Other lints never get TOOLBELT_MODE.
+	Mode string
+	// Files maps a lint's name to the repo-relative files its formatter is to
+	// format. The runner writes them NUL-terminated to a file and passes its
+	// path as TOOLBELT_FILES; a lint with no entry gets an empty file. Other
+	// lints never get TOOLBELT_FILES, and their entries are ignored.
+	Files map[string][]string
 	// Env holds extra NAME=value pairs for every lint, added after the
-	// process's own environment.
+	// process's own environment. A TOOLBELT_MODE or TOOLBELT_FILES pair in it
+	// is dropped, as one in the process's environment is: only the runner
+	// sets them.
 	Env []string
 }
 
@@ -84,14 +103,15 @@ func Run(ctx context.Context, lints []manifest.Lint, opts Options) []Result {
 	var wg sync.WaitGroup
 	for i, lint := range lints {
 		wg.Go(func() {
-			results[i] = runOne(ctx, lint.Name, sectionsDir, opts)
+			results[i] = runOne(ctx, lint, sectionsDir, opts)
 		})
 	}
 	wg.Wait()
 	return results
 }
 
-func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result {
+func runOne(ctx context.Context, lint manifest.Lint, sectionsDir string, opts Options) Result {
+	name := lint.Name
 	section, ok := opts.Sections[name]
 	if !ok {
 		section = []byte("null")
@@ -102,14 +122,33 @@ func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result 
 	}
 
 	path := filepath.Join(opts.LintsDir, name, name)
+	// TOOLBELT_MODE and TOOLBELT_FILES, from the process's environment or
+	// opts.Env, must not leak into a lint that takes neither; a formatter
+	// gets the runner's own values below.
+	env := slices.DeleteFunc(append(os.Environ(), opts.Env...), func(kv string) bool {
+		return strings.HasPrefix(kv, "TOOLBELT_MODE=") || strings.HasPrefix(kv, "TOOLBELT_FILES=")
+	})
+	if lint.Formatter != "" {
+		path = filepath.Join(opts.FormattersDir, lint.Formatter, lint.Formatter)
+		filesFile := filepath.Join(sectionsDir, name+".files")
+		if err := os.WriteFile(filesFile, nulTerminated(opts.Files[name]), 0o600); err != nil {
+			return errored(name, nil, nil, fmt.Sprintf("cannot write file list: %v", err))
+		}
+		mode := opts.Mode
+		if mode == "" {
+			mode = "check"
+		}
+		env = append(env, "TOOLBELT_MODE="+mode, "TOOLBELT_FILES="+filesFile)
+	}
 	cmd := exec.CommandContext(ctx, path) //nolint:gosec // running the named lint's executable is the purpose of this package
 	cmd.Dir = opts.RepoRoot
-	cmd.Env = append(append(os.Environ(), opts.Env...),
+	env = append(env,
 		"TOOLBELT_SECTION="+sectionFile,
 		"TOOLBELT_HOOK="+opts.Hook,
 		"TOOLBELT_BASE="+opts.Base,
 		"TOOLBELT_RANGE="+opts.Range,
 	)
+	cmd.Env = env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -138,6 +177,16 @@ func runOne(ctx context.Context, name, sectionsDir string, opts Options) Result 
 	default:
 		return errored(name, stdout.Bytes(), stderr.Bytes(), fmt.Sprintf("cannot run lint executable %s: %v", path, err))
 	}
+}
+
+// nulTerminated is files, each followed by a NUL byte.
+func nulTerminated(files []string) []byte {
+	var buf bytes.Buffer
+	for _, file := range files {
+		buf.WriteString(file)
+		buf.WriteByte(0)
+	}
+	return buf.Bytes()
 }
 
 func fromExit(name string, exitErr *exec.ExitError, stdout, stderr []byte) Result {

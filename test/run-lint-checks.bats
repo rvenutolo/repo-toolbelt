@@ -107,6 +107,17 @@ function setup() {
   done
 }
 
+@test 'an extensionless executable under formatters/ reaches shellcheck and shfmt' {
+  mkdir --parents formatters/shell
+  write_stub formatters/shell/shell fmt-shell FMT_SHELL_EXIT
+  commit_all
+  run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_success
+  assert_line 'shellcheck-ran --external-sources .ci/vuln .ci/x formatters/shell/shell test/a.bats tool'
+  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
+  assert_line "shfmt-ran ${flags} .ci/vuln .ci/x formatters/shell/shell tool"
+}
+
 @test 'shfmt formats bats files separately' {
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success

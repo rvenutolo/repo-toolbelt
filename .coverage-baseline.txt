@@ -12,10 +12,13 @@ go internal/cli 0
 go internal/config 0
 go internal/coverage 0
 go internal/coveragedrop 0
+go internal/filesel 0
+go internal/fmtconfig 0
 go internal/issuerefs 0
 go internal/lintkit 0
 go internal/manifest 0
 go internal/patchcov 0
+go internal/pathglob 0
 go internal/pins 0
 go internal/refs 0
 go internal/runner 0

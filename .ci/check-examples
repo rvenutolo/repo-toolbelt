@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 
 # @description Check the example consumer files under examples/consumer/
-#              against lints.toml. The CI workflow's `lints` input and each
-#              hook's `LINTS=( ... )` list must name every lint in the
-#              manifest and no other; the pre-commit example must mark each
-#              slow lint, and only those, with `# slow`; the config example's
+#              against lints.toml and formatters.toml. The CI workflow's
+#              `lints` input and each hook's `LINTS=( ... )` list must name
+#              every lint in lints.toml and every formatter's derived lint
+#              `check-<name>-formatted`, and no other; the pre-commit example
+#              must mark each slow lint, and only those, with `# slow`. The
+#              pre-commit example's `FORMATTERS=( ... )` block must name every
+#              formatter and no other, one `<name>` or `# <name>` per line; the
+#              pre-push example carries no such block. The config example's
 #              commented sections must name known lints. The placeholder pin
 #              is accepted only while no `v*` tag exists: after the first
 #              release the examples must pin it. Whether the pins agree with
@@ -15,9 +19,9 @@
 # @stdout One finding per line, as `<path>[:<line>]: <message>`, then a count
 #         line when there is any.
 # @stderr The reason for a setup failure.
-# @exitcode 0 the examples agree with the manifest.
+# @exitcode 0 the examples agree with the manifests.
 # @exitcode 1 one or more findings.
-# @exitcode 2 a usage error, or the manifest or the workflow example cannot be
+# @exitcode 2 a usage error, or a manifest or the workflow example cannot be
 #             read.
 
 set -Eeuo pipefail
@@ -42,9 +46,11 @@ TMP_FILE="$(mktemp)"
 readonly TMP_FILE
 trap 'rm --force -- "${TMP_FILE}"' EXIT
 
-# Lint name to speed, and the names in manifest order, from the manifest.
+# Lint name to speed, and the lint names in manifest order, from lints.toml
+# and each formatter's derived lint; the formatter names in manifest order.
 declare -A SPEEDS=()
 MANIFEST_NAMES=()
+FORMATTER_NAMES=()
 FINDINGS=0
 
 # @description Print a finding to stdout and count it.
@@ -75,6 +81,23 @@ function load_manifest() {
   while IFS=$'\t' read -r name speed; do
     SPEEDS["${name}"]="${speed}"
     MANIFEST_NAMES+=("${name}")
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description Load formatters.toml's formatter names into FORMATTER_NAMES,
+#              and each formatter's derived lint and its speed into SPEEDS and
+#              MANIFEST_NAMES. A manifest with no formatter adds nothing.
+# @noargs
+function load_formatters() {
+  if ! yq --input-format toml --output-format tsv '.formatter[] | [.name, .speed]' formatters.toml \
+    > "${TMP_FILE}" 2>&1; then
+    die "cannot read formatters.toml: $(< "${TMP_FILE}")"
+  fi
+  local name speed
+  while IFS=$'\t' read -r name speed; do
+    FORMATTER_NAMES+=("${name}")
+    SPEEDS["check-${name}-formatted"]="${speed}"
+    MANIFEST_NAMES+=("check-${name}-formatted")
   done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
@@ -200,6 +223,75 @@ function check_hook() {
   report_placeholder "${path}"
 }
 
+# @description Check the pre-commit example's `FORMATTERS=( ... )` block: each
+#              non-blank line inside it is one entry, `<name>` or `# <name>`,
+#              and the entries name every formatter and no other.
+# @noargs
+function check_formatters() {
+  if [[ ! -f "${PRE_COMMIT}" ]]; then
+    return 0
+  fi
+  local -r entry_re='^[[:space:]]*#?[[:space:]]*([^[:space:]#]+)[[:space:]]*$'
+  local -A known=() listed=()
+  local name
+  for name in "${FORMATTER_NAMES[@]}"; do
+    known["${name}"]=1
+  done
+  local line_number=0 in_block=0 found_block=0 text
+  while IFS= read -r text || [[ -n "${text}" ]]; do
+    line_number=$((line_number + 1))
+    if ((in_block == 0)); then
+      if [[ "${text}" =~ ^(readonly[[:space:]]+)?FORMATTERS=\($ ]]; then
+        in_block=1
+        found_block=1
+      fi
+      continue
+    fi
+    if [[ "${text}" == ')' ]]; then
+      in_block=0
+      continue
+    fi
+    if [[ -z "${text//[[:space:]]/}" ]]; then
+      continue
+    fi
+    if [[ ! "${text}" =~ ${entry_re} ]]; then
+      finding "${PRE_COMMIT}:${line_number}" 'not a formatter entry'
+      continue
+    fi
+    name="${BASH_REMATCH[1]}"
+    listed["${name}"]=1
+    if [[ -z "${known[${name}]:-}" ]]; then
+      finding "${PRE_COMMIT}:${line_number}" "names unknown formatter ${name}"
+    fi
+  done < "${PRE_COMMIT}" # coverage-exempt: kcov scores this line; it never executes as bash
+  if ((found_block == 0)); then
+    finding "${PRE_COMMIT}" 'missing FORMATTERS'
+    return 0
+  fi
+  for name in "${FORMATTER_NAMES[@]}"; do
+    if [[ -z "${listed[${name}]:-}" ]]; then
+      finding "${PRE_COMMIT}" "omits ${name}"
+    fi
+  done
+}
+
+# @description Report a `FORMATTERS=(` block in the pre-push example: at push
+#              time the commits already exist, so a rewrite there could only
+#              stop the push, and pre-push stays check-only.
+# @noargs
+function check_no_formatters() {
+  if [[ ! -f "${PRE_PUSH}" ]]; then
+    return 0
+  fi
+  local line_number=0 text
+  while IFS= read -r text || [[ -n "${text}" ]]; do
+    line_number=$((line_number + 1))
+    if [[ "${text}" =~ ^(readonly[[:space:]]+)?FORMATTERS=\( ]]; then
+      finding "${PRE_PUSH}:${line_number}" 'pre-push takes no FORMATTERS block'
+    fi
+  done < "${PRE_PUSH}" # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
 # @description Check that the config example's commented sections name known
 #              lints. Which lints take config is each lint's affair, so a lint
 #              with no section is not reported.
@@ -223,13 +315,16 @@ function check_config() {
 # @noargs
 function main() {
   load_manifest
+  load_formatters
   git tag --list 'v*' > "${TMP_FILE}"
   RELEASE_TAGS="$(< "${TMP_FILE}")"
   readonly RELEASE_TAGS
 
   check_workflow
   check_hook "${PRE_COMMIT}" 1
+  check_formatters
   check_hook "${PRE_PUSH}" 0
+  check_no_formatters
   check_config
 
   if ((FINDINGS > 0)); then

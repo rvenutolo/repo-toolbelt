@@ -58,7 +58,7 @@ func TestRun_usage(t *testing.T) {
 			if got.code != 0 || got.stderr != "" || !strings.Contains(got.stdout, "Usage:") {
 				t.Errorf("got %+v, want exit 0, usage on stdout only", got)
 			}
-			for _, sub := range []string{"plan", "list"} {
+			for _, sub := range []string{"plan", "list", "fmt"} {
 				if !strings.Contains(got.stdout, sub) {
 					t.Errorf("usage does not mention %q:\n%s", sub, got.stdout)
 				}
@@ -121,6 +121,26 @@ func TestRun_plan(t *testing.T) {
 				t.Errorf("stdout (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestRun_listAndPlanCarryDerivedLints(t *testing.T) {
+	t.Parallel()
+	runner := formatterRunner(t, "")
+
+	got := runWith(t.Context(), t, runner, nil, "", "list")
+	want := "a\tquick\tfirst\nb\tslow\tsecond\nc\tquick\tthird\n" +
+		"check-x-formatted\tquick\tformats x\ncheck-y-formatted\tslow\tformats y\n"
+	if got.code != 0 {
+		t.Errorf("list: exit %d, want 0 (stderr %q)", got.code, got.stderr)
+	}
+	if diff := cmp.Diff(want, got.stdout); diff != "" {
+		t.Errorf("list stdout (-want +got):\n%s", diff)
+	}
+
+	got = runWith(t.Context(), t, runner, nil, "", "plan", "check-y-formatted", "a", "check-x-formatted")
+	if want := `{"groups":[["a","check-x-formatted"],["check-y-formatted"]]}` + "\n"; got.code != 0 || got.stdout != want {
+		t.Errorf("plan: got %+v, want exit 0 and %q", got, want)
 	}
 }
 
