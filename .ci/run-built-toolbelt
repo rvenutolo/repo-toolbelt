@@ -9,7 +9,8 @@
 #              the caller's directory. Run it inside the devShell.
 # @arg $@ args the runner's arguments, such as `fmt shell`
 # @exitcode 0 the runner exited 0.
-# @exitcode 1 no arguments, or the layout did not build.
+# @exitcode 1 no arguments.
+# @exitcode 2 the layout did not build.
 # @exitcode * otherwise the runner's exit status.
 
 set -Eeuo pipefail
@@ -23,7 +24,12 @@ shopt -s inherit_errexit
 # @description Build the layout, then run the built runner.
 # @arg $@ args the runner's arguments
 function main() {
-  "${REPO_DIR}/.ci/build-dist" "${DIST_DIR}"
+  # A layout that does not build is a setup failure, exit 2 like the runner's
+  # own, so a caller can tell it from a finding.
+  if ! "${REPO_DIR}/.ci/build-dist" "${DIST_DIR}"; then
+    printf '%s: the layout did not build\n' "${0##*/}" >&2
+    exit 2
+  fi
   local rc=0
   TOOLBELT_LINTS_DIR="${DIST_DIR}/lints" TOOLBELT_FORMATTERS_DIR="${DIST_DIR}/formatters" \
     "${DIST_DIR}/bin/toolbelt" "$@" || rc=$?
