@@ -172,6 +172,22 @@ func TestCheck_exemptionOfOnlyVendoredFilesIsStale(t *testing.T) {
 	}
 }
 
+func TestCheck_namesLikePathspecMagicAreScanned(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		":(exclude)a.md": "see #1\n",
+		"b[x]*?.md":      "see #2\n",
+	})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{ref(":(exclude)a.md", 1, "#1"), ref("b[x]*?.md", 1, "#2")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestCheck_noSectionStillScans(t *testing.T) {
 	t.Parallel()
 	repo := makeRepo(t, map[string]string{"CHANGELOG.md": "## 1.0 (#5)\n"})

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -104,8 +105,12 @@ func TestByAttribute_gitFailureIsAnError(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := vendored.ByAttribute(ctx, t.TempDir(), []string{"a.go"}); err == nil {
+	_, err := vendored.ByAttribute(ctx, t.TempDir(), []string{"a.go"})
+	if err == nil {
 		t.Fatal("ByAttribute with a cancelled context: error = nil, want one")
+	}
+	if msg := err.Error(); strings.HasSuffix(msg, ": ") {
+		t.Errorf("error %q ends with an empty stderr suffix", msg)
 	}
 }
 
@@ -125,6 +130,45 @@ func TestFilter(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{"README.md", "src/b.go"}, got); diff != "" {
 		t.Errorf("Filter mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestExcludePathspecs_matchFilter(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		".gitattributes":        "third_party/** linguist-vendored\nkept/** linguist-vendored=false\nexplicit.go linguist-vendored=true\n",
+		"vendor/a.go":           "package a\n",
+		"deep/vendor/b.go":      "package b\n",
+		"x/vendor":              "a file named vendor\n",
+		"vendored.go":           "package v\n",
+		"myvendor/c.go":         "package c\n",
+		"third_party/x.go":      "package x\n",
+		"kept/y.go":             "package y\n",
+		"explicit.go":           "package e\n",
+		"src/[ab]*?.go":         "package s\n",
+		"src/:(exclude)name.go": "package s\n",
+		"README.md":             "readme\n",
+	})
+	listing := exec.CommandContext(t.Context(), "git", append([]string{"ls-files", "-z", "--", "."}, vendored.ExcludePathspecs()...)...)
+	listing.Dir = repo
+	out, err := listing.Output()
+	if err != nil {
+		t.Fatalf("git ls-files with the pathspecs: %v", err)
+	}
+	got := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+
+	all := exec.CommandContext(t.Context(), "git", "ls-files", "-z")
+	all.Dir = repo
+	everything, err := all.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := vendored.Filter(t.Context(), repo, strings.Split(strings.TrimSuffix(string(everything), "\x00"), "\x00"))
+	if err != nil {
+		t.Fatalf("Filter error = %v", err)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("pathspecs and Filter disagree (-Filter +pathspecs):\n%s", diff)
 	}
 }
 

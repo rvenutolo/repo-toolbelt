@@ -55,6 +55,18 @@ func ByAttribute(ctx context.Context, root string, files []string) (map[string]b
 	return vendored, nil
 }
 
+// ExcludePathspecs returns git pathspecs that, given after `.` to a git
+// command that walks the tree, leave out exactly the files InVendorDir and
+// ByAttribute mark, so git never opens them. They use pathspec magic, so the
+// command must not run with --literal-pathspecs.
+func ExcludePathspecs() []string {
+	return []string{
+		":(exclude,glob)**/vendor/**",
+		":(exclude,attr:linguist-vendored)",
+		":(exclude,attr:linguist-vendored=true)",
+	}
+}
+
 // Filter returns files without the vendored ones, in order: those under a
 // vendor directory and those git marks linguist-vendored. A git failure is an
 // error.
