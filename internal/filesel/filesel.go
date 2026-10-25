@@ -27,9 +27,11 @@ const shebangPrefix = 256
 // Select returns, for each formatter by name, the sorted repo-relative paths
 // of the files it owns: the tracked regular files in the working tree under
 // root that its include globs or shebangs claim, minus vendored files. Every
-// formatter is a key, with an empty list when it owns nothing. Symlinks are
-// never followed and nothing outside root is read. A git failure, or a
-// candidate file that cannot be read, is an error.
+// formatter is a key, with an empty list when it owns nothing. A symlink, and
+// a file under a directory that is now a symlink, is skipped rather than
+// followed, so nothing outside root is read and no file is reached by two
+// paths. A git failure, or a candidate file that cannot be stat-ed or read,
+// is an error.
 func Select(ctx context.Context, root string, formatters []manifest.Formatter) (map[string][]string, error) {
 	selected := make(map[string][]string, len(formatters))
 	for _, f := range formatters {
@@ -152,18 +154,36 @@ func hasVendorSegment(file string) bool {
 	return slices.Contains(segments[:len(segments)-1], "vendor")
 }
 
-// isRegular reports whether file is a regular file in the working tree. A
-// file that is gone, or whose parent is no longer a directory, is not; any
-// other failure to stat it is an error.
+// isRegular reports whether file is a regular file in the working tree that
+// is reached without passing through a symlink. A file that is gone, one
+// whose parent is no longer a directory, and one under a directory that is
+// now a symlink are not; any other failure to stat it is an error.
 func isRegular(dir *os.Root, file string) (bool, error) {
-	info, err := dir.Lstat(file)
+	// os.Root follows a symlink in a parent component that stays inside the
+	// root and fails on one that leaves it, so each parent is checked first,
+	// outermost first.
+	segments := strings.Split(file, "/")
+	for i := 1; i < len(segments); i++ {
+		info, ok, err := lstat(dir, strings.Join(segments[:i], "/"))
+		if err != nil || !ok || !info.IsDir() {
+			return false, err
+		}
+	}
+	info, ok, err := lstat(dir, file)
+	return ok && info.Mode().IsRegular(), err
+}
+
+// lstat is dir.Lstat reporting false, with no error, for a name that is gone
+// or whose parent is not a directory.
+func lstat(dir *os.Root, name string) (fs.FileInfo, bool, error) {
+	info, err := dir.Lstat(name)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-		return false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("stat %s: %w", file, err)
+		return nil, false, fmt.Errorf("stat %s: %w", name, err)
 	}
-	return info.Mode().IsRegular(), nil
+	return info, true, nil
 }
 
 // shebangInterpreter returns the base name of the interpreter that the first
