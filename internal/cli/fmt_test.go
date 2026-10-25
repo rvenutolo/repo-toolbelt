@@ -468,6 +468,8 @@ func TestRun_fmtHelp(t *testing.T) {
 		"Exit codes: 0",
 		"1 a formatter reported a finding",
 		"2 a formatter errored",
+		"a runtime error (a failed write of the output)",
+		"130 interrupted",
 		"pass (exit 0, nothing changed)",
 		"formatted (exit 0, files changed)",
 		"fail (exit 1)",
