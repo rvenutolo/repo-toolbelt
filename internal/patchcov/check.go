@@ -18,6 +18,7 @@ import (
 
 	"github.com/rvenutolo/repo-toolbelt/internal/coverage"
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // Check reads the reports the section names and the working tree's changes
@@ -48,7 +49,10 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	if err != nil || len(findings) > 0 {
 		return findings, err
 	}
-	m := measure(section.Reports, reports)
+	m, err := measure(section.Reports, reports).withoutVendored(ctx, lc.Root)
+	if err != nil {
+		return nil, err
+	}
 	if findings := m.missingFiles(root); len(findings) > 0 {
 		return findings, nil
 	}
@@ -101,6 +105,23 @@ func measure(specs []coverage.ReportSpec, reports []coverage.Report) measured {
 	return m
 }
 
+// withoutVendored drops what the reports score in vendored files: a repo
+// does not own that code, so its blocks are not judged, as its markers are
+// not read.
+func (m measured) withoutVendored(ctx context.Context, dir string) (measured, error) {
+	own, err := vendored.Filter(ctx, dir, slices.Sorted(maps.Keys(m.files)))
+	if err != nil {
+		return measured{}, err
+	}
+	kept := measured{blocks: map[string][]coverage.Block{}, files: map[string]bool{}, cobertura: map[string]bool{}}
+	for _, file := range own {
+		kept.blocks[file] = m.blocks[file]
+		kept.files[file] = true
+		kept.cobertura[file] = m.cobertura[file]
+	}
+	return kept, nil
+}
+
 // missingFiles reports each scored file that is not in the working tree: the
 // reports predate a rename or deletion, and judging them would be guesswork.
 func (m measured) missingFiles(root *os.Root) []lintkit.Finding {
@@ -120,13 +141,23 @@ type fileMarker struct {
 }
 
 // scanMarkers returns the markers in every tracked file that can hold them.
+// Vendored files are not read: their markers belong to the project they were
+// copied from, and their blocks are not judged.
 func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([]fileMarker, error) {
-	tracked, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
-	if err != nil {
+	listing, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
+	if err != nil { // coverage-exempt: withoutVendored has already run git in this checkout, so ls-files fails only if git fails between two calls
+		return nil, err
+	}
+	var all []string
+	if listing != "" {
+		all = strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00")
+	}
+	tracked, err := vendored.Filter(ctx, dir, all)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, err
 	}
 	var markers []fileMarker
-	for file := range strings.SplitSeq(strings.TrimSuffix(tracked, "\x00"), "\x00") {
+	for _, file := range tracked {
 		var scan func([]byte) []coverage.Marker
 		switch {
 		case path.Ext(file) == ".go":

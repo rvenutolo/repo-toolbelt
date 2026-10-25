@@ -270,6 +270,40 @@ func TestCheck_trackedSymlinkIsNotScanned(t *testing.T) {
 	diffFindings(t, nil, got)
 }
 
+func TestCheck_vendoredMarkersAreNotJudged(t *testing.T) {
+	t.Parallel()
+	root, base := newFixture(t)
+	writeFile(t, filepath.Join(root, "vendor", "example.com", "lib", "lib.go"),
+		"package lib\n\n// coverage-exempt: upstream code\nfunc F() {}\n")
+	writeFile(t, filepath.Join(root, ".gitattributes"), "third_party/** linguist-vendored\n")
+	writeFile(t, filepath.Join(root, "third_party", "x.go"), "package x\n\n// coverage-exempt: upstream code\nfunc G() {}\n")
+	git(t, root, "add", ".gitattributes", "vendor", "third_party")
+	got, err := check(t, root, section, base)
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	diffFindings(t, nil, got)
+}
+
+func TestCheck_measuredVendoredCodeIsNotJudged(t *testing.T) {
+	t.Parallel()
+	root, base := newRepo(t, map[string]string{
+		"go.mod":           "module example.com/m\n\ngo 1.22\n",
+		".gitattributes":   "third_party/** linguist-vendored\n",
+		"third_party/x.go": aGo,
+	})
+	writeFile(t, filepath.Join(root, "cov", "go.out"), "mode: set\n"+
+		"example.com/m/third_party/x.go:4.22,5.11 1 1\n"+
+		"example.com/m/third_party/x.go:5.11,7.3 1 0\n"+
+		"example.com/m/third_party/x.go:8.2,8.10 1 1\n")
+	setLine(t, root, "third_party/x.go", 6, "\t\treturn 3")
+	got, err := check(t, root, `{"reports":[{"format":"go","path":"cov/go.out"}]}`, base)
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	diffFindings(t, nil, got)
+}
+
 func TestCheck_trackedFileReplacedByAFIFOIsNotRead(t *testing.T) {
 	t.Parallel()
 	root, base := newFixture(t)

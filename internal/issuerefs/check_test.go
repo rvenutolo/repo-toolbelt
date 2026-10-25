@@ -18,8 +18,9 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+// gitEnv isolates fixture git commands from the machine's git config,
+// including the global excludes file, which may list vendor/.
+var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
 
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -86,6 +87,102 @@ func TestCheck(t *testing.T) {
 		ref("t.md", 2, "#4"),
 		{Path: ".repo-toolbelt.yml", Message: "stale exemption: old.md suppresses nothing"},
 	}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_vendoredFilesAreNotScanned(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		".gitattributes":            "third_party/** linguist-vendored\n",
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"third_party/notes.md":      "see upstream #5\n",
+		"src/notes.md":              "see #7\n",
+	})
+	tracked := exec.CommandContext(t.Context(), "git", "ls-files", "vendor", "third_party")
+	tracked.Dir = repo
+	if out, err := tracked.Output(); err != nil || strings.Count(string(out), "\n") != 2 {
+		t.Fatalf("fixture: vendored files not tracked: %q, %v", out, err)
+	}
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_unreadableVendoredFileIsNotRead(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"src/notes.md":              "see #7\n",
+	})
+	locked := filepath.Join(repo, "vendor", "example.com", "lib.go")
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) }) //nolint:errcheck // the temp dir is removed either way
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v, want none: a vendored file is never read", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_vendoredFileGitSkipsIsNotASetupError(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+		"src/notes.md":              "see #7\n",
+	})
+	gitIn(t, repo, "update-index", "--skip-worktree", "vendor/example.com/lib.go")
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v, want none: a vendored file is not a suspect", err)
+	}
+	want := []lintkit.Finding{ref("src/notes.md", 1, "#7")}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_exemptionOfOnlyVendoredFilesIsStale(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		"vendor/example.com/lib.go": "package lib // upstream #123\n",
+	})
+	section := `{"exempt":[{"path":"vendor/**","reason":"upstream code"}]}`
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte(section)})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{{Path: ".repo-toolbelt.yml", Message: "stale exemption: vendor/** suppresses nothing"}}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
+		t.Errorf("Check mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestCheck_namesLikePathspecMagicAreScanned(t *testing.T) {
+	t.Parallel()
+	repo := makeRepo(t, map[string]string{
+		":(exclude)a.md": "see #1\n",
+		"b[x]*?.md":      "see #2\n",
+	})
+	got, err := issuerefs.Check(t.Context(), lintkit.Context{Root: repo, Section: []byte("null")})
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	want := []lintkit.Finding{ref(":(exclude)a.md", 1, "#1"), ref("b[x]*?.md", 1, "#2")}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(lintkit.Finding{})); diff != "" {
 		t.Errorf("Check mismatch (-want +got):\n%s", diff)
 	}

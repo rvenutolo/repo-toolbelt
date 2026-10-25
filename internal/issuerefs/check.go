@@ -12,12 +12,14 @@ import (
 	"strings"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // Check is the check-issue-numbers lint: it validates the section, then
 // reports every reference in the tracked text files that no exemption covers,
-// and every exemption that covered nothing. A tracked text file in the
-// working tree that git grep did not read is a setup error.
+// and every exemption that covered nothing. Vendored files are not scanned:
+// their references belong to the project they were copied from. A tracked
+// text file in the working tree that git grep did not read is a setup error.
 func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	exemptions, problems, err := ParseSection(lc.Section)
 	if err != nil {
@@ -31,8 +33,12 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer root.Close()
-	tracked, err := trackedFiles(ctx, lc.Root)
+	all, err := trackedFiles(ctx, lc.Root)
 	if err != nil {
+		return nil, err
+	}
+	tracked, err := vendored.Filter(ctx, lc.Root, all)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, err
 	}
 	files, err := textFiles(ctx, lc.Root, lc.Stderr)
@@ -109,7 +115,7 @@ func checkSkipped(ctx context.Context, dir string, root *os.Root, tracked, liste
 	read = make(map[string]bool, len(suspects))
 	var grepErr error
 	for _, batch := range pathBatches(suspects) {
-		forced, err := grepFiles(ctx, dir, io.Discard, "-a", batch)
+		forced, err := grepFiles(ctx, dir, io.Discard, "-a", true, batch)
 		grepErr = errors.Join(grepErr, err)
 		for _, file := range forced {
 			read[file] = true
@@ -147,26 +153,31 @@ func pathBatches(paths []string) [][]string {
 	return append(batches, paths[start:])
 }
 
-// textFiles lists the tracked files git takes for text, by git's own test,
-// in git's order. A tracked file missing from the working tree is left out;
-// one git cannot read is an error. Any other stderr from git, such as a
-// warning about the repo's .gitattributes, goes to diagnostics unchanged.
+// textFiles lists the tracked files that are not vendored and that git takes
+// for text, by git's own test, in git's order. Vendored files are left out by
+// pathspec, so git never opens them. A tracked file missing from the working
+// tree is left out; one git cannot read is an error. Any other stderr from
+// git, such as a warning about the repo's .gitattributes, goes to diagnostics
+// unchanged.
 func textFiles(ctx context.Context, dir string, diagnostics io.Writer) ([]string, error) {
-	return grepFiles(ctx, dir, diagnostics, "-I", nil)
+	return grepFiles(ctx, dir, diagnostics, "-I", false, append([]string{"."}, vendored.ExcludePathspecs()...))
 }
 
-// grepFiles lists the files among pathspecs, or every tracked file when
-// there are none, that git grep reads and finds content in, with binary
-// handled as the flag says: -I skips binary files, -a reads them as text.
-func grepFiles(ctx context.Context, dir string, diagnostics io.Writer, binary string, pathspecs []string) ([]string, error) {
-	// --literal-pathspecs: a tracked name is a name, never a pattern.
+// grepFiles lists the files among pathspecs that git grep reads and finds
+// content in, with binary handled as the flag says: -I skips binary files, -a
+// reads them as text. With literal set, every pathspec is a tracked name,
+// never a pattern; without it, pathspec magic applies.
+func grepFiles(ctx context.Context, dir string, diagnostics io.Writer, binary string, literal bool, pathspecs []string) ([]string, error) {
 	// --no-recurse-submodules: a repo's submodule.recurse would otherwise
 	// widen the scan to files the repo does not track.
 	// An empty pattern matches every line, so this lists every file with any
 	// content; an empty file holds no reference to report.
-	args := append([]string{
-		"--literal-pathspecs", "grep", "--no-recurse-submodules", binary, "-z", "--files-with-matches", "--color=never", "-e", "", "--",
-	}, pathspecs...)
+	var args []string
+	if literal {
+		args = append(args, "--literal-pathspecs")
+	}
+	args = append(args, "grep", "--no-recurse-submodules", binary, "-z", "--files-with-matches", "--color=never", "-e", "", "--")
+	args = append(args, pathspecs...)
 	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // fixed program; the pathspecs follow -- and are literal
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
