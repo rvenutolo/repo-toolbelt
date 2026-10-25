@@ -75,7 +75,9 @@ type Options struct {
 	// lints never get TOOLBELT_FILES, and their entries are ignored.
 	Files map[string][]string
 	// Env holds extra NAME=value pairs for every lint, added after the
-	// process's own environment.
+	// process's own environment. A TOOLBELT_MODE or TOOLBELT_FILES pair in it
+	// is dropped, as one in the process's environment is: only the runner
+	// sets them.
 	Env []string
 }
 
@@ -120,12 +122,12 @@ func runOne(ctx context.Context, lint manifest.Lint, sectionsDir string, opts Op
 	}
 
 	path := filepath.Join(opts.LintsDir, name, name)
-	// The process's own TOOLBELT_MODE and TOOLBELT_FILES must not leak into a
-	// lint that takes neither.
-	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+	// TOOLBELT_MODE and TOOLBELT_FILES, from the process's environment or
+	// opts.Env, must not leak into a lint that takes neither; a formatter
+	// gets the runner's own values below.
+	env := slices.DeleteFunc(append(os.Environ(), opts.Env...), func(kv string) bool {
 		return strings.HasPrefix(kv, "TOOLBELT_MODE=") || strings.HasPrefix(kv, "TOOLBELT_FILES=")
 	})
-	env = append(env, opts.Env...)
 	if lint.Formatter != "" {
 		path = filepath.Join(opts.FormattersDir, lint.Formatter, lint.Formatter)
 		filesFile := filepath.Join(sectionsDir, name+".files")
