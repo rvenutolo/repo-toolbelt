@@ -586,6 +586,25 @@ func TestRun_fmtStaged(t *testing.T) {
 	}
 }
 
+func TestRun_fmtStagedListingFailureIsASetupFailure(t *testing.T) {
+	t.Parallel()
+	repo, formattersDir := fmtRepo(t, ""), t.TempDir()
+	writeLint(t, formattersDir, "x", rewriteFiles)
+	// The file selection reads only the index; listing what is staged also
+	// reads HEAD's tree, which this removes.
+	tree := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD^{tree}"))
+	if err := os.Remove(filepath.Join(repo, ".git", "objects", tree[:2], tree[2:])); err != nil {
+		t.Fatal(err)
+	}
+	got := runFmt(t, repo, formattersDir, "--staged", "x")
+	if got.code != 2 || !strings.Contains(got.stderr, "list the staged files") || got.stdout != "" {
+		t.Errorf("got %+v, want exit 2 naming the staged-file listing and nothing on stdout", got)
+	}
+	if a := readFile(t, filepath.Join(repo, "a.x")); a != "content\n" {
+		t.Errorf("a.x = %q, want it untouched", a)
+	}
+}
+
 func TestRun_fmtHelp(t *testing.T) {
 	t.Parallel()
 	got := runWith(t.Context(), t, formatterRunner(t, t.TempDir()), nil, "", "fmt", "--help")

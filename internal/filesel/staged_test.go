@@ -44,6 +44,70 @@ func TestStaged(t *testing.T) {
 	assertStaged(t, repo, []string{"added.sh", "dir/new name.sh", "partly.sh", "whole.sh"}, []string{"partly.sh"})
 }
 
+func TestStaged_edgeCases(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		prepare    func(t *testing.T, repo string)
+		wantStaged []string
+		wantPartly []string
+	}{
+		{
+			name: "an intent-to-add file is not staged",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "new.sh"), "a\n")
+				gitIn(t, repo, "add", "--intent-to-add", "new.sh")
+			},
+		},
+		{
+			name: "a mode change alone is staged",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				gitIn(t, repo, "update-index", "--chmod=+x", "a.sh")
+				if err := os.Chmod(filepath.Join(repo, "a.sh"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStaged: []string{"a.sh"},
+		},
+		{
+			name: "a staged file reverted in the working tree is partly staged",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.sh"), "b\n")
+				gitIn(t, repo, "add", "a.sh")
+				writeFile(t, filepath.Join(repo, "a.sh"), "a\n")
+			},
+			wantStaged: []string{"a.sh"},
+			wantPartly: []string{"a.sh"},
+		},
+		{
+			name: "a diff.orderFile in the repo's config does not reorder the result",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, ".git", "order"), "z.sh\n*\n")
+				gitIn(t, repo, "config", "diff.orderFile", ".git/order")
+				writeFile(t, filepath.Join(repo, "a.sh"), "b\n")
+				writeFile(t, filepath.Join(repo, "z.sh"), "b\n")
+				gitIn(t, repo, "add", "a.sh", "z.sh")
+				writeFile(t, filepath.Join(repo, "a.sh"), "c\n")
+				writeFile(t, filepath.Join(repo, "z.sh"), "c\n")
+			},
+			wantStaged: []string{"a.sh", "z.sh"},
+			wantPartly: []string{"a.sh", "z.sh"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRepo(t, map[string]string{"a.sh": "a\n", "z.sh": "a\n"})
+			tc.prepare(t, repo)
+			assertStaged(t, repo, tc.wantStaged, tc.wantPartly)
+		})
+	}
+}
+
 func TestStaged_aStagedFileDeletedFromTheWorkingTreeIsPartlyStaged(t *testing.T) {
 	t.Parallel()
 	repo := newRepo(t, map[string]string{"a.sh": "a\n"})
