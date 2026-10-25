@@ -237,7 +237,8 @@ The example pre-commit hook carries a `FORMATTERS` array, empty by default, besi
 files instead of only failing, add the languages to `FORMATTERS` and delete their `check-<name>-formatted` lines from
 `LINTS`. The hook then first runs `fmt --fail-on-change` for those languages with the read-write mount and stops on a
 non-zero exit, a rewrite included, leaving the rewritten files unstaged. When `fmt` exits 0, having rewritten nothing,
-the hook goes on to run the lints. With `FORMATTERS` empty, it runs only the lints. The pre-push hook only checks: at
+the hook goes on to run the lints. With `FORMATTERS` empty, it runs only the lints; with `LINTS` empty, it only
+formats, and exits 0 once `fmt` does. The pre-push hook only checks: at
 push time the commits exist, so a rewrite could only stop the push.
 
 ## The calling convention
