@@ -49,7 +49,10 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	if err != nil || len(findings) > 0 {
 		return findings, err
 	}
-	m := measure(section.Reports, reports)
+	m, err := measure(section.Reports, reports).withoutVendored(ctx, lc.Root)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+		return nil, err
+	}
 	if findings := m.missingFiles(root); len(findings) > 0 {
 		return findings, nil
 	}
@@ -102,6 +105,23 @@ func measure(specs []coverage.ReportSpec, reports []coverage.Report) measured {
 	return m
 }
 
+// withoutVendored drops what the reports score in vendored files: a repo
+// does not own that code, so its blocks are not judged, as its markers are
+// not read.
+func (m measured) withoutVendored(ctx context.Context, dir string) (measured, error) {
+	own, err := vendored.Filter(ctx, dir, slices.Sorted(maps.Keys(m.files)))
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+		return measured{}, err
+	}
+	kept := measured{blocks: map[string][]coverage.Block{}, files: map[string]bool{}, cobertura: map[string]bool{}}
+	for _, file := range own {
+		kept.blocks[file] = m.blocks[file]
+		kept.files[file] = true
+		kept.cobertura[file] = m.cobertura[file]
+	}
+	return kept, nil
+}
+
 // missingFiles reports each scored file that is not in the working tree: the
 // reports predate a rename or deletion, and judging them would be guesswork.
 func (m measured) missingFiles(root *os.Root) []lintkit.Finding {
@@ -122,7 +142,7 @@ type fileMarker struct {
 
 // scanMarkers returns the markers in every tracked file that can hold them.
 // Vendored files are not read: their markers belong to the project they were
-// copied from, and no report measures them.
+// copied from, and their blocks are not judged.
 func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([]fileMarker, error) {
 	listing, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
 	if err != nil {
