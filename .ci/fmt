@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-# @description Format every tracked file in place: `nix fmt` formats the Nix,
-#              YAML, JSON and Go files, then the runner built from the working
-#              tree runs `fmt` with the formatters this repo dogfoods
-#              (.ci/dogfood-formatters.bash), which format the rest the way
-#              their check lints in run-all-checks and the pre-commit hook
-#              expect. Stops at the first step that fails. Run it inside the
+# @description Format this repo's files in place: `nix fmt` formats the Nix,
+#              YAML, JSON and Go files .treefmt.nix covers, then the runner
+#              built from the working tree runs `fmt` with the formatters this
+#              repo dogfoods (.ci/dogfood-formatters.bash), which format the
+#              files they take the way their check lints in run-all-checks and
+#              the pre-commit hook expect. A file neither step covers is left
+#              as it is. Stops at the first step that fails. Run it inside the
 #              devShell: ./.ci/in-devshell ./.ci/fmt
 # @noargs
 # @exitcode 0 every file is formatted, rewritten or not.
