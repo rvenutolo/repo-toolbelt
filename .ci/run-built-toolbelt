@@ -20,13 +20,6 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
-# A script-level variable, not a local: the single-quoted EXIT trap expands it
-# at exit, after any function's locals are gone.
-TMP_DIR="$(mktemp --directory)"
-readonly TMP_DIR
-trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
-readonly DIST_DIR="${TMP_DIR}/dist"
-
 # @description Build the layout, then run the built runner.
 # @arg $@ args the runner's arguments
 function main() {
@@ -47,5 +40,13 @@ fi
 
 REPO_DIR="$(git rev-parse --show-toplevel)"
 readonly REPO_DIR
+
+# Made only once the arguments are checked. A script-level variable, not a
+# local: the single-quoted EXIT trap expands it at exit, after any function's
+# locals are gone.
+TMP_DIR="$(mktemp --directory)"
+readonly TMP_DIR
+trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
+readonly DIST_DIR="${TMP_DIR}/dist"
 
 main "$@"

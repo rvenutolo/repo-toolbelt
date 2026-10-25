@@ -25,7 +25,7 @@ function main() {
   local repo_dir
   repo_dir="$(git rev-parse --show-toplevel)"
   printf 'pre-commit: checking formatting\n' >&2
-  if ! "${repo_dir}/.ci/in-devshell" ./.ci/run-built-toolbelt run --hook pre-commit \
+  if ! "${repo_dir}/.ci/in-devshell" "${repo_dir}/.ci/run-built-toolbelt" run --hook pre-commit \
     "${DOGFOOD_FORMATTER_CHECKS[@]}"; then
     printf 'pre-commit: formatting check failed; run ./.ci/in-devshell ./.ci/fmt and stage the result\n' >&2
     exit 1
