@@ -237,6 +237,20 @@ func TestRun_fmtListsAFileGoneAfterTheRunAsFormatted(t *testing.T) {
 	}
 }
 
+func TestRun_fmtListsAFileWhoseParentBecameAFileAsFormatted(t *testing.T) {
+	t.Parallel()
+	repo, formattersDir := makeRepo(t), t.TempDir()
+	writeFile(t, filepath.Join(repo, "d", "a.x"), "content\n")
+	commitAll(t, repo)
+	writeLint(t, formattersDir, "x", `mv d d.moved && printf 'file\n' > d`)
+
+	got := runFmt(t, repo, formattersDir, "x")
+
+	if want := "== x: formatted ==\nd/a.x: formatted\ntoolbelt: 1 file(s) formatted, 0 failed, 0 errored; review and stage them\n"; got.stdout != want || got.code != 0 {
+		t.Errorf("got %+v, want exit 0 and stdout %q", got, want)
+	}
+}
+
 func TestRun_fmtAFileUnreadableAfterTheRunIsASetupFailure(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
