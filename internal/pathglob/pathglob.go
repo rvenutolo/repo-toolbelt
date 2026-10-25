@@ -1,5 +1,6 @@
-// Package pathglob matches git-pathspec-style globs against repo-relative
-// paths written with `/`.
+// Package pathglob matches globs against repo-relative paths written with
+// `/`: path.Match patterns within each segment, plus `**` across segments.
+// Unlike in a git pathspec, `*` never matches a `/`.
 package pathglob
 
 import (
