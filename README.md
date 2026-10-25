@@ -4,7 +4,7 @@ Shared lints and formatters for the author's repositories, Nix-based or not, shi
 and git hooks all run that image, so every repo is checked the same way and at the version it pins. Docker is the only
 requirement on a consuming machine; Nix is used only to develop and build this repo.
 
-The lints, the formatter framework and a shell formatter exist. Publishing workflows are planned.
+The lints, the formatter framework, and shell and Go formatters exist. Publishing workflows are planned.
 
 ## Lints
 
@@ -149,6 +149,12 @@ allowlists, nothing else, and no file in the consumer's tree is read as formatte
   its name and shebang, so a `.sh` file with `#!/bin/sh` is held to POSIX. The style is fixed by shfmt flags:
   `--indent 2 --case-indent --binary-next-line --space-redirects`. Because the style comes from flags, shfmt ignores
   the consumer's `.editorconfig`. `settings.indent` overrides the indent width.
+- `go`: `fmt go` formats, and `check-go-formatted` checks, `*.go` files. Each file goes through gofumpt, then through
+  `goimports -format-only` with the root module's path as the local prefix, so imports fall into three groups (standard
+  library, third-party, then the module's own packages); imports are regrouped, never added or removed. A generated
+  file, one with a `// Code generated ... DO NOT EDIT.` line before its package clause, is skipped. A nested module's
+  own packages group as third-party, because only the root module's path is the prefix. It takes no settings. It needs
+  a `go.mod` at the repo root whenever a selected file is not generated, and exits 2 without one.
 
 A formatter is reached two ways and runs the same executable both times:
 
@@ -302,7 +308,9 @@ the image and are passed to the tool explicitly; a Go formatter is built from `c
   a setup failure, exit 2. A tool that uses one exit code for all of these is told apart by its stderr.
 - In both modes, exit 2 for a setup failure, such as a missing tool or an unreadable file list. Temporary files go
   under `$TMPDIR`, or `/tmp` when it is unset, as in the image; never in the checkout. The section's `settings:`
-  override the image's defaults, and the formatter reads no config file from the checkout.
+  override the image's defaults, and the formatter reads no config file from the checkout, apart from the Go
+  formatter, which reads `go.mod`: the root one for the module path, and, in gofumpt, the nearest one to each file
+  for the Go language version.
 - An empty file list passes in check mode and does nothing in write mode.
 
 ### Adding a lint
