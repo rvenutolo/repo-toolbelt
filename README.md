@@ -132,7 +132,8 @@ comments and docs instead of pointing at an issue; exempt the rest in `.repo-too
 narrow it, a `match` regular expression.
 
 It reads the tracked files `git grep` takes for text, skipping empty files and the ones git takes for binary, by content
-or by a gitattributes entry such as `-diff`. A tracked text file in the working tree that git does not read, such as one
+or by a gitattributes entry such as `-diff`. It skips vendored files too, as the formatters do: a file under a directory
+named `vendor`, or one with `linguist-vendored` set in `.gitattributes`, carries another project's references. A tracked text file in the working tree that git does not read, such as one
 it cannot open or one marked skip-worktree, fails the run as a setup error rather than passing unchecked.
 
 ## Formatters

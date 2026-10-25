@@ -8,16 +8,19 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // Check is the check-issue-numbers lint: it validates the section, then
 // reports every reference in the tracked text files that no exemption covers,
-// and every exemption that covered nothing. A tracked text file in the
-// working tree that git grep did not read is a setup error.
+// and every exemption that covered nothing. Vendored files are not scanned:
+// their references belong to the project they were copied from. A tracked
+// text file in the working tree that git grep did not read is a setup error.
 func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 	exemptions, problems, err := ParseSection(lc.Section)
 	if err != nil {
@@ -31,14 +34,23 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 		return nil, fmt.Errorf("open repository root: %w", err)
 	}
 	defer root.Close()
-	tracked, err := trackedFiles(ctx, lc.Root)
+	all, err := trackedFiles(ctx, lc.Root)
 	if err != nil {
 		return nil, err
 	}
-	files, err := textFiles(ctx, lc.Root, lc.Stderr)
+	tracked, err := vendored.Filter(ctx, lc.Root, all)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+		return nil, err
+	}
+	text, err := textFiles(ctx, lc.Root, lc.Stderr)
 	if err != nil {
 		return nil, err
 	}
+	own := make(map[string]bool, len(tracked))
+	for _, file := range tracked {
+		own[file] = true
+	}
+	files := slices.DeleteFunc(text, func(file string) bool { return !own[file] })
 	if err := checkSkipped(ctx, lc.Root, root, tracked, files); err != nil {
 		return nil, err
 	}
