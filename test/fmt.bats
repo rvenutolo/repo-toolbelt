@@ -42,7 +42,7 @@ STUB
   assert_equal "${#lines[@]}" 7
 }
 
-@test 'exits 0 after a rewrite and leaves no scratch directory behind' {
+@test 'exits 0 when the runner does and leaves no scratch directory behind' {
   run "${REPO_DIR}/.ci/fmt"
   assert_success
   local built
