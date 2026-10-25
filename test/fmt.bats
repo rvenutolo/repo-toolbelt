@@ -35,7 +35,7 @@ STUB
   assert_line --index 0 'nix fmt'
   assert_line --index 1 "nix ran in ${FIXTURE_REPO}"
   assert_line --index 2 --regexp '^build-dist /.+/dist$'
-  assert_line --index 3 'toolbelt fmt shell'
+  assert_line --index 3 'toolbelt fmt shell go'
   assert_line --index 4 'lints dir ok'
   assert_line --index 5 'formatters dir ok'
   assert_line --index 6 "ran in ${FIXTURE_REPO}"

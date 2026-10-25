@@ -4,10 +4,11 @@
 #              over the shell scripts, `just --fmt`, statix and deadnix over
 #              the Nix files, actionlint and zizmor over the workflows,
 #              yamllint, markdownlint and typos, plus the Go checks:
-#              golangci-lint run and fmt, `go mod tidy -diff`, `go mod verify`
-#              and govulncheck through `.ci/vuln`. Shell formatting is the
-#              dogfooded check-shell-formatted's job in run-all-checks, and
-#              formatting of everything else is `nix flake check`'s.
+#              golangci-lint run, `go mod tidy -diff`, `go mod verify` and
+#              govulncheck through `.ci/vuln`. Shell and Go formatting are the
+#              dogfooded check-shell-formatted's and check-go-formatted's job
+#              in run-all-checks, and formatting of everything else is
+#              `nix flake check`'s.
 #
 #              Exit codes aggregate rather than fail fast, so one run surfaces
 #              every failing category. A step whose tracked file list is empty
@@ -186,7 +187,6 @@ function main() {
 
   log_info 'running golangci-lint'
   golangci-lint run ./... || rc=1
-  golangci-lint fmt --diff ./... || rc=1
 
   log_info 'running go mod checks'
   go mod tidy -diff || rc=1

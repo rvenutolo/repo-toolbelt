@@ -32,9 +32,10 @@ STUB
   assert_success
   assert_output --partial 'pre-commit: formatting check passed'
   run cat "${CALLS}"
-  assert_line --index 0 "in-devshell ${FIXTURE_REPO}/.ci/run-built-toolbelt run --hook pre-commit check-shell-formatted"
+  assert_line --index 0 \
+    "in-devshell ${FIXTURE_REPO}/.ci/run-built-toolbelt run --hook pre-commit check-shell-formatted check-go-formatted"
   assert_line --index 1 --regexp '^build-dist /.+/dist$'
-  assert_line --index 2 'toolbelt run --hook pre-commit check-shell-formatted'
+  assert_line --index 2 'toolbelt run --hook pre-commit check-shell-formatted check-go-formatted'
   assert_line --index 3 'lints dir ok'
   assert_line --index 4 'formatters dir ok'
   assert_line --index 5 "ran in ${FIXTURE_REPO}"
