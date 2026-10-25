@@ -179,9 +179,11 @@ check-<name>-formatted:
 ```
 
 - Both keys are optional, and an empty section is no section.
-- `exclude:` is a list of non-empty globs over repo-relative paths, in the syntax of `check-issue-numbers`' `path`:
-  `*` and `?` within a segment, `**` across segments, and a glob that matches a directory matches everything under it.
-  A glob that matches no file is not reported.
+- `exclude:` is a list of non-empty globs over repo-relative paths, in the glob syntax of `check-issue-numbers`'
+  `path`: `*`, `?` and character classes within a segment, `**` across segments, and a glob that matches a leading
+  directory matches everything under it. It does not check spelling as that lint does: `./x`, `/x` and `x/` are not
+  rejected, so write each glob as git prints the path, with no leading `./` or `/` and no trailing `/`. A glob that
+  matches no file is not reported.
 - `settings:` maps settings on the formatter's allowlist to positive integers. A formatter with no allowlist rejects
   every setting.
 
