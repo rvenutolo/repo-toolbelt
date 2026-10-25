@@ -37,6 +37,7 @@ jobs:
         check-coverage-drop
         check-patch-coverage
         check-toolbelt-pins
+        check-shell-formatted
       # split (the default): the quick lints share one job, each slow lint
       # gets its own. parallel: one job for all. matrix: one job per lint.
       # mode: split

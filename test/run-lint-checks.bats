@@ -53,6 +53,8 @@ function setup() {
   STUB_BIN="${BATS_TEST_TMPDIR}/bin"
   mkdir "${STUB_BIN}" .ci .coverage test .github .github/workflows
   write_stub "${STUB_BIN}/shellcheck" shellcheck SHELLCHECK_EXIT
+  # shfmt is stubbed so a run of it would show: the shell formatter's
+  # check-shell-formatted holds shell formatting, not this script.
   write_stub "${STUB_BIN}/shfmt" shfmt SHFMT_EXIT
   write_stub "${STUB_BIN}/just" just JUST_EXIT
   write_stub "${STUB_BIN}/statix" statix STATIX_EXIT
@@ -84,7 +86,7 @@ function setup() {
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success
   local -a expected=(
-    shellcheck shfmt shfmt just statix deadnix actionlint zizmor yamllint markdownlint-cli2
+    shellcheck just statix deadnix actionlint zizmor yamllint markdownlint-cli2
     golangci-lint golangci-lint go go vuln typos
   )
   local -a ran=()
@@ -107,23 +109,13 @@ function setup() {
   done
 }
 
-@test 'an extensionless executable under formatters/ reaches shellcheck and shfmt' {
+@test 'an extensionless executable under formatters/ reaches shellcheck' {
   mkdir --parents formatters/shell
   write_stub formatters/shell/shell fmt-shell FMT_SHELL_EXIT
   commit_all
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success
   assert_line 'shellcheck-ran --external-sources .ci/vuln .ci/x formatters/shell/shell test/a.bats tool'
-  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
-  assert_line "shfmt-ran ${flags} .ci/vuln .ci/x formatters/shell/shell tool"
-}
-
-@test 'shfmt formats bats files separately' {
-  run "${REPO_DIR}/.ci/run-lint-checks"
-  assert_success
-  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
-  assert_line "shfmt-ran ${flags} .ci/vuln .ci/x tool"
-  assert_line "shfmt-ran ${flags} --language-dialect bats test/a.bats"
 }
 
 @test 'each linter gets only its kind' {
@@ -180,22 +172,6 @@ function setup() {
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_empty_list_failure 'shell files' typos
   refute_output --partial 'shellcheck-ran'
-}
-
-@test 'only bats files as shell files fails the non-bats shfmt step' {
-  untrack_and_commit .ci/vuln .ci/x tool
-  run "${REPO_DIR}/.ci/run-lint-checks"
-  assert_empty_list_failure 'non-bats shell files' typos
-  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
-  assert_output --partial "shfmt-ran ${flags} --language-dialect bats test/a.bats"
-}
-
-@test 'only extensionless shell files fails the bats shfmt step' {
-  untrack_and_commit test/a.bats
-  run "${REPO_DIR}/.ci/run-lint-checks"
-  assert_empty_list_failure 'bats files' typos
-  local -r flags='--list --diff --indent 2 --case-indent --binary-next-line --space-redirects'
-  assert_line "shfmt-ran ${flags} .ci/vuln .ci/x tool"
 }
 
 @test 'a missing justfile fails that step and the rest still run' {

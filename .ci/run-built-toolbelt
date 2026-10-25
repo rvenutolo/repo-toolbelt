@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# @description Build the image's /opt/toolbelt layout from the working tree
+#              with .ci/build-dist into a scratch directory, run the runner
+#              built there with the given arguments, and remove the scratch
+#              directory. TOOLBELT_LINTS_DIR and TOOLBELT_FORMATTERS_DIR point
+#              into the built layout, so the runner runs the lints and
+#              formatters built beside it, as in the image. The runner runs in
+#              the caller's directory. Run it inside the devShell.
+# @arg $@ args the runner's arguments, such as `fmt shell`
+# @exitcode 0 the runner exited 0.
+# @exitcode 1 no arguments.
+# @exitcode 2 the layout did not build.
+# @exitcode * otherwise the runner's exit status.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
+shopt -s inherit_errexit
+
+# @description Build the layout, then run the built runner.
+# @arg $@ args the runner's arguments
+function main() {
+  # A layout that does not build is a setup failure, exit 2 like the runner's
+  # own, so a caller can tell it from a finding.
+  if ! "${REPO_DIR}/.ci/build-dist" "${DIST_DIR}"; then
+    printf '%s: the layout did not build\n' "${0##*/}" >&2
+    exit 2
+  fi
+  local rc=0
+  TOOLBELT_LINTS_DIR="${DIST_DIR}/lints" TOOLBELT_FORMATTERS_DIR="${DIST_DIR}/formatters" \
+    "${DIST_DIR}/bin/toolbelt" "$@" || rc=$?
+  # The runner's verdict is not a crash: drop the ERR trap so its output is
+  # the last thing the reader sees.
+  trap - ERR
+  return "${rc}"
+}
+
+if (($# == 0)); then
+  printf 'usage: %s <toolbelt-argument>...\n' "${0##*/}" >&2
+  exit 1
+fi
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+readonly REPO_DIR
+
+# Made only once the arguments are checked. A script-level variable, not a
+# local: the single-quoted EXIT trap expands it at exit, after any function's
+# locals are gone.
+TMP_DIR="$(mktemp --directory)"
+readonly TMP_DIR
+trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
+readonly DIST_DIR="${TMP_DIR}/dist"
+
+main "$@"

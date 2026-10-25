@@ -58,6 +58,20 @@ function hook_run() {
   shape_run "${root}" "${common}" "${HOST_USER}" "$@"
 }
 
+# @description Run the image as README "Running `fmt`" does from the current
+#              directory: the hook shape with the checkout root mounted
+#              read-write, so `fmt` can rewrite files.
+# @arg $@ args the runner's arguments
+function rw_hook_run() {
+  local root common
+  root="$(git rev-parse --show-toplevel)"
+  common="$(git rev-parse --path-format=absolute --git-common-dir)"
+  docker run --rm --network=none --user "${HOST_USER}" \
+    --volume "${root}:${root}" --volume "${common}:${common}:ro" \
+    --workdir "${root}" \
+    "${TOOLBELT_TEST_IMAGE}" "$@"
+}
+
 # @description Commit everything in the current repo.
 # @arg $1 message the commit message
 function commit_all() {

@@ -51,9 +51,10 @@ function enable_formatter() {
   sed --in-place 's/^readonly FORMATTERS=($/&\n  fx\n  # go/' .githooks/pre-commit
 }
 
-@test 'the shipped pre-commit example lists no formatter' {
+@test 'the shipped pre-commit example lists the shell formatter commented out and none active' {
   run sed --quiet '/^readonly FORMATTERS=($/,/^)$/p' .githooks/pre-commit
   assert_output 'readonly FORMATTERS=(
+  # shell
 )'
 }
 
@@ -101,6 +102,27 @@ function enable_formatter() {
   assert_failure 2
   run cat "${STUB_LOG}"
   assert_output "${FMT_RUN}"
+}
+
+@test 'pre-commit hands GIT_INDEX_FILE to the fmt run and the lint run when git sets it' {
+  enable_formatter
+  GIT_INDEX_FILE='.git/index' run .githooks/pre-commit
+  assert_success
+  run cat "${STUB_LOG}"
+  assert_equal "${#lines[@]}" 2
+  assert_line --index 0 "${FMT_RUN/" ${IMAGE} "/" --env GIT_INDEX_FILE ${IMAGE} "}"
+  assert_line --index 1 --partial "${LINT_RUN/" ${IMAGE} "/" --env GIT_INDEX_FILE ${IMAGE} "} --hook pre-commit "
+}
+
+@test 'pre-commit passes no GIT_INDEX_FILE when it is unset or empty' {
+  enable_formatter
+  run .githooks/pre-commit
+  assert_success
+  GIT_INDEX_FILE='' run .githooks/pre-commit
+  assert_success
+  run cat "${STUB_LOG}"
+  assert_equal "${#lines[@]}" 4
+  refute_output --partial 'GIT_INDEX_FILE'
 }
 
 @test 'pre-push with an empty LINTS block exits 0 without starting a container' {

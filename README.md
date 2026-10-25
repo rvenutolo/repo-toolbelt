@@ -4,7 +4,7 @@ Shared lints and formatters for the author's repositories, Nix-based or not, shi
 and git hooks all run that image, so every repo is checked the same way and at the version it pins. Docker is the only
 requirement on a consuming machine; Nix is used only to develop and build this repo.
 
-The lints and the formatter framework exist. No formatter ships yet. Publishing workflows are planned.
+The lints, the formatter framework and a shell formatter exist. Publishing workflows are planned.
 
 ## Lints
 
@@ -68,8 +68,10 @@ git config core.hooksPath .githooks
 Each hook runs the pinned image with `docker run`, mounting the checkout read-only at its host path, with no network and
 as the caller's user and group. The lints it lists run concurrently in the one container. Hooks normally list only quick
 lints; a slow lint run from pre-commit prints a one-line warning and still runs. The hooks lint the working tree as it
-is on disk and warn when it holds unstaged or uncommitted edits. A pre-commit hook that lists formatters first runs them
-in a container of their own with the checkout read-write (see [In the pre-commit hook](#in-the-pre-commit-hook)).
+is on disk and warn when it holds unstaged or uncommitted edits. The pre-commit hook passes git's `GIT_INDEX_FILE` into
+the container, so under `git commit --all` that warning compares with the index being committed. A pre-commit hook
+that lists formatters first runs them in a container of their own with the checkout read-write (see
+[In the pre-commit hook](#in-the-pre-commit-hook)).
 
 A repo that already has a hook keeps it and adds the `docker run` lines shown in the example hook's header comment.
 
@@ -139,7 +141,14 @@ A formatter rewrites a repo's files in the author's style. Formatters are named 
 the tool they run. The style lives in the image: a consumer can exclude paths and change the few settings a formatter
 allowlists, nothing else, and no file in the consumer's tree is read as formatter config.
 
-No formatter ships yet: `formatters.toml` lists none, so `fmt` rejects every name as an unknown formatter.
+`formatters.toml` lists these:
+
+- `shell`: `fmt shell` formats, and `check-shell-formatted` checks, shell and BATS files with shfmt. It takes files
+  whose base name matches `*.sh`, `*.bash`, `*.bats`, `.envrc` or `.envrc.*`, and extensionless files whose shebang
+  names bash. `*.bats` files are parsed in shfmt's bats dialect and every other file in the dialect shfmt detects from
+  its name and shebang, so a `.sh` file with `#!/bin/sh` is held to POSIX. The style is fixed by shfmt flags:
+  `--indent 2 --case-indent --binary-next-line --space-redirects`. Because the style comes from flags, shfmt ignores
+  the consumer's `.editorconfig`. `settings.indent` overrides the indent width.
 
 A formatter is reached two ways and runs the same executable both times:
 
@@ -322,8 +331,8 @@ A release that only adds lints changes nothing in a consuming repo, because each
    globs of two formatters must not match one base name either: a run that finds a tracked file both match fails with
    exit 2.
 3. For a bash formatter, name the Nix packages that supply its tool in `nix/formatter-tools.nix` (an empty list when it
-   needs none beyond the library's), which puts them on its `PATH` in the image, and add them to the devShell in
-   `flake.nix`, where `.ci/build-dist` finds them for local runs.
+   needs none beyond the library's), which puts them on its `PATH` in the image. The devShell includes every list in
+   that file, so `.ci/build-dist` finds the tools there for local runs.
 4. Add its coverage units to `.coverage-baseline.txt` in the same commit, or the baseline check in `run-all-checks`
    fails: `cobertura formatters/<name> 0` for bash, whose directory `run-tests` measures with kcov, or
    `go cmd/fmt-<name> 0` and a line for its `internal/` package for Go.
@@ -340,9 +349,12 @@ Every tool runs through the devShell wrapper, so nothing needs installing but Ni
 ./.ci/in-devshell ./run-tests          # Go tests and BATS under kcov; reports go to .coverage/
 ./.ci/in-devshell ./run-all-checks     # the full gate: linters, tests, then the coverage lints
 ./.ci/in-devshell ./.ci/test-image     # builds the image, loads it into Docker and runs the e2e suite
-./.ci/in-devshell nix fmt              # formats every tracked file
-git config core.hooksPath .githooks    # commit-msg and pre-push hooks
+./.ci/in-devshell ./.ci/fmt            # formats what nix fmt covers, then what the dogfooded formatters take
+git config core.hooksPath .githooks    # commit-msg, pre-commit and pre-push hooks
 ```
+
+The pre-commit hook checks the working tree's formatting with the dogfooded formatters' check lints, run by the
+runner built from the working tree; `./.ci/in-devshell ./.ci/fmt` rewrites what it finds.
 
 `just test`, `just check`, `just lint` and `just fmt` are shortcuts for the first, second, linter-only and formatter
 commands. Nothing requires `just`.

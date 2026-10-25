@@ -119,66 +119,71 @@
         in
         {
           default = pkgs.mkShellNoCC {
-            packages = with pkgs; [
-              # linters
-              shellcheck
-              shfmt
-              actionlint
-              # zizmor audits workflows for security where actionlint audits
-              # them for syntax; they overlap nowhere.
-              zizmor
-              yamllint
-              markdownlint-cli2
-              typos
-              # nix linters: statix for antipatterns, deadnix for unused bindings.
-              statix
-              deadnix
-              # runtime
-              yq-go
-              # Reads govulncheck's JSON report in .ci/vuln.
-              jq
-              git
-              just
-              commitlint
-              # nix.out, not bare `nix`: the default output is `dev`, which has
-              # no bin/, so a bare `nix` puts nothing on PATH.
-              nix.out
-              coreutils
-              findutils
-              gnugrep
-              # Go toolchain and its lint gate.
-              go
-              # `go test -race` needs cgo, and so a C compiler.
-              gcc
-              golangci-lint
-              # Bash coverage for the BATS suite, patched as described above.
-              kcovPatched
-              # Image build and release tooling. The docker daemon is the
-              # host's; only the client lives here.
-              docker-client
-              # sysctl, for .ci/test-image's IP-forwarding check before it
-              # starts any container.
-              procps
-              skopeo
-              git-cliff
-              gh
-              # withLibraries, not bare bats: the wrapper exports BATS_LIB_PATH
-              # at its own share/bats, so test_helper/common.bash loads the
-              # libraries with `bats_load_library`, and a bats that is not this
-              # one fails loudly instead of silently missing them. Both libraries
-              # come from flake inputs pinned in flake.lock: the nixpkgs
-              # bats-assert release lacks assert_stderr.
-              (bats.withLibraries (l: [
-                (l.bats-support.overrideAttrs (_: {
-                  src = bats-support;
-                  version = unstableVersion bats-support;
-                }))
-                (l.bats-assert.overrideAttrs (_: {
-                  src = bats-assert;
-                  version = unstableVersion bats-assert;
-                }))
-              ]))
-            ];
+            packages =
+              with pkgs;
+              [
+                # linters
+                shellcheck
+                actionlint
+                # zizmor audits workflows for security where actionlint audits
+                # them for syntax; they overlap nowhere.
+                zizmor
+                yamllint
+                markdownlint-cli2
+                typos
+                # nix linters: statix for antipatterns, deadnix for unused bindings.
+                statix
+                deadnix
+                # runtime
+                yq-go
+                # Reads govulncheck's JSON report in .ci/vuln.
+                jq
+                git
+                just
+                commitlint
+                # nix.out, not bare `nix`: the default output is `dev`, which has
+                # no bin/, so a bare `nix` puts nothing on PATH.
+                nix.out
+                coreutils
+                findutils
+                gnugrep
+                # Go toolchain and its lint gate.
+                go
+                # `go test -race` needs cgo, and so a C compiler.
+                gcc
+                golangci-lint
+                # Bash coverage for the BATS suite, patched as described above.
+                kcovPatched
+                # Image build and release tooling. The docker daemon is the
+                # host's; only the client lives here.
+                docker-client
+                # sysctl, for .ci/test-image's IP-forwarding check before it
+                # starts any container.
+                procps
+                skopeo
+                git-cliff
+                gh
+                # withLibraries, not bare bats: the wrapper exports BATS_LIB_PATH
+                # at its own share/bats, so test_helper/common.bash loads the
+                # libraries with `bats_load_library`, and a bats that is not this
+                # one fails loudly instead of silently missing them. Both libraries
+                # come from flake inputs pinned in flake.lock: the nixpkgs
+                # bats-assert release lacks assert_stderr.
+                (bats.withLibraries (l: [
+                  (l.bats-support.overrideAttrs (_: {
+                    src = bats-support;
+                    version = unstableVersion bats-support;
+                  }))
+                  (l.bats-assert.overrideAttrs (_: {
+                    src = bats-assert;
+                    version = unstableVersion bats-assert;
+                  }))
+                ]))
+              ]
+              # Every formatter's tools, from the one list the image reads too,
+              # so the devShell cannot drift from it: .ci/build-dist finds the
+              # tools here for local runs.
+              ++ pkgs.lib.concatLists (pkgs.lib.attrValues (import ./nix/formatter-tools.nix pkgs));
 
             # Activate the tracked git hooks for this clone. Tolerant of failure
             # on purpose: a devShell that aborts on hook setup is worse than

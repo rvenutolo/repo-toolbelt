@@ -4,4 +4,6 @@
 # names no package. Every bash formatter in formatters.toml needs an entry,
 # an empty list when it calls nothing beyond the library's tools; nix/dist.nix
 # fails evaluation on a missing one.
-_pkgs: { }
+pkgs: {
+  shell = [ pkgs.shfmt ];
+}

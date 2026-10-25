@@ -38,6 +38,7 @@ readonly LINTS=(
   check-coverage-drop
   check-patch-coverage
   check-toolbelt-pins
+  check-shell-formatted
 )
 
 # The runner rejects a run that names no lint, so with every lint deleted

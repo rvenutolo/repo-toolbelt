@@ -1,6 +1,7 @@
 # repo-toolbelt's config file, at the repo root. A repo needs it only for
-# exemptions or for a lint that takes required settings; with neither, leave
-# it out. Copy the sections for the lints the repo runs and uncomment them.
+# exemptions, for a lint that takes required settings, or for a formatter's
+# excludes and settings; with none of these, leave it out. Copy the sections
+# for the lints the repo runs and uncomment them.
 # Each section belongs to the lint it is named after, and a section for a lint
 # the run does not name is ignored. check-toolbelt-pins takes no config.
 
@@ -38,3 +39,13 @@
 #       path: coverage.out
 #     - format: cobertura
 #       path: .coverage/bats/cobertura.xml
+
+# A formatter's section is keyed by its lint's name, check-<name>-formatted,
+# and both the lint and `fmt` read it. exclude is a list of globs over
+# repo-relative paths whose files the formatter skips; settings maps the
+# settings the formatter allows to positive integers.
+# check-shell-formatted:
+#   exclude:
+#     - test/fixtures/**
+#   settings:
+#     indent: 4
