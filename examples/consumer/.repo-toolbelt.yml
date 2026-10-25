@@ -1,6 +1,7 @@
 # repo-toolbelt's config file, at the repo root. A repo needs it only for
-# exemptions or for a lint that takes required settings; with neither, leave
-# it out. Copy the sections for the lints the repo runs and uncomment them.
+# exemptions, for a lint that takes required settings, or for a formatter's
+# excludes and settings; with none of these, leave it out. Copy the sections
+# for the lints the repo runs and uncomment them.
 # Each section belongs to the lint it is named after, and a section for a lint
 # the run does not name is ignored. check-toolbelt-pins takes no config.
 
