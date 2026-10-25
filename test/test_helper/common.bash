@@ -4,8 +4,9 @@
 #
 #   load test_helper/common
 #
-# Exports REPO_DIR (the repo root), hides the host's git config from every git
-# command, and loads bats-support and bats-assert.
+# Exports REPO_DIR (the repo root), hides the host's global and system git
+# config, excludes and attributes from the git commands a test runs, and loads
+# bats-support and bats-assert.
 # make_repo creates a throwaway git repo for tests that need one, and
 # write_section hands a lint its config section the way the runner does.
 
@@ -24,7 +25,8 @@ unset _git_local_env_vars _git_env_var
 # listing vendor/ would keep a fixture's vendored file untracked. The path does
 # not exist, so the helper works where no per-test temp dir does (setup_file).
 # Every other tool loses its user config under XDG_CONFIG_HOME too (nix's
-# nix.conf, shellcheckrc), so a test passes such a tool what it needs.
+# nix.conf, shellcheckrc), so a test that runs such a tool supplies the
+# settings it needs.
 export GIT_CONFIG_GLOBAL='/dev/null'
 export GIT_CONFIG_SYSTEM='/dev/null'
 export XDG_CONFIG_HOME='/nonexistent'

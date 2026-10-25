@@ -12,7 +12,9 @@ function setup() {
 }
 
 # @description Print the version nix/release-version.nix derives from a
-#              changelog, with `dev` as the fallback.
+#              changelog, with `dev` as the fallback. The helper hides
+#              XDG_CONFIG_HOME, so nix reads no user nix.conf and the command
+#              it needs is enabled here.
 # @arg $1 changelog the changelog's path
 function nix_version() {
   local -r changelog="$1"
