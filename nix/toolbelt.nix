@@ -28,7 +28,7 @@ buildGoModule {
     ];
   };
 
-  vendorHash = "sha256-OfVFt+FPrV18g7Hs/EfU5PZnutRoHMSRlnR5YmbJX+Y=";
+  vendorHash = "sha256-rToWHTNECWOQGODP/eZL0q+qFgxLeI2PKzUnaaBcA7o=";
 
   subPackages = [ "cmd/toolbelt" ] ++ map (lint: "cmd/${lint.name}") goLints;
 
