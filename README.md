@@ -4,7 +4,7 @@ Shared lints and formatters for the author's repositories, Nix-based or not, shi
 and git hooks all run that image, so every repo is checked the same way and at the version it pins. Docker is the only
 requirement on a consuming machine; Nix is used only to develop and build this repo.
 
-The lints and the formatter framework exist. No formatter ships yet. Publishing workflows are planned.
+The lints, the formatter framework and a shell formatter exist. Publishing workflows are planned.
 
 ## Lints
 
@@ -139,7 +139,12 @@ A formatter rewrites a repo's files in the author's style. Formatters are named 
 the tool they run. The style lives in the image: a consumer can exclude paths and change the few settings a formatter
 allowlists, nothing else, and no file in the consumer's tree is read as formatter config.
 
-No formatter ships yet: `formatters.toml` lists none, so `fmt` rejects every name as an unknown formatter.
+`formatters.toml` lists these:
+
+- `shell`: `fmt shell` and `check-shell-formatted` format shell and BATS files with shfmt. It takes files whose base
+  name matches `*.sh`, `*.bash`, `*.bats`, `.envrc` or `.envrc.*`, and extensionless files whose shebang names bash. The
+  style is fixed by shfmt flags: `--indent 2 --case-indent --binary-next-line --space-redirects`. Because the style
+  comes from flags, shfmt ignores the consumer's `.editorconfig`. `settings.indent` overrides the indent width.
 
 A formatter is reached two ways and runs the same executable both times:
 
