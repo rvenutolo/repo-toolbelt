@@ -5,7 +5,9 @@ package fmtconfig
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 	"strings"
@@ -49,7 +51,9 @@ func Parse(raw []byte, f manifest.Formatter) (Section, []string) {
 	if err := decoder.Decode(&value); err != nil {
 		return Section{}, []string{"is not valid JSON: " + err.Error()}
 	}
-	if decoder.More() {
+	// More reports false before a stray `}` or `]`, so only a second Decode
+	// reaching the end of input proves nothing follows the section.
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Section{}, []string{"is not valid JSON: unexpected trailing data"}
 	}
 	if value == nil {
