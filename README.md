@@ -211,7 +211,8 @@ stay theirs.
 The named formatters run concurrently, and each prints one block, in the order named: a header giving its verdict
 (`pass` when nothing changed, `formatted` when it rewrote files, `fail` or `error`), a `<path>: formatted` line for each
 file it rewrote, then its own findings, such as a file it cannot parse. The runner finds the rewritten files by hashing
-every selected file before and after. A summary line follows, such as
+every selected file before and after: a file gone after the run counts as rewritten, and one it cannot read then is a
+setup failure, exit 2. A summary line follows, such as
 `toolbelt: 2 file(s) formatted, 0 failed, 0 errored; review and stage them`; the advice to review and stage appears
 whenever a file was rewritten.
 

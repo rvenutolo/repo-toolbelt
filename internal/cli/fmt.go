@@ -5,8 +5,10 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -120,14 +122,18 @@ func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, f
 		Mode:          "write",
 	})
 
+	// Every file is hashed before any block is printed, so a setup failure
+	// prints nothing on stdout.
+	changed := make([][]string, len(results))
+	for i, result := range results {
+		if changed[i], err = changedFiles(tree, plan.files[result.Lint], before); err != nil {
+			return err
+		}
+	}
 	var tally fmtTally
 	for i, result := range results {
-		changed := slices.DeleteFunc(slices.Clone(plan.files[result.Lint]), func(file string) bool {
-			sum, err := hashFile(tree, file)
-			return err == nil && sum == before[file]
-		})
-		tally.add(result.Exit, len(changed))
-		if err := printFormatted(stdout, stderr, formatters[i].Name, changed, result); err != nil {
+		tally.add(result.Exit, len(changed[i]))
+		if err := printFormatted(stdout, stderr, formatters[i].Name, changed[i], result); err != nil {
 			return err
 		}
 	}
@@ -170,6 +176,24 @@ func (r Runner) derivedLints(formatters []manifest.Formatter) ([]manifest.Lint, 
 		lints[i] = r.Lints[j]
 	}
 	return lints, nil
+}
+
+// changedFiles is the files, in their order, whose hash no longer matches
+// before. A file that is gone counts as changed; one that cannot be hashed
+// for any other reason is a setup failure, since whether it changed is
+// unknown.
+func changedFiles(tree *os.Root, files []string, before map[string][sha256.Size]byte) ([]string, error) {
+	var changed []string
+	for _, file := range files {
+		sum, err := hashFile(tree, file)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, setupf("hash %s after formatting: %w", file, err)
+		}
+		if err != nil || sum != before[file] {
+			changed = append(changed, file)
+		}
+	}
+	return changed, nil
 }
 
 // hashFile is the SHA-256 of the content of file, a path under tree.
