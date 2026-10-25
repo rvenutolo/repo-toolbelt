@@ -41,7 +41,9 @@
         "0-unstable-${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}";
       # The version a development build reports and its image is tagged
       # with: the commit it was built from, so two builds of different trees
-      # never share a tag.
+      # never share a tag. run-all-checks' Go vendor hash check relies on it
+      # too: the version names the Go modules derivation, so a new commit
+      # makes Nix fetch and verify the modules again.
       devVersion = "0.0.0-${self.shortRev or self.dirtyShortRev or "unknown"}";
       # The version of a release build: the one CHANGELOG.md's first `## `
       # heading names, without its `v`, read the way .ci/release-version's

@@ -133,7 +133,9 @@ function main() {
   # The modules alone build in seconds and fail on a hash mismatch. Their
   # derivation is named for the commit, so each new commit fetches the modules
   # again (this step needs network); a name without the commit would let an
-  # older output with the same, stale hash pass as already built.
+  # older output with the same, stale hash pass as already built. A dirty tree
+  # keeps one name until the next commit, so a second run on the same dirty
+  # HEAD can still pass a stale hash; a clean push and CI always fetch.
   log_info 'checking the Go module vendor hash'
   nix build --no-link "${REPO_DIR}#toolbelt.goModules" || rc=1
 
