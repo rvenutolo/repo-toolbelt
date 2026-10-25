@@ -1,7 +1,6 @@
 package refs_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/testutil"
@@ -13,5 +12,5 @@ func TestMain(m *testing.M) {
 	if err := testutil.IsolateGit(); err != nil {
 		panic(err)
 	}
-	os.Exit(m.Run())
+	m.Run()
 }
