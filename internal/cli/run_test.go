@@ -541,6 +541,7 @@ func TestRun_runCheckoutOwnedByAnotherUser(t *testing.T) {
 	// a non-root test cannot arrange with chown.
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("XDG_CONFIG_HOME", "/nonexistent/repo-toolbelt-test")
 	repo, lintsDir := makeRepo(t), t.TempDir()
 	t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
 	writeLint(t, lintsDir, "a", "exit 0")
