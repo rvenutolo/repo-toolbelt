@@ -185,22 +185,25 @@ type formatterPlan struct {
 }
 
 // prepareFormatters validates the config section of each derived lint among
-// lints and, for those whose section is valid, selects their formatters'
-// files in one pass and removes the excludes. Other lints are left alone. A
-// derived lint naming a formatter r.Formatters lacks is an error, and a
-// failed selection a setup failure.
+// lints and, for those whose section is valid, takes their formatters' files
+// and removes the excludes. Other lints are left alone. Files are selected
+// once, for every formatter in r.Formatters, since which formatter owns a file
+// depends on the others' includes; nothing is selected when lints holds no
+// derived lint. A derived lint naming a formatter r.Formatters lacks is an
+// error, and a failed selection a setup failure.
 func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.Config, lints []manifest.Lint) (formatterPlan, error) {
 	plan := formatterPlan{files: map[string][]string{}, failed: map[string]runner.Result{}}
 	type derived struct {
-		lint      string
-		formatter manifest.Formatter
-		exclude   []string
+		lint, formatter string
+		exclude         []string
 	}
 	var valid []derived
+	named := false
 	for _, lint := range lints {
 		if lint.Formatter == "" {
 			continue
 		}
+		named = true
 		i := slices.IndexFunc(r.Formatters, func(f manifest.Formatter) bool { return f.Name == lint.Formatter })
 		if i < 0 {
 			return formatterPlan{}, fmt.Errorf("lint %q checks formatter %q, which the manifest lacks", lint.Name, lint.Formatter)
@@ -210,21 +213,17 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 			plan.failed[lint.Name] = sectionFailure(lint.Name, problems)
 			continue
 		}
-		valid = append(valid, derived{lint: lint.Name, formatter: r.Formatters[i], exclude: section.Exclude})
+		valid = append(valid, derived{lint: lint.Name, formatter: lint.Formatter, exclude: section.Exclude})
 	}
-	if len(valid) == 0 {
+	if !named {
 		return plan, nil
 	}
-	formatters := make([]manifest.Formatter, len(valid))
-	for i, d := range valid {
-		formatters[i] = d.formatter
-	}
-	selected, err := filesel.Select(ctx, root, formatters)
+	selected, err := filesel.Select(ctx, root, r.Formatters)
 	if err != nil {
 		return formatterPlan{}, setupf("select the formatters' files: %w", err)
 	}
 	for _, d := range valid {
-		plan.files[d.lint] = filesel.Exclude(selected[d.formatter.Name], d.exclude)
+		plan.files[d.lint] = filesel.Exclude(selected[d.formatter], d.exclude)
 	}
 	return plan, nil
 }
