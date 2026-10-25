@@ -50,7 +50,7 @@ func Check(ctx context.Context, lc lintkit.Context) ([]lintkit.Finding, error) {
 		return findings, err
 	}
 	m, err := measure(section.Reports, reports).withoutVendored(ctx, lc.Root)
-	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+	if err != nil {
 		return nil, err
 	}
 	if findings := m.missingFiles(root); len(findings) > 0 {
@@ -110,7 +110,7 @@ func measure(specs []coverage.ReportSpec, reports []coverage.Report) measured {
 // not read.
 func (m measured) withoutVendored(ctx context.Context, dir string) (measured, error) {
 	own, err := vendored.Filter(ctx, dir, slices.Sorted(maps.Keys(m.files)))
-	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+	if err != nil {
 		return measured{}, err
 	}
 	kept := measured{blocks: map[string][]coverage.Block{}, files: map[string]bool{}, cobertura: map[string]bool{}}
@@ -145,7 +145,7 @@ type fileMarker struct {
 // copied from, and their blocks are not judged.
 func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([]fileMarker, error) {
 	listing, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
-	if err != nil {
+	if err != nil { // coverage-exempt: withoutVendored has already run git in this checkout, so ls-files fails only if git fails between two calls
 		return nil, err
 	}
 	var all []string
