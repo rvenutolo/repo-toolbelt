@@ -1,9 +1,10 @@
 package manifest_test
 
 import (
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
 )
@@ -190,8 +191,8 @@ func TestParseFormattersValid(t *testing.T) {
 			Include: []string{"*.go"},
 		},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ParseFormatters() = %+v, want %+v", got, want)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("ParseFormatters() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -317,8 +318,8 @@ func TestMerge(t *testing.T) {
 		{Name: "check-shell-formatted", Language: "bash", Speed: "slow", Description: "Shell files are formatted.", Formatter: "shell"},
 		{Name: "check-go-formatted", Language: "go", Speed: "quick", Description: "Go files are formatted.", Formatter: "go"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Merge() = %+v, want %+v", got, want)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Merge() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -331,8 +332,8 @@ func TestMergeWithoutFormattersReturnsTheLints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Merge() error = %v, want nil", err)
 	}
-	if !reflect.DeepEqual(got, lints) {
-		t.Errorf("Merge() = %+v, want %+v", got, lints)
+	if diff := cmp.Diff(lints, got); diff != "" {
+		t.Errorf("Merge() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -360,7 +361,7 @@ func TestLoadAll(t *testing.T) {
 	if len(formatters) != 0 {
 		t.Errorf("LoadAll() formatters = %+v, want none while formatters.toml has no entries", formatters)
 	}
-	if want := manifest.Load(); !reflect.DeepEqual(lints, want) {
-		t.Errorf("LoadAll() lints = %+v, want Load()'s %+v", lints, want)
+	if diff := cmp.Diff(manifest.Load(), lints); diff != "" {
+		t.Errorf("LoadAll() lints differ from Load()'s (-want +got):\n%s", diff)
 	}
 }
