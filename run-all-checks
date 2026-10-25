@@ -2,11 +2,12 @@
 
 # @description The full verification gate, verify-only: formatting (nix flake
 #              check), the lint suite, the example consumer files' check, the
-#              Go and BATS test suites, then this repo's lints, formatter
-#              checks among them, through the runner and formatters built
-#              from this commit, the coverage lints on the reports the tests
-#              wrote, the baseline-slack check, and check-toolbelt-pins over the example files.
-#              Exit codes aggregate, so one run surfaces every failing
+#              Go and BATS test suites, then this repo's lints through the
+#              runner built from this commit (a listed formatter check runs
+#              the formatter built beside it), the coverage lints on the
+#              reports the tests wrote, the baseline-slack check, and
+#              check-toolbelt-pins over the example files. Exit codes
+#              aggregate, so one run surfaces every failing
 #              category. Every caller (the pre-push hook, the .justfile and
 #              CI) runs it through .ci/in-devshell, so local and CI runs
 #              cannot drift.
