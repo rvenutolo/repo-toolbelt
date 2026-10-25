@@ -44,7 +44,7 @@ readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:000000000000000000
 # To have the hook rewrite files instead of only failing, uncomment the
 # languages below and delete their check-<lang>-formatted lines from LINTS.
 # The hook then stops whenever it rewrote a file, so review and stage the
-# result.
+# result. With every lint deleted from LINTS, the hook only formats.
 readonly FORMATTERS=(
 )
 readonly LINTS=(
@@ -70,6 +70,11 @@ if ((${#FORMATTERS[@]} > 0)); then
     --volume "${root}:${root}" --volume "${common}:${common}:ro" \
     --workdir "${root}" \
     "${IMAGE}" fmt --fail-on-change "${FORMATTERS[@]}"
+fi
+# A repo may use the hook for formatting alone, and the runner rejects a run
+# that names no lint.
+if ((${#LINTS[@]} == 0)); then
+  exit 0
 fi
 exec docker run --rm --interactive --network=none \
   --user "$(id -u):$(id -g)" \
