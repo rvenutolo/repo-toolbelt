@@ -3,8 +3,10 @@
 
 # The Go formatter in the image: its lint, check-go-formatted, run the way the
 # hook files run it, and `fmt go` run with the read-write mount the README
-# gives. The image carries gofumpt and goimports but no go binary, so every
-# test that reaches a tool also shows the formatter needs none.
+# gives. The image carries gofumpt and goimports but no Go toolchain; the
+# `disallowedReferences` in nix/formatter-tools.nix keeps goimports from
+# pulling one in. So every test that reaches a tool also shows the formatter
+# needs none.
 #
 # The Go fixtures are written into each test's temp repo, never kept under
 # test/e2e/fixtures, so this repo's own check-go-formatted never sees
