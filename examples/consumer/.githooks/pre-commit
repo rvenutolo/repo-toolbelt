@@ -38,7 +38,8 @@
 # @noargs
 # @exitcode 0 every formatter and lint passed.
 # @exitcode 1 a formatter or lint reported a problem, a formatter rewrote a
-#             file, or docker is not on PATH.
+#             file, a staged file had unstaged edits, or docker is not on
+#             PATH.
 # @exitcode 2 a usage or setup error in the runner.
 
 set -Eeuo pipefail

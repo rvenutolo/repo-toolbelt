@@ -14,23 +14,27 @@ import (
 func Staged(ctx context.Context, root string) (staged, partly []string, err error) {
 	// --no-renames reports a rename as an addition and a deletion, so the new
 	// path is kept; --no-ext-diff and --name-only keep any diff driver from
-	// running.
+	// running; -O/dev/null overrides a diff.orderFile in the repo's config.
 	cached, err := git(ctx, root, "diff", "--cached", "--name-only", "-z", "--no-renames", "--no-ext-diff",
-		"--diff-filter=d", "--ignore-submodules")
+		"-O/dev/null", "--diff-filter=d", "--ignore-submodules")
 	if err != nil {
 		return nil, nil, err
 	}
-	staged = splitNUL(cached)
+	staged = slices.Compact(slices.Sorted(slices.Values(splitNUL(cached))))
 	if len(staged) == 0 {
 		return nil, nil, nil
 	}
-	unstaged, err := git(ctx, root, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--ignore-submodules")
-	if err != nil { // coverage-exempt: the cached diff just ran in the same checkout
+	unstaged, err := git(ctx, root, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "-O/dev/null",
+		"--ignore-submodules")
+	if err != nil { // coverage-exempt: the cached diff just read the same index in the same checkout
 		return nil, nil, err
 	}
-	changed := splitNUL(unstaged)
+	changed := make(map[string]bool)
+	for _, file := range splitNUL(unstaged) {
+		changed[file] = true
+	}
 	for _, file := range staged {
-		if slices.Contains(changed, file) {
+		if changed[file] {
 			partly = append(partly, file)
 		}
 	}

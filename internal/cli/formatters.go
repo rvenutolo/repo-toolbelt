@@ -69,23 +69,31 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 	return plan, nil
 }
 
-// onlyStaged keeps in each derived lint's files only those staged for the
-// commit, and returns, sorted, the files it took out because they also have
-// unstaged edits: formatting one would rewrite those edits too. A file no
-// formatter selected is never returned. A failed listing is a setup failure.
+// onlyStaged keeps in each derived lint's files, changing p.files in place,
+// only those staged for the commit, and returns, sorted, the files it took
+// out because they also have unstaged edits: formatting one would rewrite
+// those edits too. A file no formatter selected is never returned. A failed
+// listing is a setup failure.
 func (p formatterPlan) onlyStaged(ctx context.Context, root string) ([]string, error) {
 	staged, partly, err := filesel.Staged(ctx, root)
-	if err != nil { // coverage-exempt: the file selection just ran git in the same checkout
+	if err != nil {
 		return nil, setupf("list the staged files: %w", err)
+	}
+	isStaged, isPartly := make(map[string]bool, len(staged)), make(map[string]bool, len(partly))
+	for _, file := range staged {
+		isStaged[file] = true
+	}
+	for _, file := range partly {
+		isPartly[file] = true
 	}
 	var held []string
 	for lint, files := range p.files {
 		p.files[lint] = slices.DeleteFunc(files, func(file string) bool {
-			if slices.Contains(partly, file) {
+			if isPartly[file] {
 				held = append(held, file)
 				return true
 			}
-			return !slices.Contains(staged, file)
+			return !isStaged[file]
 		})
 	}
 	slices.Sort(held)
