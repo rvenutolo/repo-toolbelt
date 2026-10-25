@@ -75,6 +75,18 @@ function enable_formatter() {
   assert_line --index 1 --partial "${LINT_RUN} --hook pre-commit "
 }
 
+@test 'pre-commit with a formatter and an empty LINTS block runs only fmt' {
+  enable_formatter
+  sed --in-place '/^readonly LINTS=($/,/^)$/{/^  /d}' .githooks/pre-commit
+  run sed --quiet '/^readonly LINTS=($/,/^)$/p' .githooks/pre-commit
+  assert_output 'readonly LINTS=(
+)'
+  run .githooks/pre-commit
+  assert_success
+  run cat "${STUB_LOG}"
+  assert_output "${FMT_RUN}"
+}
+
 @test 'pre-commit stops with status 1 when fmt exits 1, before the lints' {
   enable_formatter
   STUB_FMT_EXIT=1 run .githooks/pre-commit
