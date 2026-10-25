@@ -103,6 +103,16 @@ function enable_formatter() {
   assert_output "${FMT_RUN}"
 }
 
+@test 'pre-push with an empty LINTS block exits 0 without starting a container' {
+  sed --in-place '/^readonly LINTS=($/,/^)$/{/^  /d}' .githooks/pre-push
+  run sed --quiet '/^readonly LINTS=($/,/^)$/p' .githooks/pre-push
+  assert_output 'readonly LINTS=(
+)'
+  run .githooks/pre-push origin 'https://example.invalid/repo.git'
+  assert_success
+  [[ ! -e "${STUB_LOG}" ]]
+}
+
 @test 'pre-push runs only the lints, with the remote, and never fmt' {
   run .githooks/pre-push origin 'https://example.invalid/repo.git'
   assert_success
