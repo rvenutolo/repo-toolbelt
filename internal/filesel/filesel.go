@@ -18,6 +18,7 @@ import (
 
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
 	"github.com/rvenutolo/repo-toolbelt/internal/pathglob"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // shebangPrefix is how much of an extensionless file is read to find its
@@ -44,7 +45,7 @@ func Select(ctx context.Context, root string, formatters []manifest.Formatter) (
 	}
 	defer dir.Close()
 
-	listing, err := git(ctx, root, "", "ls-files", "-z")
+	listing, err := git(ctx, root, "ls-files", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func Select(ctx context.Context, root string, formatters []manifest.Formatter) (
 	// git lists a path once per index stage, so an unmerged path repeats; the
 	// listing is sorted, which puts the repeats side by side.
 	for _, file := range slices.Compact(splitNUL(listing)) {
-		if hasVendorSegment(file) {
+		if vendored.InVendorDir(file) {
 			continue
 		}
 		owners, err := ownersOf(dir, file, formatters)
@@ -66,12 +67,12 @@ func Select(ctx context.Context, root string, formatters []manifest.Formatter) (
 		}
 	}
 
-	vendored, err := vendoredByAttribute(ctx, root, candidates)
+	marked, err := vendored.ByAttribute(ctx, root, candidates)
 	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, err
 	}
 	for _, file := range candidates {
-		if vendored[file] {
+		if marked[file] {
 			continue
 		}
 		for _, name := range owned[file] {
@@ -159,12 +160,6 @@ func isExtensionless(base string) bool {
 	return !strings.Contains(base[1:], ".")
 }
 
-// hasVendorSegment reports whether a directory of file is named vendor.
-func hasVendorSegment(file string) bool {
-	segments := strings.Split(file, "/")
-	return slices.Contains(segments[:len(segments)-1], "vendor")
-}
-
 // isRegular reports whether file is a regular file in the working tree that
 // is reached without passing through a symlink. A file that is gone, one
 // whose parent is no longer a directory, and one under a directory that is
@@ -242,39 +237,13 @@ func interpreterOf(words []string) string {
 	return ""
 }
 
-// vendoredByAttribute returns the files that git reports linguist-vendored
-// set for, in one git call.
-func vendoredByAttribute(ctx context.Context, root string, files []string) (map[string]bool, error) {
-	vendored := make(map[string]bool)
-	if len(files) == 0 {
-		return vendored, nil
-	}
-	input := strings.Join(files, "\x00") + "\x00"
-	out, err := git(ctx, root, input, "check-attr", "-z", "--stdin", "linguist-vendored")
-	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
-		return nil, err
-	}
-	// Each record is path, attribute, value, all NUL-terminated.
-	fields := splitNUL(out)
-	if len(fields)%3 != 0 { // coverage-exempt: check-attr -z always prints whole records, so this guards against a git change
-		return nil, fmt.Errorf("git check-attr: unexpected output of %d fields", len(fields))
-	}
-	for record := range slices.Chunk(fields, 3) {
-		if value := record[2]; value == "set" || value == "true" {
-			vendored[record[0]] = true
-		}
-	}
-	return vendored, nil
-}
-
-// git runs git in dir with stdin and returns its stdout. Git runs in the C
-// locale so its messages are stable. The error of a failed git carries the
-// first line of its stderr.
-func git(ctx context.Context, dir, stdin string, args ...string) ([]byte, error) {
+// git runs git in dir and returns its stdout. Git runs in the C locale so its
+// messages are stable. The error of a failed git carries the first line of
+// its stderr.
+func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // fixed program; the arguments are this package's own
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANGUAGE=")
-	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
