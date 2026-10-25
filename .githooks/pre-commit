@@ -25,8 +25,17 @@ function main() {
   local repo_dir
   repo_dir="$(git rev-parse --show-toplevel)"
   printf 'pre-commit: checking formatting\n' >&2
+  # git names the index it is committing in GIT_INDEX_FILE; under
+  # `git commit --all` or `git commit <path>` that is a temporary index, not
+  # .git/index. .ci/in-devshell admits only its allowlist, so the hook hands
+  # the variable through itself; without it the runner's unstaged-changes
+  # warning compares the working tree with the wrong index.
+  local -a index_env=()
+  if [[ -n "${GIT_INDEX_FILE:-}" ]]; then
+    index_env=(env "GIT_INDEX_FILE=${GIT_INDEX_FILE}")
+  fi
   local status=0
-  "${repo_dir}/.ci/in-devshell" "${repo_dir}/.ci/run-built-toolbelt" run --hook pre-commit \
+  "${repo_dir}/.ci/in-devshell" "${index_env[@]}" "${repo_dir}/.ci/run-built-toolbelt" run --hook pre-commit \
     "${DOGFOOD_FORMATTER_CHECKS[@]}" || status=$?
   # Exit 1 is a finding, which .ci/fmt can fix; anything else (exit 2, a
   # layout that did not build or a runner error) means the check never ran.
