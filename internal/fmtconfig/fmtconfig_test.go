@@ -54,6 +54,18 @@ func TestParse(t *testing.T) {
 			wantProblems: []string{"is not valid JSON: unexpected trailing data"},
 		},
 		{
+			name:         "section is followed by a closing brace",
+			raw:          `{} }`,
+			formatter:    withIndent,
+			wantProblems: []string{"is not valid JSON: unexpected trailing data"},
+		},
+		{
+			name:         "section is followed by a closing bracket",
+			raw:          `{} ]`,
+			formatter:    withIndent,
+			wantProblems: []string{"is not valid JSON: unexpected trailing data"},
+		},
+		{
 			name:         "unknown key",
 			raw:          `{"x":1}`,
 			formatter:    withIndent,
