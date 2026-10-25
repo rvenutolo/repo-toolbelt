@@ -382,6 +382,28 @@ func TestSelect_repositoryWithoutTrackedFiles(t *testing.T) {
 	assertSelected(t, got, nil)
 }
 
+func TestSelect_conflictedFileIsListedOnce(t *testing.T) {
+	t.Parallel()
+	repo := newRepo(t, map[string]string{"a.sh": "echo base\n", "keep.sh": "echo\n"})
+	gitIn(t, repo, "checkout", "--quiet", "-b", "other")
+	writeFile(t, filepath.Join(repo, "a.sh"), "echo other\n")
+	commitAll(t, repo)
+	gitIn(t, repo, "checkout", "--quiet", "main")
+	writeFile(t, filepath.Join(repo, "a.sh"), "echo main\n")
+	commitAll(t, repo)
+	// The merge stops on the conflict in a.sh, leaving it at three index stages.
+	cmd := exec.CommandContext(t.Context(), "git", "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "--quiet", "other")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), gitEnv...)
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("git merge succeeded, want a conflict\n%s", out)
+	}
+
+	got := selectFiles(t, repo)
+
+	assertSelected(t, got, map[string][]string{"shell": {"a.sh", "keep.sh"}})
+}
+
 func TestSelect_noFormatters(t *testing.T) {
 	t.Parallel()
 	repo := newRepo(t, map[string]string{"a.sh": "echo\n"})
