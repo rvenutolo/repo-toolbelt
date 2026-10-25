@@ -87,6 +87,26 @@ function commit_unformatted() {
   assert_content bin/tool "${FORMATTED_SCRIPT}"
 }
 
+@test 'fmt --staged shell rewrites only staged files and leaves a partly staged one alone' {
+  write_file bin/staged.sh "${FORMATTED_SH}"
+  write_file bin/partly.sh "${FORMATTED_SH}"
+  write_file bin/unstaged.sh "${FORMATTED_SH}"
+  commit_all 'formatted'
+  write_file bin/staged.sh "${UNFORMATTED_SH}"
+  write_file bin/partly.sh "${UNFORMATTED_SH}"
+  git add bin/staged.sh bin/partly.sh
+  write_file bin/partly.sh "${UNFORMATTED_SH}"$'# unstaged\n'
+  write_file bin/unstaged.sh "${UNFORMATTED_SH}"
+  run rw_hook_run fmt --staged shell
+  assert_failure 1
+  assert_line 'bin/partly.sh: staged and unstaged changes; format it by hand or stage it whole'
+  assert_line 'bin/staged.sh: formatted'
+  assert_line 'toolbelt: 1 file(s) formatted, 0 failed, 0 errored, 1 partly staged; review and stage them'
+  assert_content bin/staged.sh "${FORMATTED_SH}"
+  assert_content bin/partly.sh "${UNFORMATTED_SH}"$'# unstaged\n'
+  assert_content bin/unstaged.sh "${UNFORMATTED_SH}"
+}
+
 @test 'fmt shell with the read-only mount exits 2 giving the read-write line' {
   commit_unformatted
   run hook_run fmt shell

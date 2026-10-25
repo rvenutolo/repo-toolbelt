@@ -456,6 +456,125 @@ func TestRun_fmtStreamFailures(t *testing.T) {
 	}
 }
 
+func TestRun_fmtStaged(t *testing.T) {
+	t.Parallel()
+	const partlyLine = "a.x: staged and unstaged changes; format it by hand or stage it whole\n"
+	tests := []struct {
+		name   string
+		config string
+		// prepare edits the committed a.x, b.x and c.y, each "content\n".
+		prepare func(t *testing.T, repo string)
+		// body is formatter x's; empty means rewriteFiles.
+		body       string
+		wantStdout string
+		wantCode   int
+		// want is each file's content after the run.
+		want map[string]string
+	}{
+		{
+			name: "only the staged files are formatted",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.x"), "staged\n")
+				gitIn(t, repo, "add", "a.x")
+				writeFile(t, filepath.Join(repo, "b.x"), "unstaged\n")
+			},
+			wantStdout: "== x: formatted ==\na.x: formatted\n" +
+				"toolbelt: 1 file(s) formatted, 0 failed, 0 errored; review and stage them\n",
+			wantCode: 0,
+			want:     map[string]string{"a.x": "formatted\n", "b.x": "unstaged\n"},
+		},
+		{
+			name: "a partly staged file is reported, not rewritten, and fails the run",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.x"), "staged\n")
+				writeFile(t, filepath.Join(repo, "b.x"), "staged\n")
+				gitIn(t, repo, "add", "a.x", "b.x")
+				writeFile(t, filepath.Join(repo, "a.x"), "unstaged\n")
+			},
+			wantStdout: partlyLine + "== x: formatted ==\nb.x: formatted\n" +
+				"toolbelt: 1 file(s) formatted, 0 failed, 0 errored, 1 partly staged; review and stage them\n",
+			wantCode: 1,
+			want:     map[string]string{"a.x": "unstaged\n", "b.x": "formatted\n"},
+		},
+		{
+			name: "an erroring formatter beside a partly staged file still exits 2",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.x"), "staged\n")
+				gitIn(t, repo, "add", "a.x")
+				writeFile(t, filepath.Join(repo, "a.x"), "unstaged\n")
+			},
+			body:       "exit 2",
+			wantStdout: partlyLine + "== x: error ==\ntoolbelt: 0 file(s) formatted, 0 failed, 1 errored, 1 partly staged\n",
+			wantCode:   2,
+			want:       map[string]string{"a.x": "unstaged\n"},
+		},
+		{
+			name: "nothing staged formats nothing",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.x"), "unstaged\n")
+			},
+			wantStdout: "== x: pass ==\ntoolbelt: 0 file(s) formatted, 0 failed, 0 errored\n",
+			wantCode:   0,
+			want:       map[string]string{"a.x": "unstaged\n", "b.x": "content\n"},
+		},
+		{
+			name: "a partly staged file the named formatters do not own is not reported",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "c.y"), "staged\n")
+				gitIn(t, repo, "add", "c.y")
+				writeFile(t, filepath.Join(repo, "c.y"), "unstaged\n")
+			},
+			wantStdout: "== x: pass ==\ntoolbelt: 0 file(s) formatted, 0 failed, 0 errored\n",
+			wantCode:   0,
+			want:       map[string]string{"c.y": "unstaged\n"},
+		},
+		{
+			name:   "an excluded partly staged file is not reported",
+			config: "check-x-formatted:\n  exclude:\n    - a.x\n",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "a.x"), "staged\n")
+				gitIn(t, repo, "add", "a.x")
+				writeFile(t, filepath.Join(repo, "a.x"), "unstaged\n")
+			},
+			wantStdout: "== x: pass ==\ntoolbelt: 0 file(s) formatted, 0 failed, 0 errored\n",
+			wantCode:   0,
+			want:       map[string]string{"a.x": "unstaged\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo, formattersDir := fmtRepo(t, tt.config), t.TempDir()
+			body := tt.body
+			if body == "" {
+				body = rewriteFiles
+			}
+			writeLint(t, formattersDir, "x", body)
+			tt.prepare(t, repo)
+
+			got := runFmt(t, repo, formattersDir, "--staged", "x")
+
+			if diff := cmp.Diff(tt.wantStdout, got.stdout); diff != "" {
+				t.Errorf("stdout (-want +got):\n%s", diff)
+			}
+			if got.code != tt.wantCode {
+				t.Errorf("exit %d, want %d (stderr %q)", got.code, tt.wantCode, got.stderr)
+			}
+			for name, want := range tt.want {
+				if content := readFile(t, filepath.Join(repo, name)); content != want {
+					t.Errorf("%s = %q, want %q", name, content, want)
+				}
+			}
+		})
+	}
+}
+
 func TestRun_fmtHelp(t *testing.T) {
 	t.Parallel()
 	got := runWith(t.Context(), t, formatterRunner(t, t.TempDir()), nil, "", "fmt", "--help")
@@ -464,6 +583,8 @@ func TestRun_fmtHelp(t *testing.T) {
 	}
 	for _, want := range []string{
 		"--fail-on-change",
+		"--staged",
+		"staged and unstaged changes",
 		"TOOLBELT_FORMATTERS",
 		"Exit codes: 0",
 		"1 a formatter reported a finding",
