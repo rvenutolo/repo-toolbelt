@@ -15,10 +15,6 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
 )
 
-// gitEnv isolates fixture git commands from the machine's git config,
-// including the global excludes file, which may list vendor/.
-var gitEnv = []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "XDG_CONFIG_HOME=/nonexistent"}
-
 // section names the fixture reports and the default baseline.
 const section = `{"reports":[{"format":"go","path":"cov/go.out"},{"format":"cobertura","path":"cov/c.xml"}]}`
 
@@ -30,7 +26,6 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), gitEnv...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
