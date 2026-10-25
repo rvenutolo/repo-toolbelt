@@ -14,7 +14,10 @@
 #              -format-only -local <module>`, which regroups imports into
 #              stdlib, third-party and module-local but never adds or removes
 #              one. `<module>` is the module path of the go.mod at the repo
-#              root, so a nested module's own packages group as third-party.
+#              root, whatever module the file is in. `-local` is a prefix
+#              match on the import path as a string, so the packages of a
+#              nested module whose path extends the root's group as local,
+#              and those of any other module as third-party.
 #              The formatter takes no settings; the runner has already
 #              validated the section in the file TOOLBELT_SECTION names.
 #

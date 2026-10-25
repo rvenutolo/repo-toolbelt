@@ -152,9 +152,10 @@ allowlists, nothing else, and no file in the consumer's tree is read as formatte
 - `go`: `fmt go` formats, and `check-go-formatted` checks, `*.go` files. Each file goes through gofumpt, then through
   `goimports -format-only` with the root module's path as the local prefix, so imports fall into three groups (standard
   library, third-party, then the module's own packages); imports are regrouped, never added or removed. A generated
-  file, one with a `// Code generated ... DO NOT EDIT.` line before its package clause, is skipped. A nested module's
-  own packages group as third-party, because only the root module's path is the prefix. It takes no settings. It needs
-  a `go.mod` at the repo root whenever a selected file is not generated, and exits 2 without one.
+  file, one with a `// Code generated ... DO NOT EDIT.` line before its package clause, is skipped. Imports group against
+  the root module's path, whatever module the file is in, and the prefix match is on the import path as a string: a
+  nested module whose path extends the root's groups as local, and any other module groups as third-party. It takes no
+  settings. It needs a `go.mod` at the repo root whenever a selected file is not generated, and exits 2 without one.
 
 A formatter is reached two ways and runs the same executable both times:
 
@@ -308,9 +309,9 @@ the image and are passed to the tool explicitly; a Go formatter is built from `c
   a setup failure, exit 2. A tool that uses one exit code for all of these is told apart by its stderr.
 - In both modes, exit 2 for a setup failure, such as a missing tool or an unreadable file list. Temporary files go
   under `$TMPDIR`, or `/tmp` when it is unset, as in the image; never in the checkout. The section's `settings:`
-  override the image's defaults, and the formatter reads no config file from the checkout, apart from the Go
-  formatter, which reads `go.mod`: the root one for the module path, and, in gofumpt, the nearest one to each file
-  for the Go language version.
+  override the image's defaults. The formatter reads no config file from the checkout, except that the Go formatter
+  reads `go.mod`: the root one for the module path, and, through gofumpt, the nearest one to each file for the language
+  version.
 - An empty file list passes in check mode and does nothing in write mode.
 
 ### Adding a lint
