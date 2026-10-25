@@ -441,6 +441,15 @@ function assert_tmpdir_empty() {
   assert_content nested/a.go "${GROUPED_GO}"
 }
 
+@test 'an import whose path only starts with the root module path groups as local' {
+  set_mode write
+  write_file a.go $'package x\n\nimport (\n\t"example.com/fixturesibling/y"\n\t"example.org/other/pkg"\n\t"os"\n)\n\nfunc f() {\n\t_ = os.Exit\n\t_ = pkg.X\n\t_ = y.Z\n}\n'
+  write_list a.go
+  run --separate-stderr "${FORMATTER_PATH}"
+  assert_success
+  assert_content a.go $'package x\n\nimport (\n\t"os"\n\n\t"example.org/other/pkg"\n\n\t"example.com/fixturesibling/y"\n)\n\nfunc f() {\n\t_ = os.Exit\n\t_ = pkg.X\n\t_ = y.Z\n}\n'
+}
+
 @test 'a quoted module path and a comment on the module line are read' {
   set_mode write
   write_file go.mod $'// The fixture module.\nmodule "example.com/fixture" // the root\n\ngo 1.22\n'
