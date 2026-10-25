@@ -25,4 +25,5 @@ go internal/pins 0
 go internal/refs 0
 go internal/runner 0
 go internal/selection 0
+go internal/testutil 0
 go internal/vendored 0
