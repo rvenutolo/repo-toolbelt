@@ -141,10 +141,12 @@ allowlists, nothing else, and no file in the consumer's tree is read as formatte
 
 `formatters.toml` lists these:
 
-- `shell`: `fmt shell` and `check-shell-formatted` format shell and BATS files with shfmt. It takes files whose base
-  name matches `*.sh`, `*.bash`, `*.bats`, `.envrc` or `.envrc.*`, and extensionless files whose shebang names bash. The
-  style is fixed by shfmt flags: `--indent 2 --case-indent --binary-next-line --space-redirects`. Because the style
-  comes from flags, shfmt ignores the consumer's `.editorconfig`. `settings.indent` overrides the indent width.
+- `shell`: `fmt shell` formats, and `check-shell-formatted` checks, shell and BATS files with shfmt. It takes files
+  whose base name matches `*.sh`, `*.bash`, `*.bats`, `.envrc` or `.envrc.*`, and extensionless files whose shebang
+  names bash. `*.bats` files are parsed in shfmt's bats dialect and every other file in the dialect shfmt detects from
+  its name and shebang, so a `.sh` file with `#!/bin/sh` is held to POSIX. The style is fixed by shfmt flags:
+  `--indent 2 --case-indent --binary-next-line --space-redirects`. Because the style comes from flags, shfmt ignores
+  the consumer's `.editorconfig`. `settings.indent` overrides the indent width.
 
 A formatter is reached two ways and runs the same executable both times:
 
