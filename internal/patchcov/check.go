@@ -18,6 +18,7 @@ import (
 
 	"github.com/rvenutolo/repo-toolbelt/internal/coverage"
 	"github.com/rvenutolo/repo-toolbelt/internal/lintkit"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // Check reads the reports the section names and the working tree's changes
@@ -120,13 +121,23 @@ type fileMarker struct {
 }
 
 // scanMarkers returns the markers in every tracked file that can hold them.
+// Vendored files are not read: their markers belong to the project they were
+// copied from, and no report measures them.
 func (m measured) scanMarkers(ctx context.Context, dir string, root *os.Root) ([]fileMarker, error) {
-	tracked, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
+	listing, err := gitOutput(ctx, dir, "ls-files", "-z", "--")
 	if err != nil {
 		return nil, err
 	}
+	var all []string
+	if listing != "" {
+		all = strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00")
+	}
+	tracked, err := vendored.Filter(ctx, dir, all)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+		return nil, err
+	}
 	var markers []fileMarker
-	for file := range strings.SplitSeq(strings.TrimSuffix(tracked, "\x00"), "\x00") {
+	for _, file := range tracked {
 		var scan func([]byte) []coverage.Marker
 		switch {
 		case path.Ext(file) == ".go":
