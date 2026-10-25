@@ -823,10 +823,11 @@ func TestRun_runPrePushInputReadFailure(t *testing.T) {
 }
 
 // runFormatters are the formatters the derived-lint tests select from: x
-// takes a setting and claims extensionless xsh scripts, y is slow.
+// takes a setting and claims extensionless xsh scripts, y is slow and claims
+// Buildfile by name, whatever its shebang.
 var runFormatters = []manifest.Formatter{
 	{Name: "x", Language: "bash", Speed: "quick", Description: "formats x", Include: []string{"*.x"}, Shebangs: []string{"xsh"}, Settings: []string{"width"}},
-	{Name: "y", Language: "go", Speed: "slow", Description: "formats y", Include: []string{"*.y"}},
+	{Name: "y", Language: "go", Speed: "slow", Description: "formats y", Include: []string{"*.y", "Buildfile"}},
 }
 
 // formatterRunner is a Runner over runLints plus runFormatters and their
@@ -1000,14 +1001,14 @@ func TestRun_runValidatesOnlyNamedFormatterSections(t *testing.T) {
 	}
 }
 
-func TestRun_runSelectsFilesOnlyForNamedFormatters(t *testing.T) {
+func TestRun_runSelectsFilesForEveryFormatter(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a file with no read permission")
 	}
 	repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
-	// Of the two formatters, only x reads an extensionless file, to look for
-	// its shebang.
+	// Only x's shebangs make selection read an extensionless file, so a run
+	// that names only y still reads it.
 	script := filepath.Join(repo, "script")
 	writeFile(t, script, "#!/usr/bin/env xsh\n")
 	writeFile(t, filepath.Join(repo, "c.y"), "content\n")
@@ -1015,18 +1016,74 @@ func TestRun_runSelectsFilesOnlyForNamedFormatters(t *testing.T) {
 	if err := os.Chmod(script, 0o000); err != nil {
 		t.Fatal(err)
 	}
-	writeLint(t, formattersDir, "x", "exit 0")
-	writeLint(t, formattersDir, "y", listFiles("exit 0"))
+	writeLint(t, lintsDir, "a", "exit 0")
+	writeLint(t, formattersDir, "y", "exit 0")
 	runner, env := formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir)
 
 	got := runWith(t.Context(), t, runner, env, "", "run", "--hook", "pre-commit", "check-y-formatted")
-	if want := "== check-y-formatted: pass ==\nmode=check\nfile=[c.y]\ntoolbelt: 1 passed, 0 failed, 0 errored\n"; got.code != 0 || got.stdout != want {
-		t.Errorf("run check-y-formatted: got %+v, want exit 0 and stdout %q", got, want)
+	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, "script") {
+		t.Errorf("run check-y-formatted: got %+v, want exit 2 naming the unreadable file and no lint run", got)
 	}
 
-	got = runWith(t.Context(), t, runner, env, "", "run", "--hook", "pre-commit", "check-y-formatted", "check-x-formatted")
-	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, "script") {
-		t.Errorf("run check-x-formatted: got %+v, want exit 2 naming the unreadable file and no lint run", got)
+	// A run that names no derived lint selects nothing.
+	got = runWith(t.Context(), t, runner, env, "", "run", "--hook", "pre-commit", "a")
+	if want := "== a: pass ==\ntoolbelt: 1 passed, 0 failed, 0 errored\n"; got.code != 0 || got.stdout != want {
+		t.Errorf("run a: got %+v, want exit 0 and stdout %q", got, want)
+	}
+}
+
+func TestRun_runFileOwnershipIgnoresWhichFormattersRun(t *testing.T) {
+	t.Parallel()
+	// Buildfile's shebang names x's interpreter, but y's include claims it,
+	// and an include wins over a shebang.
+	tests := []struct {
+		name   string
+		config string
+		args   []string
+		want   string
+	}{
+		{
+			name: "both named",
+			args: []string{"check-x-formatted", "check-y-formatted"},
+			want: "== check-x-formatted: pass ==\nmode=check\nfile=[a.x]\n" +
+				"== check-y-formatted: pass ==\nmode=check\nfile=[Buildfile]\n" +
+				"toolbelt: 2 passed, 0 failed, 0 errored\n",
+		},
+		{
+			name: "owner not named",
+			args: []string{"check-x-formatted"},
+			want: "== check-x-formatted: pass ==\nmode=check\nfile=[a.x]\ntoolbelt: 1 passed, 0 failed, 0 errored\n",
+		},
+		{
+			name:   "owner's section bad",
+			config: "check-y-formatted:\n  settings:\n    width: 1\n",
+			args:   []string{"check-x-formatted", "check-y-formatted"},
+			want: "== check-x-formatted: pass ==\nmode=check\nfile=[a.x]\n" +
+				"== check-y-formatted: fail ==\n" +
+				".repo-toolbelt.yml: check-y-formatted: settings: check-y-formatted takes no settings\n1 problem(s)\n" +
+				"toolbelt: 1 passed, 1 failed, 0 errored\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo, lintsDir, formattersDir := makeRepo(t), t.TempDir(), t.TempDir()
+			writeFile(t, filepath.Join(repo, "Buildfile"), "#!/usr/bin/env xsh\n")
+			writeFile(t, filepath.Join(repo, "a.x"), "content\n")
+			if tt.config != "" {
+				writeFile(t, filepath.Join(repo, ".repo-toolbelt.yml"), tt.config)
+			}
+			commitAll(t, repo)
+			writeLint(t, formattersDir, "x", listFiles("exit 0"))
+			writeLint(t, formattersDir, "y", listFiles("exit 0"))
+
+			got := runWith(t.Context(), t, formatterRunner(t, repo), formatterEnv(lintsDir, formattersDir), "",
+				append([]string{"run", "--hook", "pre-commit"}, tt.args...)...)
+
+			if diff := cmp.Diff(tt.want, got.stdout); diff != "" {
+				t.Errorf("stdout (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 
