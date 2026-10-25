@@ -51,10 +51,11 @@ function enable_formatter() {
   sed --in-place 's/^readonly FORMATTERS=($/&\n  fx\n  # go/' .githooks/pre-commit
 }
 
-@test 'the shipped pre-commit example lists the shell formatter commented out and none active' {
+@test 'the shipped pre-commit example lists the shell and go formatters commented out and none active' {
   run sed --quiet '/^readonly FORMATTERS=($/,/^)$/p' .githooks/pre-commit
   assert_output 'readonly FORMATTERS=(
   # shell
+  # go
 )'
 }
 
