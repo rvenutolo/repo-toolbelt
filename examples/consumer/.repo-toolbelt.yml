@@ -38,3 +38,13 @@
 #       path: coverage.out
 #     - format: cobertura
 #       path: .coverage/bats/cobertura.xml
+
+# A formatter's section is keyed by its lint's name, check-<name>-formatted,
+# and both the lint and `fmt` read it. exclude is a list of globs over
+# repo-relative paths whose files the formatter skips; settings maps the
+# settings the formatter allows to positive integers.
+# check-shell-formatted:
+#   exclude:
+#     - test/fixtures/**
+#   settings:
+#     indent: 4
