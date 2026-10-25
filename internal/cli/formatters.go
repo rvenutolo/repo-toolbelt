@@ -69,6 +69,29 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 	return plan, nil
 }
 
+// onlyStaged keeps in each derived lint's files only those staged for the
+// commit, and returns, sorted, the files it took out because they also have
+// unstaged edits: formatting one would rewrite those edits too. A file no
+// formatter selected is never returned. A failed listing is a setup failure.
+func (p formatterPlan) onlyStaged(ctx context.Context, root string) ([]string, error) {
+	staged, partly, err := filesel.Staged(ctx, root)
+	if err != nil { // coverage-exempt: the file selection just ran git in the same checkout
+		return nil, setupf("list the staged files: %w", err)
+	}
+	var held []string
+	for lint, files := range p.files {
+		p.files[lint] = slices.DeleteFunc(files, func(file string) bool {
+			if slices.Contains(partly, file) {
+				held = append(held, file)
+				return true
+			}
+			return !slices.Contains(staged, file)
+		})
+	}
+	slices.Sort(held)
+	return held, nil
+}
+
 // sectionFailure is the failing result of a derived lint whose section has
 // problems: each problem as a lint prints a problem in its own section, then
 // the count line.

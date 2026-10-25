@@ -436,18 +436,29 @@ func TestRun_fmtStreamFailures(t *testing.T) {
 		name   string
 		stdout int // Write calls stdout accepts before failing
 		stderr int // Write calls stderr accepts before failing
+		// partly runs fmt --staged with a.x partly staged, so a line naming
+		// it comes before the blocks.
+		partly bool
 	}{
 		{name: "block on stdout", stdout: 0, stderr: 100},
 		{name: "block on stderr", stdout: 100, stderr: 0},
 		{name: "summary line", stdout: 1, stderr: 100},
+		{name: "partly staged line", stdout: 0, stderr: 100, partly: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			repo, formattersDir := fmtRepo(t, ""), t.TempDir()
 			writeLint(t, formattersDir, "x", "echo x-diag >&2")
+			args := []string{"fmt", "x"}
+			if tt.partly {
+				writeFile(t, filepath.Join(repo, "a.x"), "staged\n")
+				gitIn(t, repo, "add", "a.x")
+				writeFile(t, filepath.Join(repo, "a.x"), "unstaged\n")
+				args = []string{"fmt", "--staged", "x"}
+			}
 			env := map[string]string{"TOOLBELT_FORMATTERS_DIR": formattersDir}
-			err := formatterRunner(t, repo).Run(t.Context(), []string{"fmt", "x"}, func(k string) string { return env[k] },
+			err := formatterRunner(t, repo).Run(t.Context(), args, func(k string) string { return env[k] },
 				strings.NewReader(""), &writerFailingAfter{ok: tt.stdout}, &writerFailingAfter{ok: tt.stderr})
 			if !errors.Is(err, errBoom) || cli.ExitCode(err) != 1 {
 				t.Errorf("err = %v (exit %d), want errBoom and exit 1", err, cli.ExitCode(err))

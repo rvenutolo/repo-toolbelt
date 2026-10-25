@@ -251,22 +251,31 @@ Exit codes:
 
 - 0: every formatter passed or rewrote its files.
 - 1: a formatter reported a finding (a file it cannot parse, a bad config section), the config file has problems,
-  `--fail-on-change` is given and a file was rewritten, or a runtime error such as a failed write of the output.
+  `--fail-on-change` is given and a file was rewritten, `--staged` is given and a file is partly staged, or a runtime
+  error such as a failed write of the output.
 - 2: a formatter errored, or a usage or setup error, a read-only checkout among them.
 - 130: the run was interrupted.
 
 Run by hand, `fmt` exits 0 after a successful rewrite, like `gofmt -w`. `--fail-on-change` is for a hook: it makes a
 rewrite exit 1, so the commit stops for the rewritten files to be reviewed and staged.
 
+`--staged` is for a pre-commit hook too: it limits each formatter to its selected files that are staged in the index
+being committed, the one git names in `GIT_INDEX_FILE` under `git commit --all` or `git commit <path>`. Deletions are
+left out. A staged file that also has unstaged edits is not rewritten, since formatting it would rewrite the unstaged
+edits too: it is listed before the blocks as
+`<path>: staged and unstaged changes; format it by hand or stage it whole`, counted as `N partly staged` in the
+summary, and makes the run exit 1. The other files are still formatted.
+
 ### In the pre-commit hook
 
 The example pre-commit hook carries a `FORMATTERS` array, empty by default, beside `LINTS`. To have the hook rewrite
 files instead of only failing, add the languages to `FORMATTERS` and delete their `check-<name>-formatted` lines from
-`LINTS`. The hook then first runs `fmt --fail-on-change` for those languages with the read-write mount and stops on a
-non-zero exit, a rewrite included, leaving the rewritten files unstaged. When `fmt` exits 0, having rewritten nothing,
-the hook goes on to run the lints. With `FORMATTERS` empty, it runs only the lints; with `LINTS` empty, it only
-formats, and exits 0 once `fmt` does. The pre-push hook only checks: at
-push time the commits exist, so a rewrite could only stop the push.
+`LINTS`. The hook then first runs `fmt --fail-on-change --staged` for those languages with the read-write mount and
+stops on a non-zero exit, a rewrite or a partly staged file included, leaving the rewritten files unstaged. Only the
+files the commit stages are formatted, so a file the commit leaves out, and edits left unstaged, are never rewritten.
+When `fmt` exits 0, having rewritten nothing, the hook goes on to run the lints. With `FORMATTERS` empty, it runs only
+the lints; with `LINTS` empty, it only formats, and exits 0 once `fmt` does. The pre-push hook only checks: at push time
+the commits exist, so a rewrite could only stop the push.
 
 ## The calling convention
 

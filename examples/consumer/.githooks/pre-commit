@@ -27,7 +27,7 @@
 #                  --volume "${root}:${root}" --volume "${common}:${common}:ro" \
 #                  --workdir "${root}" "${index_env[@]}" \
 #                  ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000 \
-#                  fmt --fail-on-change shell go
+#                  fmt --fail-on-change --staged shell go
 #                docker run --rm --interactive --network=none \
 #                  --user "$(id -u):$(id -g)" \
 #                  --volume "${root}:${root}:ro" --volume "${common}:${common}:ro" \
@@ -48,7 +48,10 @@ readonly IMAGE='ghcr.io/rvenutolo/repo-toolbelt:v0.0.0@sha256:000000000000000000
 # To have the hook rewrite files instead of only failing, uncomment the
 # languages below and delete their check-<lang>-formatted lines from LINTS.
 # The hook then stops whenever it rewrote a file, so review and stage the
-# result. With every lint deleted from LINTS, the hook only formats.
+# result. Only the files staged for the commit are formatted, and a staged
+# file that also has unstaged edits is not rewritten but stops the commit, so
+# work left unstaged is never touched. With every lint deleted from LINTS, the
+# hook only formats.
 readonly FORMATTERS=(
   # shell
   # go
@@ -87,7 +90,7 @@ if ((${#FORMATTERS[@]} > 0)); then
     --user "$(id -u):$(id -g)" \
     --volume "${root}:${root}" --volume "${common}:${common}:ro" \
     --workdir "${root}" "${index_env[@]}" \
-    "${IMAGE}" fmt --fail-on-change "${FORMATTERS[@]}"
+    "${IMAGE}" fmt --fail-on-change --staged "${FORMATTERS[@]}"
 fi
 # A repo may use the hook for formatting alone, and the runner rejects a run
 # that names no lint.
