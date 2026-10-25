@@ -12,11 +12,13 @@ function setup() {
 }
 
 # @description Print the version nix/release-version.nix derives from a
-#              changelog, with `dev` as the fallback.
+#              changelog, with `dev` as the fallback. The helper hides
+#              XDG_CONFIG_HOME, so nix reads no user nix.conf and the command
+#              it needs is enabled here.
 # @arg $1 changelog the changelog's path
 function nix_version() {
   local -r changelog="$1"
-  nix eval --impure --raw --expr "import \"${REPO_DIR}/nix/release-version.nix\" {
+  nix eval --extra-experimental-features nix-command --impure --raw --expr "import \"${REPO_DIR}/nix/release-version.nix\" {
     changelog = builtins.readFile \"${changelog}\";
     script = builtins.readFile \"${REPO_DIR}/.ci/release-version\";
     fallback = \"dev\";

@@ -125,6 +125,8 @@ function commit_unformatted() {
 @test 'a file under vendor is neither reported nor rewritten' {
   write_file third_party/vendor/lib.sh "${UNFORMATTED_SH}"
   commit_all 'vendored'
+  run git ls-files third_party/vendor
+  assert_output 'third_party/vendor/lib.sh'
   run hook_run run --hook pre-commit check-shell-formatted
   assert_success
   assert_line '== check-shell-formatted: pass =='
