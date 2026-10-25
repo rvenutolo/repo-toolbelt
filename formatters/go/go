@@ -13,15 +13,14 @@
 #              error names the file and gofumpt takes the language version
 #              from the go.mod nearest the file; then through `goimports
 #              -format-only -local <module>`, which regroups imports into
-#              stdlib, third-party and module-local but never adds or removes
-#              one. `<module>` is the module path of the go.mod at the repo
-#              root, whatever module the file is in. `-local` is a prefix
-#              match on the import path as a string: an import whose path
-#              starts with `<module>` is local, which covers the module's own
-#              packages, a nested module whose path extends the root's and a
-#              sibling such as `example.com/rootless` for the root
-#              `example.com/root`; every other non-standard import is
-#              third-party.
+#              stdlib, third-party and local, the imports whose path starts
+#              with `<module>`, but never adds or removes one. `<module>` is
+#              the module path of the go.mod at the repo root, whatever module
+#              the file is in. `-local` is a prefix match on the import path
+#              as a string, so local covers the module's own packages, a
+#              nested module whose path extends the root's and a sibling such
+#              as `example.com/rootless` for the root `example.com/root`;
+#              every other non-standard import is third-party.
 #              The formatter takes no settings; the runner has already
 #              validated the section in the file TOOLBELT_SECTION names.
 #
