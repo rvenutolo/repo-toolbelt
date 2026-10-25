@@ -382,6 +382,43 @@ func TestSelect_repositoryWithoutTrackedFiles(t *testing.T) {
 	assertSelected(t, got, nil)
 }
 
+func TestSelect_skipsAFileBehindAParentSymlinkInsideTheRoot(t *testing.T) {
+	t.Parallel()
+	repo := newRepo(t, map[string]string{
+		"in/a.sh": "echo\n", "e/a.sh": "echo\n", "e/tool": "#!/bin/bash\n", "in/tool": "#!/bin/bash\n", "keep.sh": "echo\n",
+	})
+	// The tracked directory e is now a symlink to in, so e/a.sh reaches the
+	// same physical file as in/a.sh.
+	if err := os.RemoveAll(filepath.Join(repo, "e")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("in", filepath.Join(repo, "e")); err != nil {
+		t.Fatal(err)
+	}
+
+	got := selectFiles(t, repo)
+
+	assertSelected(t, got, map[string][]string{"shell": {"in/a.sh", "in/tool", "keep.sh"}})
+}
+
+func TestSelect_skipsAFileBehindAParentSymlinkOutsideTheRoot(t *testing.T) {
+	t.Parallel()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "a.sh"), "echo\n")
+	writeFile(t, filepath.Join(outside, "tool"), "#!/bin/bash\n")
+	repo := newRepo(t, map[string]string{"d/a.sh": "echo\n", "d/tool": "#!/bin/bash\n", "keep.sh": "echo\n"})
+	if err := os.RemoveAll(filepath.Join(repo, "d")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "d")); err != nil {
+		t.Fatal(err)
+	}
+
+	got := selectFiles(t, repo)
+
+	assertSelected(t, got, map[string][]string{"shell": {"keep.sh"}})
+}
+
 func TestSelect_conflictedFileIsListedOnce(t *testing.T) {
 	t.Parallel()
 	repo := newRepo(t, map[string]string{"a.sh": "echo base\n", "keep.sh": "echo\n"})
