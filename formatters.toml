@@ -1,2 +1,11 @@
 # The formatter manifest: one [[formatter]] table per language. README
 # "Adding a formatter" describes the fields.
+
+[[formatter]]
+name = "shell"
+language = "bash"
+speed = "quick"
+description = "Shell and BATS files are formatted with shfmt"
+include = ["*.sh", "*.bash", "*.bats", ".envrc", ".envrc.*"]
+shebangs = ["bash"]
+settings = ["indent"]

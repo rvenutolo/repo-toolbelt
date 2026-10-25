@@ -358,10 +358,28 @@ func TestLoadAll(t *testing.T) {
 	t.Parallel()
 
 	lints, formatters := manifest.LoadAll()
-	if len(formatters) != 0 {
-		t.Errorf("LoadAll() formatters = %+v, want none while formatters.toml has no entries", formatters)
+	wantFormatters := []manifest.Formatter{
+		{
+			Name:        "shell",
+			Language:    "bash",
+			Speed:       "quick",
+			Description: "Shell and BATS files are formatted with shfmt",
+			Include:     []string{"*.sh", "*.bash", "*.bats", ".envrc", ".envrc.*"},
+			Shebangs:    []string{"bash"},
+			Settings:    []string{"indent"},
+		},
 	}
-	if diff := cmp.Diff(manifest.Load(), lints); diff != "" {
-		t.Errorf("LoadAll() lints differ from Load()'s (-want +got):\n%s", diff)
+	if diff := cmp.Diff(wantFormatters, formatters); diff != "" {
+		t.Errorf("LoadAll() formatters mismatch (-want +got):\n%s", diff)
+	}
+	wantLints := append(manifest.Load(), manifest.Lint{
+		Name:        "check-shell-formatted",
+		Language:    "bash",
+		Speed:       "quick",
+		Description: "Shell and BATS files are formatted with shfmt",
+		Formatter:   "shell",
+	})
+	if diff := cmp.Diff(wantLints, lints); diff != "" {
+		t.Errorf("LoadAll() lints mismatch (-want +got):\n%s", diff)
 	}
 }

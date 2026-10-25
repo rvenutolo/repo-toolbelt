@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+
+# @description Format shell and BATS files with shfmt, to the formatter
+#              calling convention (README "The formatter calling convention").
+#              The files come NUL-terminated in the file TOOLBELT_FILES names;
+#              `*.bats` files are parsed in shfmt's bats dialect, every other
+#              file in the dialect shfmt detects from its name and shebang.
+#              The style flags are fixed here, so shfmt reads no
+#              `.editorconfig` (it ignores one once any style flag is given);
+#              only `settings.indent` from the section JSON in the file
+#              TOOLBELT_SECTION names overrides them. The runner has already
+#              validated that section.
+#
+#              Check mode (TOOLBELT_MODE=check) writes nothing. Write mode
+#              (TOOLBELT_MODE=write) formats each file that would change into a
+#              temp file under TMPDIR and copies it over the file's content in
+#              place, never by rename, so the file keeps its inode, owner, mode
+#              bits and hard links, and no temp file appears in the checkout.
+#              shfmt's own `--write` replaces the file by rename, so it is
+#              never used.
+#
+#              shfmt exits 1 for an unformatted file, a parse error and any
+#              other failure alike, so its stderr decides: a record
+#              `<listed path>:<line>:<col>: <message>` is a parse finding for
+#              that path, and anything else is a setup failure.
+# @arg $1 --help print usage and exit
+# @stdout the usage line, with --help; otherwise one line per finding, in the
+#         order of the file list: `<path>: not formatted` (check mode only) or
+#         `<path>: cannot be parsed: <line>:<col>: <message>`, then
+#         `<N> file(s)`
+# @stderr one line naming a setup failure
+# @exitcode 0 check mode: every file is formatted; write mode: every file is
+#             now formatted
+# @exitcode 1 a finding
+# @exitcode 2 a setup failure: an unexpected argument, shfmt missing, an unset
+#             or bad TOOLBELT_MODE, TOOLBELT_FILES or TOOLBELT_SECTION, shfmt
+#             failing other than on a parse error, a file that cannot be
+#             written, or an internal failure
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+# An unexpected failure is a crash, not a finding, so it exits with the
+# setup-failure status rather than errexit's status of the failed command.
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2; exit 2' ERR
+
+# `inherit_errexit`, namerefs and associative arrays need bash 4.4+; the image's bash provides it.
+
+# Found relative to this script's resolved path, never through the environment,
+# so the source tree and the image share one layout.
+# shellcheck source=lib/toolbelt.bash
+source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/../../lib/toolbelt.bash"
+
+shopt -s inherit_errexit
+
+readonly FORMATTER='shell'
+readonly USAGE="usage: ${FORMATTER} [--help]"
+readonly DEFAULT_INDENT=2
+
+# What follows `<path>:` in a parse error: the position, then a message that
+# runs to the end of its line. Kept in a variable because a newline cannot be
+# spelled inside `[[ =~ ]]`.
+readonly PARSE_TAIL_PATTERN=$'^([0-9]+:[0-9]+: [^\n]*)(\n|$)'
+
+# The files, in list order, and the argument each is passed to shfmt as. A
+# path that is exactly `-` is passed as `./-`, because shfmt reads stdin for a
+# `-` even after `--`; shfmt names a file by the argument it was given.
+declare -a PATHS=()
+declare -a ARGS=()
+# The index of each argument, keyed `k<argument>` so that no path can collide
+# with an associative array's special subscripts `@` and `*`.
+declare -A INDEX_OF=()
+# Per index: 1 when shfmt would change the file, and the parse message when
+# it cannot parse it.
+declare -a UNFORMATTED=()
+declare -a PARSE_ERRORS=()
+# The style flags, completed once settings.indent is read.
+declare -a STYLE_FLAGS=()
+
+# @description Store, in the named variable, settings.indent from the section
+#              JSON, or the default when the section is null or has none.
+# @global TMP_DIR the run's scratch directory
+# @arg $1 result_var name of the variable to set
+# @arg $2 section_file the section JSON
+function read_indent() {
+  local -n indent_ref="$1"
+  local -r section_file="$2"
+  local -r out_file="${TMP_DIR}/indent"
+  toolbelt::yq "${out_file}" "${TMP_DIR}/yq-stderr" --input-format=json --output-format=yaml \
+    '.settings.indent // ""' "${section_file}"
+  local value
+  value="$(< "${out_file}")"
+  # shellcheck disable=SC2034 # set through the nameref; the caller reads it
+  indent_ref="${value:-${DEFAULT_INDENT}}"
+}
+
+# @description Store, in the named array, shfmt's dialect flags for a file.
+# @arg $1 result_var name of the array to set
+# @arg $2 path the file's path
+function dialect_flags() {
+  local -n flags_ref="$1"
+  local -r path="$2"
+  # shellcheck disable=SC2034 # set through the nameref; the caller reads it
+  case "${path}" in
+    *.bats) flags_ref=(--language-dialect bats) ;;
+    *) flags_ref=() ;;
+  esac
+}
+
+# @description Record shfmt's stderr as parse findings, one record at a time:
+#              each record must start with one of the listed arguments, then
+#              `:<line>:<col>: <message>`. Matching listed paths as prefixes,
+#              rather than splitting on newlines first, keeps a path that
+#              holds a newline in one record. Dies on any other stderr.
+# @global ARGS the arguments shfmt was given
+# @global PARSE_ERRORS filled with each parse message
+# @arg $1 err_file shfmt's stderr
+# @arg $@ indices the indices of the files shfmt was given, after the first
+function record_parse_errors() {
+  local -r err_file="$1"
+  shift
+  local text
+  text="$(< "${err_file}")"
+  local rest="${text}" index arg matched tail
+  while [[ -n "${rest}" ]]; do
+    matched=0
+    for index in "$@"; do
+      arg="${ARGS[index]}"
+      if [[ "${rest}" == "${arg}:"* ]]; then
+        tail="${rest#"${arg}:"}"
+        if [[ "${tail}" =~ ${PARSE_TAIL_PATTERN} ]]; then
+          PARSE_ERRORS[index]="${BASH_REMATCH[1]}"
+          rest="${tail:${#BASH_REMATCH[0]}}"
+          matched=1
+          break
+        fi
+      fi
+    done
+    if ((matched == 0)); then
+      toolbelt::die "shfmt failed: ${text}"
+    fi
+  done
+}
+
+# @description Run shfmt's listing pass over the given files, all of one
+#              dialect, and record which would change and which cannot be
+#              parsed. Never runs shfmt with no files: with no path it reads
+#              stdin.
+# @global TMP_DIR the run's scratch directory
+# @global STYLE_FLAGS the style flags
+# @global UNFORMATTED filled for each file shfmt lists
+# @arg $@ indices the indices of the files to check
+function list_pass() {
+  if (($# == 0)); then
+    return 0
+  fi
+  local -a flags=()
+  dialect_flags flags "${PATHS[$1]}"
+  local -a args=()
+  local index
+  for index in "$@"; do
+    args+=("${ARGS[index]}")
+  done
+  local -r out_file="${TMP_DIR}/list"
+  local -r err_file="${TMP_DIR}/list-stderr"
+  local status=0
+  shfmt "${STYLE_FLAGS[@]}" "${flags[@]}" --list=0 -- "${args[@]}" > "${out_file}" 2> "${err_file}" || status=$?
+  case "${status}" in
+    0 | 1) ;; # coverage-exempt: kcov scores this line; it never executes as bash
+    *) toolbelt::die "shfmt exited ${status}: $(< "${err_file}")" ;;
+  esac
+  record_parse_errors "${err_file}" "$@"
+  local -a listed=()
+  mapfile -d '' -t listed < "${out_file}"
+  # The index is read into a variable first: an associative subscript inside
+  # an arithmetic subscript would be evaluated again, path text included.
+  local arg listed_index shown_arg
+  for arg in "${listed[@]}"; do
+    if [[ -z "${INDEX_OF["k${arg}"]+set}" ]]; then
+      toolbelt::printable shown_arg "${arg}"
+      toolbelt::die "shfmt listed a file it was not given: ${shown_arg}"
+    fi
+    listed_index="${INDEX_OF["k${arg}"]}"
+    UNFORMATTED[listed_index]=1
+  done
+  if ((status == 1)) && [[ ! -s "${out_file}" && ! -s "${err_file}" ]]; then
+    toolbelt::die 'shfmt exited 1 with no output'
+  fi
+}
+
+# @description Format one file into a temp file under TMPDIR, then copy that
+#              over the file's content in place: truncating and writing keeps
+#              the file's inode, owner and mode bits.
+# @global TMP_DIR the run's scratch directory
+# @global STYLE_FLAGS the style flags
+# @arg $1 index the file's index
+function rewrite() {
+  local -r index="$1"
+  local -r path="${PATHS[index]}"
+  local -a flags=()
+  dialect_flags flags "${path}"
+  local -r formatted_file="${TMP_DIR}/formatted"
+  local -r err_file="${TMP_DIR}/format-stderr"
+  local shown
+  toolbelt::printable shown "${path}"
+  if ! shfmt "${STYLE_FLAGS[@]}" "${flags[@]}" -- "${ARGS[index]}" > "${formatted_file}" 2> "${err_file}"; then
+    toolbelt::die "shfmt failed on ${shown}: $(< "${err_file}")"
+  fi
+  if ! cat -- "${formatted_file}" > "${path}"; then
+    toolbelt::die "cannot write ${shown}"
+  fi
+}
+
+# @description Check or format every listed file and report the findings.
+# @global TOOLBELT_MODE check or write
+# @global SECTION_FILE the section JSON
+# @noargs
+function main() {
+  local indent
+  read_indent indent "${SECTION_FILE}"
+  STYLE_FLAGS=(--indent "${indent}" --case-indent --binary-next-line --space-redirects)
+
+  local -a bats_indices=() other_indices=()
+  local index
+  for index in "${!PATHS[@]}"; do
+    case "${PATHS[index]}" in
+      *.bats) bats_indices+=("${index}") ;;
+      *) other_indices+=("${index}") ;;
+    esac
+  done
+  # One pass per dialect: shfmt takes one --language-dialect per run.
+  list_pass "${other_indices[@]}"
+  list_pass "${bats_indices[@]}"
+
+  local findings=0 shown message
+  for index in "${!PATHS[@]}"; do
+    toolbelt::printable shown "${PATHS[index]}"
+    if [[ -n "${PARSE_ERRORS[index]+set}" ]]; then
+      toolbelt::printable message "${PARSE_ERRORS[index]}"
+      printf '%s: cannot be parsed: %s\n' "${shown}" "${message}"
+      findings=$((findings + 1))
+    elif [[ -n "${UNFORMATTED[index]+set}" ]]; then
+      if [[ "${TOOLBELT_MODE}" == 'write' ]]; then
+        rewrite "${index}"
+      else
+        printf '%s: not formatted\n' "${shown}"
+        findings=$((findings + 1))
+      fi
+    fi
+  done
+
+  if ((findings > 0)); then
+    printf '%d file(s)\n' "${findings}"
+    exit 1
+  fi
+}
+
+case "$#" in
+  0) ;; # coverage-exempt: kcov scores this line; it never executes as bash
+  1)
+    case "$1" in
+      --help)
+        printf '%s\n' "${USAGE}"
+        exit 0
+        ;;
+      *) toolbelt::die "unexpected argument '$1'; ${USAGE}" ;;
+    esac
+    ;;
+  *) toolbelt::die "expected at most one argument, got $#; ${USAGE}" ;;
+esac
+
+if ! command -v shfmt > '/dev/null' 2>&1; then
+  toolbelt::die 'shfmt not found on PATH'
+fi
+
+case "${TOOLBELT_MODE:-}" in
+  check | write) ;; # coverage-exempt: kcov scores this line; it never executes as bash
+  *) toolbelt::die "TOOLBELT_MODE must be 'check' or 'write', got '${TOOLBELT_MODE:-}'" ;;
+esac
+readonly TOOLBELT_MODE
+
+if [[ -z "${TOOLBELT_FILES:-}" ]]; then
+  toolbelt::die 'TOOLBELT_FILES is not set'
+fi
+if [[ ! -f "${TOOLBELT_FILES}" || ! -r "${TOOLBELT_FILES}" ]]; then
+  toolbelt::die "cannot read the file list ${TOOLBELT_FILES}"
+fi
+
+if [[ -z "${TOOLBELT_SECTION:-}" ]]; then
+  toolbelt::die 'TOOLBELT_SECTION is not set'
+fi
+if [[ ! -f "${TOOLBELT_SECTION}" ]]; then
+  toolbelt::die "TOOLBELT_SECTION names no file: ${TOOLBELT_SECTION}"
+fi
+readonly SECTION_FILE="${TOOLBELT_SECTION}"
+
+mapfile -d '' -t PATHS < "${TOOLBELT_FILES}"
+for index in "${!PATHS[@]}"; do
+  case "${PATHS[index]}" in
+    -) ARGS[index]='./-' ;;
+    *) ARGS[index]="${PATHS[index]}" ;;
+  esac
+  INDEX_OF["k${ARGS[index]}"]="${index}"
+done
+unset index
+readonly PATHS ARGS INDEX_OF
+
+# One scratch directory per run under TMPDIR, never in the checkout, removed
+# on any exit. Script-level, not local: the single-quoted EXIT trap expands it
+# at exit, after any function's locals are gone.
+TMP_DIR="$(mktemp --directory)"
+readonly TMP_DIR
+trap 'rm --recursive --force -- "${TMP_DIR}"' EXIT
+
+main "$@"
