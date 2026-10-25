@@ -35,12 +35,16 @@ func TestWithoutVendored(t *testing.T) {
 			{Path: "vendor/example.org/v/v.go", StartLine: 1, Statements: 3},
 			{Path: "z.go", StartLine: 1, Statements: 1, Covered: true},
 		}},
+		// A file named in both reports, as two runs over shared code would.
 		{Blocks: []coverage.Block{
+			{Path: "a/x.go", StartLine: 7, Statements: 1},
+			{Path: "gen/g.go", StartLine: 7, Statements: 1},
 			{Path: "kept.sh", StartLine: 1, Statements: 1},
 			{Path: "lib/t.sh", StartLine: 2, Statements: 1},
 			{Path: "old.sh", StartLine: 1, Statements: 1},
 			{Path: "third_party/vendor/x.sh", StartLine: 1, Statements: 1},
 		}},
+		{},
 	}
 	want := []coverage.Report{
 		{Blocks: []coverage.Block{
@@ -48,9 +52,11 @@ func TestWithoutVendored(t *testing.T) {
 			{Path: "z.go", StartLine: 1, Statements: 1, Covered: true},
 		}},
 		{Blocks: []coverage.Block{
+			{Path: "a/x.go", StartLine: 7, Statements: 1},
 			{Path: "kept.sh", StartLine: 1, Statements: 1},
 			{Path: "lib/t.sh", StartLine: 2, Statements: 1},
 		}},
+		{},
 	}
 	got, err := coverage.WithoutVendored(t.Context(), root, reports)
 	if err != nil {
