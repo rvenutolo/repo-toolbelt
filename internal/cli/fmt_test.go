@@ -362,8 +362,8 @@ func TestRun_fmtFormatterWithoutItsLint(t *testing.T) {
 	repo := fmtRepo(t, "")
 	runner := cli.Runner{Lints: runLints, Formatters: runFormatters, Dir: repo}
 	got := runWith(t.Context(), t, runner, map[string]string{"TOOLBELT_FORMATTERS_DIR": t.TempDir()}, "", "fmt", "x")
-	if got.code != 1 || got.stdout != "" || !strings.Contains(got.stderr, `"check-x-formatted"`) {
-		t.Errorf("got %+v, want exit 1 naming the missing lint", got)
+	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, `"check-x-formatted"`) {
+		t.Errorf("got %+v, want exit 2 naming the missing lint", got)
 	}
 }
 

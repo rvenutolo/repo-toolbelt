@@ -1104,7 +1104,7 @@ func TestRun_runDerivedLintWithoutItsFormatter(t *testing.T) {
 	runner.Formatters = runFormatters[1:]
 	got := runWith(t.Context(), t, runner, formatterEnv(lintsDir, formattersDir), "",
 		"run", "--hook", "pre-commit", "check-x-formatted")
-	if got.code != 1 || got.stdout != "" || !strings.Contains(got.stderr, `"x"`) {
-		t.Errorf("got %+v, want exit 1 naming the missing formatter and no lint run", got)
+	if got.code != 2 || got.stdout != "" || !strings.Contains(got.stderr, `"x"`) {
+		t.Errorf("got %+v, want exit 2 naming the missing formatter and no lint run", got)
 	}
 }
