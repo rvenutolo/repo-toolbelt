@@ -18,9 +18,13 @@ unset _git_local_env_vars _git_env_var
 
 # Host git config must never leak into fixtures (a global commit.gpgsign=true
 # would reach every fixture commit), and a fixture must never write into the
-# real shared config.
+# real shared config. Git also reads a global excludes and attributes file
+# under XDG_CONFIG_HOME whatever GIT_CONFIG_GLOBAL says: a host excludes file
+# listing vendor/ would keep a fixture's vendored file untracked. The path does
+# not exist, so the helper works where no per-test temp dir does (setup_file).
 export GIT_CONFIG_GLOBAL='/dev/null'
 export GIT_CONFIG_SYSTEM='/dev/null'
+export XDG_CONFIG_HOME='/nonexistent/repo-toolbelt-test'
 
 REPO_DIR="$(git -C "${BATS_TEST_DIRNAME}" rev-parse --show-toplevel)"
 export REPO_DIR
