@@ -113,8 +113,9 @@ restores it into the checkout at the same paths.
   blank line between them. Prefer a test to a raised baseline.
 - **Patch coverage.** Every changed block or line must be covered, or carry a marker with a reason:
   `// coverage-exempt: <reason>` in Go and `# coverage-exempt: <reason>` in bash. A marker with no reason, one on no
-  measured line, or one whose code is covered is a finding. Markers in vendored files (under a `vendor` directory, or
-  `linguist-vendored` in `.gitattributes`) are not read.
+  measured line, or one whose code is covered is a finding. Vendored files (under a `vendor` directory, or with
+  `linguist-vendored` set or `true` in `.gitattributes`) are not judged: their markers are not read and their blocks
+  are not checked, even when a report measures them.
 - **Lines kcov scores that never run as bash.** kcov counts lines inside multi-line quoted text, such as a yq or awk
   program, or a `done < file` line, as code that no test can hit. Mark each with `# coverage-exempt:` and a reason. A
   marker placed inside single-quoted program text is a comment of that language (a yq comment, for one), so keep
@@ -134,10 +135,10 @@ unreported. State a reason in comments and docs instead of pointing at an issue;
 
 It reads the tracked files `git grep` takes for text, skipping empty files and the ones git takes for binary, by content
 or by a gitattributes entry such as `-diff`. Vendored files are never read, as the formatters never read them: a file
-under a directory named `vendor`, or one with `linguist-vendored` set in `.gitattributes`, carries another project's
-references, and an exemption that matches only vendored files is stale. Any other tracked text file in the working tree
-that git does not read, such as one it cannot open or one marked skip-worktree, fails the run as a setup error rather
-than passing unchecked.
+under a directory named `vendor`, or one with `linguist-vendored` set or `true` in `.gitattributes`, carries another
+project's references, and an exemption that matches only vendored files is stale. Any other tracked text file in the
+working tree that git does not read, such as one it cannot open or one marked skip-worktree, fails the run as a setup
+error rather than passing unchecked.
 
 ## Formatters
 
@@ -186,7 +187,7 @@ The runner, not the formatter, picks the files, the same way for the lint and fo
    on disk (deleted, a symlink) and when it has `linguist-vendored` set; only a file under a `vendor` directory is
    skipped first.
 4. Vendored files are skipped by every formatter: a file under a directory named `vendor`, at any depth, or one with
-   `linguist-vendored` set in `.gitattributes`.
+   `linguist-vendored` set or `true` in `.gitattributes`.
 5. The excludes of the formatter's config section are removed.
 
 ### The config section
