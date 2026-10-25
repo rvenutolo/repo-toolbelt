@@ -130,7 +130,10 @@ function main() {
 
   # The flake check builds no package, so a Go import that changes the module
   # set would leave nix/toolbelt.nix's vendorHash stale until the image build.
-  # The modules alone build in seconds and fail on a hash mismatch.
+  # The modules alone build in seconds and fail on a hash mismatch. Their
+  # derivation is named for the commit, so each new commit fetches the modules
+  # again (this step needs network); a name without the commit would let an
+  # older output with the same, stale hash pass as already built.
   log_info 'checking the Go module vendor hash'
   nix build --no-link "${REPO_DIR}#toolbelt.goModules" || rc=1
 

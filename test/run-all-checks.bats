@@ -108,6 +108,8 @@ STUB
   run "${REPO_DIR}/run-all-checks"
   assert_failure 1
   assert_output --partial 'one or more checks failed'
+  run cat "${CALLS}"
+  assert_line --index 1 "nix build --no-link ${FIXTURE_REPO}#toolbelt.goModules"
   run grep --count '' "${CALLS}"
   assert_output 11
 }
