@@ -384,6 +384,45 @@ func TestRun_updateCoverageBaselineCheck(t *testing.T) {
 	}
 }
 
+func TestRun_updateCoverageBaselineSkipsVendoredFiles(t *testing.T) {
+	t.Parallel()
+	// The coverageRepo reports, plus uncovered code in a linguist-vendored
+	// file and under a vendor directory, which neither mode counts.
+	vendoredRepo := func(t *testing.T) string {
+		t.Helper()
+		repo := coverageRepo(t, coverageConfig)
+		writeFile(t, filepath.Join(repo, ".gitattributes"), "gen/** linguist-vendored\n")
+		writeFile(t, filepath.Join(repo, "cov", "go.out"), "mode: set\n"+
+			"example.com/m/a/x.go:3.1,5.2 3 0\n"+
+			"example.com/m/gen/g.go:1.1,9.2 4 0\n"+
+			"example.com/m/main.go:1.1,2.2 1 1\n")
+		writeFile(t, filepath.Join(repo, "cov", "c.xml"), `<coverage><sources><source>`+repo+`</source></sources>`+
+			`<packages><package name="p"><classes>`+
+			`<class filename="lib/t.sh"><lines><line number="1" hits="0"/><line number="2" hits="0"/><line number="3" hits="5"/></lines></class>`+
+			`<class filename="lib/vendor/x.sh"><lines><line number="1" hits="0"/></lines></class>`+
+			`</classes></package></packages></coverage>`)
+		return repo
+	}
+	t.Run("the written baseline", func(t *testing.T) {
+		t.Parallel()
+		repo := vendoredRepo(t)
+		if got := runBaseline(t, repo); got.code != 0 {
+			t.Fatalf("got %+v, want exit 0", got)
+		}
+		if content := readFile(t, filepath.Join(repo, ".coverage-baseline.txt")); content != wantBaseline {
+			t.Errorf("baseline is\n%s\nwant\n%s", content, wantBaseline)
+		}
+	})
+	t.Run("--check", func(t *testing.T) {
+		t.Parallel()
+		repo := vendoredRepo(t)
+		writeFile(t, filepath.Join(repo, ".coverage-baseline.txt"), wantBaseline)
+		if got := runBaseline(t, repo, "--check"); got.code != 0 || got.stdout != "" {
+			t.Errorf("got %+v, want exit 0 with no output", got)
+		}
+	})
+}
+
 func TestRun_updateCoverageBaselineCheckFailures(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

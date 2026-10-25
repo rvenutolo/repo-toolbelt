@@ -43,10 +43,18 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// writeReports writes a module whose reports count go a=3, go .=0 and
-// cobertura lib=2 uncovered.
+// gitInit makes root a checkout, as the lint always runs in one: it asks git
+// which measured files are vendored.
+func gitInit(t *testing.T, root string) {
+	t.Helper()
+	gitOut(t, root, "init", "--quiet")
+}
+
+// writeReports makes root a checkout holding a module whose reports count go
+// a=3, go .=0 and cobertura lib=2 uncovered.
 func writeReports(t *testing.T, root string) {
 	t.Helper()
+	gitInit(t, root)
 	writeFile(t, filepath.Join(root, "go.mod"), "module example.com/m\n\ngo 1.22\n")
 	writeFile(t, filepath.Join(root, "cov", "go.out"), "mode: set\n"+
 		"example.com/m/a/x.go:3.1,5.2 3 0\n"+
@@ -149,6 +157,7 @@ func TestCheck_markers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
+			gitInit(t, root)
 			writeFile(t, filepath.Join(root, "lib", "t.sh"), "#!/bin/bash\n"+tc.marker+"\n")
 			writeFile(t, filepath.Join(root, "cov", "c.xml"), `<coverage><sources><source>`+root+`</source></sources>`+
 				`<packages><package name="p"><classes><class filename="lib/t.sh"><lines>`+
@@ -178,6 +187,7 @@ func TestCheck_countNounAgreesWithCount(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
+			gitInit(t, root)
 			writeFile(t, filepath.Join(root, "go.mod"), "module example.com/m\n\ngo 1.22\n")
 			writeFile(t, filepath.Join(root, "cov", "go.out"),
 				fmt.Sprintf("mode: set\nexample.com/m/a/x.go:3.1,5.2 %d 0\n", tc.count))
@@ -187,6 +197,41 @@ func TestCheck_countNounAgreesWithCount(t *testing.T) {
 			}
 			diffFindings(t, []lintkit.Finding{{Path: "a", Message: tc.want}}, got)
 		})
+	}
+}
+
+func TestCheck_vendoredFilesAreNotCounted(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	gitInit(t, root)
+	writeFile(t, filepath.Join(root, ".gitattributes"), "gen/** linguist-vendored\na/gen.go linguist-vendored=true\n")
+	writeFile(t, filepath.Join(root, "go.mod"), "module example.com/m\n\ngo 1.22\n")
+	writeFile(t, filepath.Join(root, "cov", "go.out"), "mode: set\n"+
+		"example.com/m/a/x.go:3.1,5.2 3 0\n"+
+		"example.com/m/a/gen.go:1.1,9.2 5 0\n"+
+		"example.com/m/gen/g.go:1.1,9.2 4 0\n")
+	writeFile(t, filepath.Join(root, "cov", "c.xml"), `<coverage><sources><source>`+root+`</source></sources>`+
+		`<packages><package name="p"><classes>`+
+		`<class filename="lib/t.sh"><lines><line number="1" hits="0"/><line number="2" hits="0"/></lines></class>`+
+		`<class filename="third_party/vendor/x.sh"><lines><line number="1" hits="0"/></lines></class>`+
+		`</classes></package></packages></coverage>`)
+	// Counting the vendored files would put a at 8 and add gen and
+	// third_party/vendor at their uncovered counts, each above this baseline.
+	writeFile(t, filepath.Join(root, ".coverage-baseline.txt"), baseline("cobertura lib 2", "go a 3"))
+	got, err := check(t, root, section, "")
+	if err != nil {
+		t.Fatalf("Check error = %v", err)
+	}
+	diffFindings(t, nil, got)
+}
+
+func TestCheck_outsideACheckoutIsAnError(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module example.com/m\n\ngo 1.22\n")
+	writeFile(t, filepath.Join(root, "cov", "go.out"), "mode: set\nexample.com/m/a/x.go:3.1,5.2 3 0\n")
+	if got, err := check(t, root, `{"reports":[{"format":"go","path":"cov/go.out"}]}`, ""); err == nil {
+		t.Errorf("Check = %+v, want an error: which files are vendored needs git", got)
 	}
 }
 
