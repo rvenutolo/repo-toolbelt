@@ -71,6 +71,7 @@ readonly GENERATED_PATTERN='^// Code generated .* DO NOT EDIT\.$'
 readonly PACKAGE_PATTERN='^[[:space:]]*package([[:space:]]|$)'
 # A module line, its path bare, double-quoted or backquoted, and an optional
 # trailing comment.
+# shellcheck disable=SC2016 # the backticks are go.mod's raw-string quotes, literal regex text
 readonly MODULE_PATTERN='^[[:space:]]*module[[:space:]]+("([^"]*)"|`([^`]*)`|([^[:space:]]+))[[:space:]]*(//.*)?$'
 # What follows `<path>:` in a parse error: the position, then a message that
 # runs to the end of its line. Kept in a variable because a newline cannot be
@@ -177,6 +178,7 @@ function format_file() {
   local -r err_file="${TMP_DIR}/stderr"
   local shown
   toolbelt::printable shown "${path}"
+  # shellcheck disable=SC2034 # set through the nameref; the caller reads it
   parse_ref=''
   local status=0
   gofumpt -- "${arg}" > "${fumpted_file}" 2> "${err_file}" || status=$?
