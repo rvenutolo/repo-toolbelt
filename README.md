@@ -153,8 +153,9 @@ allowlists, nothing else, and no file in the consumer's tree is read as formatte
   `goimports -format-only` with the root module's path as the local prefix, so imports fall into three groups (standard
   library, third-party, then the module's own packages); imports are regrouped, never added or removed. A generated
   file, one with a `// Code generated ... DO NOT EDIT.` line before its package clause, is skipped. Imports group against
-  the root module's path, whatever module the file is in, and the prefix match is on the import path as a string: a
-  nested module whose path extends the root's groups as local, and any other module groups as third-party. It takes no
+  the root module's path, whatever module the file is in: an import whose path starts with it, as a string, is local,
+  which covers the module's own packages, a nested module whose path extends the root's and a sibling such as
+  `example.com/rootless` for the root `example.com/root`; every other non-standard import is third-party. It takes no
   settings. It needs a `go.mod` at the repo root whenever a selected file is not generated, and exits 2 without one.
 
 A formatter is reached two ways and runs the same executable both times:
