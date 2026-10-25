@@ -47,9 +47,10 @@ func (r Runner) newFmtCmd(getenv func(string) string) *cobra.Command {
 			"fail (exit 1), error (exit 2).\n\n" +
 			"Exit codes: 0 every formatter passed or formatted its files;\n" +
 			"1 a formatter reported a finding (an unparsable file, a bad config section),\n" +
-			"the config file has problems, or with --fail-on-change a file was rewritten;\n" +
+			"the config file has problems, with --fail-on-change a file was rewritten, or\n" +
+			"a runtime error (a failed write of the output);\n" +
 			"2 a formatter errored, or a usage or setup error (a read-only checkout among\n" +
-			"them).",
+			"them); 130 interrupted.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := r.format(cmd.Context(), cmd, args, failOnChange, getenv)
 			// An interrupted run fails in whatever step it reached; report it
