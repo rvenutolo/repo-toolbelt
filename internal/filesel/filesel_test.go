@@ -488,6 +488,47 @@ func TestClaimedByName(t *testing.T) {
 	}
 }
 
+func TestIsRegular(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "in", "a.sh"), "echo\n")
+	writeFile(t, filepath.Join(root, "file"), "x\n")
+	if err := os.Symlink("in", filepath.Join(root, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a.sh", filepath.Join(root, "in", "leaf.sh")); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dir.Close() })
+	tests := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{name: "a regular file", file: "in/a.sh", want: true},
+		{name: "a missing file", file: "in/gone.sh", want: false},
+		{name: "a file under a parent that is a file", file: "file/a.sh", want: false},
+		{name: "a file under a parent that is an in-root symlink", file: "linked/a.sh", want: false},
+		{name: "a symlink", file: "in/leaf.sh", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := filesel.IsRegular(dir, tc.file)
+			if err != nil {
+				t.Fatalf("IsRegular(%q) error = %v", tc.file, err)
+			}
+			if got != tc.want {
+				t.Errorf("IsRegular(%q) = %t, want %t", tc.file, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExclude(t *testing.T) {
 	t.Parallel()
 	files := []string{"a.sh", "test/fixtures/x.sh", "test/fixtures/deep/y.sh", "test/real.sh", "src/gen/a.sh", "src/a.sh"}
