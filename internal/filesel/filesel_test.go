@@ -467,6 +467,68 @@ func TestSelect_noFormatters(t *testing.T) {
 	}
 }
 
+func TestClaimedByName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{name: "an include glob matches the base name", file: "dir/run.sh", want: true},
+		{name: "another formatter's include is no claim", file: "dir/run.pl", want: false},
+		{name: "a shebang alone is no claim by name", file: "bin/tool", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := filesel.ClaimedByName(formatters[0], tc.file); got != tc.want {
+				t.Errorf("ClaimedByName(%s, %q) = %t, want %t", formatters[0].Name, tc.file, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsRegular(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "in", "a.sh"), "echo\n")
+	writeFile(t, filepath.Join(root, "file"), "x\n")
+	if err := os.Symlink("in", filepath.Join(root, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a.sh", filepath.Join(root, "in", "leaf.sh")); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dir.Close() })
+	tests := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{name: "a regular file", file: "in/a.sh", want: true},
+		{name: "a missing file", file: "in/gone.sh", want: false},
+		{name: "a file under a parent that is a file", file: "file/a.sh", want: false},
+		{name: "a file under a parent that is an in-root symlink", file: "linked/a.sh", want: false},
+		{name: "a symlink", file: "in/leaf.sh", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := filesel.IsRegular(dir, tc.file)
+			if err != nil {
+				t.Fatalf("IsRegular(%q) error = %v", tc.file, err)
+			}
+			if got != tc.want {
+				t.Errorf("IsRegular(%q) = %t, want %t", tc.file, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExclude(t *testing.T) {
 	t.Parallel()
 	files := []string{"a.sh", "test/fixtures/x.sh", "test/fixtures/deep/y.sh", "test/real.sh", "src/gen/a.sh", "src/a.sh"}

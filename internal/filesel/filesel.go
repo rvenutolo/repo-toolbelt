@@ -110,7 +110,7 @@ func Exclude(files, globs []string) []string {
 func ownersOf(dir *os.Root, file string, formatters []manifest.Formatter) ([]string, error) {
 	var owners []string
 	for _, f := range formatters {
-		if slices.ContainsFunc(f.Include, func(glob string) bool { return matchesBase(glob, file) }) {
+		if ClaimedByName(f, file) {
 			owners = append(owners, f.Name)
 		}
 	}
@@ -123,7 +123,7 @@ func ownersOf(dir *os.Root, file string, formatters []manifest.Formatter) ([]str
 		return nil, nil
 	}
 
-	regular, err := isRegular(dir, file)
+	regular, err := IsRegular(dir, file)
 	if err != nil || !regular {
 		return nil, err
 	}
@@ -146,6 +146,13 @@ func hasShebangFormatter(formatters []manifest.Formatter) bool {
 	return slices.ContainsFunc(formatters, func(f manifest.Formatter) bool { return len(f.Shebangs) > 0 })
 }
 
+// ClaimedByName reports whether one of f's include globs matches the base
+// name of the repo-relative path file. A shebang claims only a file that can
+// be read, so it never counts here.
+func ClaimedByName(f manifest.Formatter, file string) bool {
+	return slices.ContainsFunc(f.Include, func(glob string) bool { return matchesBase(glob, file) })
+}
+
 // matchesBase reports whether the include glob matches the base name of file.
 // An invalid glob matches nothing; the manifest rejects them.
 func matchesBase(glob, file string) bool {
@@ -160,11 +167,12 @@ func isExtensionless(base string) bool {
 	return !strings.Contains(base[1:], ".")
 }
 
-// isRegular reports whether file is a regular file in the working tree that
-// is reached without passing through a symlink. A file that is gone, one
-// whose parent is no longer a directory, and one under a directory that is
-// now a symlink are not; any other failure to stat it is an error.
-func isRegular(dir *os.Root, file string) (bool, error) {
+// IsRegular reports whether the repo-relative path file is a regular file in
+// the working tree dir, reached without passing through a symlink. A file that
+// is gone, one whose parent is no longer a directory, and one under a
+// directory that is now a symlink are not; any other failure to stat it is an
+// error.
+func IsRegular(dir *os.Root, file string) (bool, error) {
 	// os.Root follows a symlink in a parent component that stays inside the
 	// root and fails on one that leaves it, so each parent is checked first,
 	// outermost first.

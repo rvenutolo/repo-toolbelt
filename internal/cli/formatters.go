@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
+	"os"
 	"slices"
 
 	"github.com/rvenutolo/repo-toolbelt/internal/config"
@@ -11,6 +13,7 @@ import (
 	"github.com/rvenutolo/repo-toolbelt/internal/fmtconfig"
 	"github.com/rvenutolo/repo-toolbelt/internal/manifest"
 	"github.com/rvenutolo/repo-toolbelt/internal/runner"
+	"github.com/rvenutolo/repo-toolbelt/internal/vendored"
 )
 
 // formatterPlan is what running a set of lints needs for the derived lints
@@ -23,6 +26,15 @@ type formatterPlan struct {
 	// failed maps each derived lint whose section has problems to the failing
 	// result it gets in place of running.
 	failed map[string]runner.Result
+	// claims maps each derived lint in files to its formatter and the
+	// section's excludes, for files the selection could not see.
+	claims map[string]claim
+}
+
+// claim is what decides whether a derived lint's formatter owns a file.
+type claim struct {
+	formatter manifest.Formatter
+	exclude   []string
 }
 
 // prepareFormatters validates the config section of each derived lint among
@@ -33,7 +45,7 @@ type formatterPlan struct {
 // derived lint. A derived lint naming a formatter r.Formatters lacks, and a
 // failed selection, are setup failures.
 func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.Config, lints []manifest.Lint) (formatterPlan, error) {
-	plan := formatterPlan{files: map[string][]string{}, failed: map[string]runner.Result{}}
+	plan := formatterPlan{files: map[string][]string{}, failed: map[string]runner.Result{}, claims: map[string]claim{}}
 	type derived struct {
 		lint, formatter string
 		exclude         []string
@@ -55,6 +67,7 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 			continue
 		}
 		valid = append(valid, derived{lint: lint.Name, formatter: lint.Formatter, exclude: section.Exclude})
+		plan.claims[lint.Name] = claim{formatter: r.Formatters[i], exclude: section.Exclude}
 	}
 	if !named {
 		return plan, nil
@@ -70,11 +83,15 @@ func (r Runner) prepareFormatters(ctx context.Context, root string, cfg config.C
 }
 
 // onlyStaged keeps in each derived lint's files, changing p.files in place,
-// only those staged for the commit, and returns, sorted, the files it took
-// out because they also have unstaged edits: formatting one would rewrite
-// those edits too. A file no formatter selected is never returned. A failed
-// listing is a setup failure.
-func (p formatterPlan) onlyStaged(ctx context.Context, root string) ([]string, error) {
+// only those staged for the commit, and returns, sorted, the partly staged
+// files: those it took out because they also have unstaged edits, as
+// formatting one would rewrite those edits too, and those no longer a regular
+// file in tree, as the commit takes their staged content though no formatter
+// can see it. A file that is not a regular file is returned only when a
+// derived lint's formatter claims its name by an include glob and neither the
+// section's excludes nor vendoring drop it. A failed listing is a setup
+// failure.
+func (p formatterPlan) onlyStaged(ctx context.Context, root string, tree *os.Root) ([]string, error) {
 	staged, partly, err := filesel.Staged(ctx, root)
 	if err != nil {
 		return nil, setupf("list the staged files: %w", err)
@@ -86,18 +103,59 @@ func (p formatterPlan) onlyStaged(ctx context.Context, root string) ([]string, e
 	for _, file := range partly {
 		isPartly[file] = true
 	}
-	var held []string
+	isHeld := make(map[string]bool)
 	for lint, files := range p.files {
 		p.files[lint] = slices.DeleteFunc(files, func(file string) bool {
 			if isPartly[file] {
-				held = append(held, file)
+				isHeld[file] = true
 				return true
 			}
 			return !isStaged[file]
 		})
 	}
+	unseen := slices.DeleteFunc(partly, func(file string) bool { return isHeld[file] })
+	gone, err := p.claimedButGone(ctx, root, tree, unseen)
+	if err != nil { // coverage-exempt: claimedButGone fails only on checks git has just made of the same files
+		return nil, err
+	}
+	held := append(slices.Collect(maps.Keys(isHeld)), gone...)
 	slices.Sort(held)
 	return held, nil
+}
+
+// claimedButGone returns those of files that a derived lint's formatter claims
+// by name, its excludes applied, and that are not a regular file in tree, as
+// file selection judges one, minus vendored files.
+func (p formatterPlan) claimedButGone(ctx context.Context, root string, tree *os.Root, files []string) ([]string, error) {
+	var gone []string
+	for _, file := range files {
+		if !p.claimedByName(file) {
+			continue
+		}
+		regular, err := filesel.IsRegular(tree, file)
+		if err != nil { // coverage-exempt: git has just stat-ed each of files to list it as changed in the working tree
+			return nil, setupf("%w", err)
+		}
+		if !regular {
+			gone = append(gone, file)
+		}
+	}
+	kept, err := vendored.Filter(ctx, root, gone)
+	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
+		return nil, setupf("check the staged files for vendoring: %w", err)
+	}
+	return kept, nil
+}
+
+// claimedByName reports whether a derived lint's formatter claims file by an
+// include glob and the lint's excludes keep it.
+func (p formatterPlan) claimedByName(file string) bool {
+	for _, c := range p.claims {
+		if filesel.ClaimedByName(c.formatter, file) && len(filesel.Exclude([]string{file}, c.exclude)) == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // sectionFailure is the failing result of a derived lint whose section has
