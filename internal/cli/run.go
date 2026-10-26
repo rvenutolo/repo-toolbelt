@@ -226,7 +226,9 @@ func warn(ctx context.Context, root, hook string, lints []manifest.Lint, stderr 
 				lines = append(lines, fmt.Sprintf("toolbelt: %s is a slow lint; consider running it from pre-push", lint.Name))
 			}
 		}
-		out, err := gitOutput(ctx, root, "diff", "--name-only", "-z")
+		// -O/dev/null: a diff.orderFile may name a host file the container
+		// lacks, and git then refuses to diff.
+		out, err := gitOutput(ctx, root, "diff", "--name-only", "-z", "-O/dev/null")
 		if err != nil {
 			return setupf("list unstaged changes: %w", err)
 		}
