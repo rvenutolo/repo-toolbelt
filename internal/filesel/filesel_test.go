@@ -467,6 +467,27 @@ func TestSelect_noFormatters(t *testing.T) {
 	}
 }
 
+func TestClaimedByName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{name: "an include glob matches the base name", file: "dir/run.sh", want: true},
+		{name: "another formatter's include is no claim", file: "dir/run.pl", want: false},
+		{name: "a shebang alone is no claim by name", file: "bin/tool", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := filesel.ClaimedByName(formatters[0], tc.file); got != tc.want {
+				t.Errorf("ClaimedByName(%s, %q) = %t, want %t", formatters[0].Name, tc.file, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExclude(t *testing.T) {
 	t.Parallel()
 	files := []string{"a.sh", "test/fixtures/x.sh", "test/fixtures/deep/y.sh", "test/real.sh", "src/gen/a.sh", "src/a.sh"}
