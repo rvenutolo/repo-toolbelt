@@ -49,7 +49,9 @@ jobs:
       - if: inputs.harden-runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
+          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # The image pull, and the Sigstore and GitHub TUF roots for the
           # attestation check.
           allowed-endpoints: >-
@@ -111,7 +113,9 @@ jobs:
       - if: inputs.harden-runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
+          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           # The checkout, the artifact download and the image pull.
           allowed-endpoints: >-
             api.github.com:443 codeload.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 results-receiver.actions.githubusercontent.com:443
@@ -175,7 +179,9 @@ jobs:
       - if: inputs.harden-runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
-          egress-policy: block
+          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
+          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
+          egress-policy: audit
           disable-sudo-and-containers: true
           allowed-endpoints: >-
             api.github.com:443 github.com:443
