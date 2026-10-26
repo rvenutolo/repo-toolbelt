@@ -123,24 +123,28 @@ func (p formatterPlan) onlyStaged(ctx context.Context, root string, tree *os.Roo
 	return held, nil
 }
 
-// claimedButGone returns those of files that are not a regular file in tree
-// and that a derived lint's formatter claims by name, minus its excludes and
-// vendored files.
+// claimedButGone returns those of files that a derived lint's formatter claims
+// by name, its excludes applied, and that are not a regular file in tree, as
+// file selection judges one, minus vendored files.
 func (p formatterPlan) claimedButGone(ctx context.Context, root string, tree *os.Root, files []string) ([]string, error) {
-	var claimed []string
+	var gone []string
 	for _, file := range files {
-		if info, err := tree.Lstat(file); err == nil && info.Mode().IsRegular() {
+		if !p.claimedByName(file) {
 			continue
 		}
-		if !vendored.InVendorDir(file) && p.claimedByName(file) {
-			claimed = append(claimed, file)
+		regular, err := filesel.IsRegular(tree, file)
+		if err != nil { // coverage-exempt: file selection just stat-ed every tracked file an include glob claims
+			return nil, setupf("stat %s: %w", file, err)
+		}
+		if !regular {
+			gone = append(gone, file)
 		}
 	}
-	marked, err := vendored.ByAttribute(ctx, root, claimed)
+	own, err := vendored.Filter(ctx, root, gone)
 	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, setupf("check the staged files for vendoring: %w", err)
 	}
-	return slices.DeleteFunc(claimed, func(file string) bool { return marked[file] }), nil
+	return own, nil
 }
 
 // claimedByName reports whether a derived lint's formatter claims file by an

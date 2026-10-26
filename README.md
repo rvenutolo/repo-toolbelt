@@ -264,10 +264,11 @@ being committed, the one git names in `GIT_INDEX_FILE` under `git commit --all` 
 left out. A staged file that also has unstaged edits is not rewritten, since formatting it would rewrite the unstaged
 edits too: it is listed before the blocks as
 `<path>: staged and unstaged changes; format it by hand or stage it whole`, counted as `N partly staged` in the
-summary, and makes the run exit 1. The other files are still formatted. A staged file deleted from the working tree,
-or replaced there by a symlink, without staging that is reported the same way, since the commit takes its staged
-content: when a named formatter's include globs match its name and neither its excludes nor vendoring drop it. A file
-that formatter claims only by its shebang cannot be read any more and is not reported.
+summary, and makes the run exit 1. The other files are still formatted. A staged file that is no longer a regular
+file in the working tree (deleted, replaced by a symlink, or under a directory that became a symlink or a file), with
+that change unstaged, is reported the same way, since the commit takes its staged content, but only when a named
+formatter's include globs match its name and neither the excludes nor vendoring drop it. A file no include glob
+matches, claimed only by its shebang, cannot be read any more and is not reported.
 
 ### In the pre-commit hook
 
