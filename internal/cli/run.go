@@ -236,7 +236,9 @@ func warn(ctx context.Context, root, hook string, lints []manifest.Lint, stderr 
 			lines = append(lines, fmt.Sprintf("toolbelt: %d tracked file(s) have unstaged changes; lints saw the working tree", n))
 		}
 	case hookPrePush:
-		out, err := gitOutput(ctx, root, "status", "--porcelain", "-z")
+		// status diffs internally but takes no -O, so the order file is
+		// overridden through config; an empty value would be read as a path.
+		out, err := gitOutput(ctx, root, "-c", "diff.orderFile=/dev/null", "status", "--porcelain", "-z")
 		if err != nil {
 			return setupf("list uncommitted changes: %w", err)
 		}

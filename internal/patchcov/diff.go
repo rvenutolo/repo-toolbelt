@@ -23,9 +23,9 @@ var hunkHeader = regexp.MustCompile(`^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]{1,9})(?:,(
 // change in a way that hides or invents a changed line: a textconv driver or
 // the binary attribute (-diff) blanks the text, diff.external replaces the
 // output, diff.relative narrows it, diff.interHunkContext merges hunks across
-// unchanged lines, and renames would compare a file against another. A
-// diff.orderFile may name a host file the container lacks, and git then
-// refuses to diff at all.
+// unchanged lines, and renames would compare a file against another.
+// -O/dev/null also keeps a diff.orderFile naming a host file the container
+// lacks from making git refuse to diff at all.
 var diffOptions = []string{ //nolint:gochecknoglobals // immutable lookup table
 	"--unified=0", "--inter-hunk-context=0", "--no-renames", "--no-color",
 	"--no-ext-diff", "--no-textconv", "--no-relative", "--text", "-O/dev/null",
