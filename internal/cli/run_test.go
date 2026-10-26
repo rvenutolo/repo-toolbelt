@@ -459,6 +459,18 @@ func TestRun_runTreeWarnings(t *testing.T) {
 			want: "toolbelt: 1 file(s) have uncommitted changes; lints saw them\n",
 		},
 		{
+			// git status diffs internally, so a missing diff.orderFile fails
+			// it the same way.
+			name: "pre-push edit with a diff.orderFile the checkout lacks",
+			hook: "pre-push",
+			change: func(t *testing.T, repo string) {
+				t.Helper()
+				gitIn(t, repo, "config", "diff.orderFile", filepath.Join(t.TempDir(), "missing"))
+				writeFile(t, filepath.Join(repo, "tracked.txt"), "two\n")
+			},
+			want: "toolbelt: 1 file(s) have uncommitted changes; lints saw them\n",
+		},
+		{
 			// A rename is one entry, though porcelain -z gives it two paths.
 			name: "pre-push rename, edit and untracked file",
 			hook: "pre-push",
