@@ -115,7 +115,7 @@ func (p formatterPlan) onlyStaged(ctx context.Context, root string, tree *os.Roo
 	}
 	unseen := slices.DeleteFunc(partly, func(file string) bool { return isHeld[file] })
 	gone, err := p.claimedButGone(ctx, root, tree, unseen)
-	if err != nil {
+	if err != nil { // coverage-exempt: claimedButGone fails only on checks git has just made of the same files
 		return nil, err
 	}
 	held := append(slices.Collect(maps.Keys(isHeld)), gone...)
@@ -133,18 +133,18 @@ func (p formatterPlan) claimedButGone(ctx context.Context, root string, tree *os
 			continue
 		}
 		regular, err := filesel.IsRegular(tree, file)
-		if err != nil { // coverage-exempt: file selection just stat-ed every tracked file an include glob claims
-			return nil, setupf("stat %s: %w", file, err)
+		if err != nil { // coverage-exempt: git has just stat-ed each of files to list it as changed in the working tree
+			return nil, setupf("%w", err)
 		}
 		if !regular {
 			gone = append(gone, file)
 		}
 	}
-	own, err := vendored.Filter(ctx, root, gone)
+	kept, err := vendored.Filter(ctx, root, gone)
 	if err != nil { // coverage-exempt: check-attr fails only if git fails between two calls on the same checkout
 		return nil, setupf("check the staged files for vendoring: %w", err)
 	}
-	return own, nil
+	return kept, nil
 }
 
 // claimedByName reports whether a derived lint's formatter claims file by an
