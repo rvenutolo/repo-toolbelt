@@ -27,9 +27,9 @@ const accessWrite = 2
 
 // newFmtCmd rewrites the checkout's files with the named formatters.
 func (r Runner) newFmtCmd(getenv func(string) string) *cobra.Command {
-	var failOnChange bool
+	var failOnChange, staged bool
 	cmd := &cobra.Command{
-		Use:   "fmt [--fail-on-change] [<formatter>...]",
+		Use:   "fmt [--fail-on-change] [--staged] [<formatter>...]",
 		Short: "Format the checkout's files in place",
 		Long: "Format the checkout's files in place with the named formatters, run\n" +
 			"concurrently, and print each one's output as one block, in the order named,\n" +
@@ -42,17 +42,23 @@ func (r Runner) newFmtCmd(getenv func(string) string) *cobra.Command {
 			"fmt refuses a checkout it cannot write to. Each block lists the files its\n" +
 			"formatter rewrote as \"<path>: formatted\", from hashes of every selected file\n" +
 			"taken before and after; nothing is staged.\n\n" +
+			"With --staged, as a pre-commit hook runs it, only the selected files staged in\n" +
+			"the index being committed are formatted (GIT_INDEX_FILE names it when set).\n" +
+			"A staged file that also has unstaged edits is not rewritten: it is listed\n" +
+			"before the blocks as \"<path>: staged and unstaged changes; format it by hand\n" +
+			"or stage it whole\" and makes the run exit 1.\n\n" +
 			"Each block's header gives the formatter's verdict:\n" +
 			"pass (exit 0, nothing changed), formatted (exit 0, files changed),\n" +
 			"fail (exit 1), error (exit 2).\n\n" +
 			"Exit codes: 0 every formatter passed or formatted its files;\n" +
 			"1 a formatter reported a finding (an unparsable file, a bad config section),\n" +
-			"the config file has problems, with --fail-on-change a file was rewritten, or\n" +
+			"the config file has problems, with --fail-on-change a file was rewritten,\n" +
+			"with --staged a file was partly staged, or\n" +
 			"a runtime error (a failed write of the output);\n" +
 			"2 a formatter errored, or a usage or setup error (a read-only checkout among\n" +
 			"them); 130 interrupted.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := r.format(cmd.Context(), cmd, args, failOnChange, getenv)
+			err := r.format(cmd.Context(), cmd, args, fmtOptions{failOnChange: failOnChange, staged: staged}, getenv)
 			// An interrupted run fails in whatever step it reached; report it
 			// as the interruption.
 			if err != nil && cmd.Context().Err() != nil {
@@ -62,10 +68,16 @@ func (r Runner) newFmtCmd(getenv func(string) string) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&failOnChange, "fail-on-change", false, "exit 1 when any file was rewritten")
+	cmd.Flags().BoolVar(&staged, "staged", false, "format only the files staged for the commit; refuse a partly staged one")
 	return cmd
 }
 
-func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, failOnChange bool, getenv func(string) string) error {
+// fmtOptions are fmt's flags.
+type fmtOptions struct {
+	failOnChange, staged bool
+}
+
+func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, opts fmtOptions, getenv func(string) string) error {
 	formatters, err := selection.ParseFormatters(args, getenv("TOOLBELT_FORMATTERS"), r.Formatters)
 	if err != nil {
 		return usageError{err}
@@ -92,6 +104,12 @@ func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, f
 	plan, err := r.prepareFormatters(ctx, root, cfg, lints)
 	if err != nil {
 		return err
+	}
+	var partly []string
+	if opts.staged {
+		if partly, err = plan.onlyStaged(ctx, root); err != nil {
+			return err
+		}
 	}
 
 	tree, err := os.OpenRoot(root)
@@ -131,7 +149,12 @@ func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, f
 			return err
 		}
 	}
-	var tally fmtTally
+	for _, file := range partly {
+		if _, err := fmt.Fprintf(stdout, "%s: staged and unstaged changes; format it by hand or stage it whole\n", file); err != nil {
+			return fmt.Errorf("write output: %w", err)
+		}
+	}
+	tally := fmtTally{partly: len(partly)}
 	for i, result := range results {
 		tally.add(result.Exit, len(changed[i]))
 		if err := printFormatted(stdout, stderr, formatters[i].Name, changed[i], result); err != nil {
@@ -139,13 +162,16 @@ func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, f
 		}
 	}
 	summary := fmt.Sprintf("toolbelt: %d file(s) formatted, %d failed, %d errored", tally.formatted, tally.failed, tally.errored)
+	if tally.partly > 0 {
+		summary += fmt.Sprintf(", %d partly staged", tally.partly)
+	}
 	if tally.formatted > 0 {
 		summary += "; review and stage them"
 	}
 	if _, err := fmt.Fprintln(stdout, summary); err != nil {
 		return fmt.Errorf("write summary: %w", err)
 	}
-	return tally.err(failOnChange)
+	return tally.err(opts.failOnChange)
 }
 
 // readOnlyError is the refusal of a repo root fmt cannot write to. It gives
@@ -243,9 +269,10 @@ func fmtVerdict(exit, changed int) string {
 	return verdict(exit)
 }
 
-// fmtTally counts rewritten files and verdicts across a fmt run.
+// fmtTally counts rewritten files, partly staged files left alone, and
+// verdicts across a fmt run.
 type fmtTally struct {
-	formatted, failed, errored int
+	formatted, failed, errored, partly int
 }
 
 func (t *fmtTally) add(exit, changed int) {
@@ -260,13 +287,16 @@ func (t *fmtTally) add(exit, changed int) {
 }
 
 // err is the run's outcome: any errored formatter makes it exit 2, otherwise
-// any failed formatter, or with failOnChange any rewritten file, exit 1.
+// any failed formatter, any partly staged file, or with failOnChange any
+// rewritten file, exit 1.
 func (t *fmtTally) err(failOnChange bool) error {
 	switch {
 	case t.errored > 0:
 		return codeError{code: exitSetup, err: fmt.Errorf("%d formatter(s) errored, %d failed", t.errored, t.failed)}
 	case t.failed > 0:
 		return codeError{code: exitError, err: fmt.Errorf("%d formatter(s) failed", t.failed)}
+	case t.partly > 0:
+		return codeError{code: exitError, err: fmt.Errorf("%d file(s) partly staged, not formatted", t.partly)}
 	case failOnChange && t.formatted > 0:
 		return codeError{code: exitError, err: fmt.Errorf("%d file(s) formatted, and --fail-on-change is set", t.formatted)}
 	default:

@@ -41,7 +41,7 @@ STUB
   LINT_RUN+=" --volume ${COMMON}:${COMMON}:ro --workdir ${ROOT} ${IMAGE} run"
   # The pre-commit fmt run for the formatter fx: the root mount is read-write.
   FMT_RUN="docker run --rm --network=none --user ${HOST_USER} --volume ${ROOT}:${ROOT}"
-  FMT_RUN+=" --volume ${COMMON}:${COMMON}:ro --workdir ${ROOT} ${IMAGE} fmt --fail-on-change fx"
+  FMT_RUN+=" --volume ${COMMON}:${COMMON}:ro --workdir ${ROOT} ${IMAGE} fmt --fail-on-change --staged fx"
 }
 
 # @description List the formatter fx in the copy of the pre-commit hook's
