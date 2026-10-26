@@ -576,6 +576,44 @@ func TestRun_fmtStaged(t *testing.T) {
 			want:       map[string]string{"b.x": "content\n"},
 		},
 		{
+			name: "a staged file whose directory became a symlink is reported",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "d", "a.x"), "content\n")
+				writeFile(t, filepath.Join(repo, "e", "a.x"), "content\n")
+				commitAll(t, repo)
+				writeFile(t, filepath.Join(repo, "d", "a.x"), "staged\n")
+				gitIn(t, repo, "add", filepath.Join("d", "a.x"))
+				if err := os.RemoveAll(filepath.Join(repo, "d")); err != nil {
+					t.Fatal(err)
+				}
+				// os.Root would follow this symlink to e/a.x, a regular file.
+				if err := os.Symlink("e", filepath.Join(repo, "d")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStdout: "d/a.x: staged and unstaged changes; format it by hand or stage it whole\n" +
+				"== x: pass ==\ntoolbelt: 0 file(s) formatted, 0 failed, 0 errored, 1 partly staged\n",
+			wantCode: 1,
+		},
+		{
+			name: "a staged file whose directory became a file is reported",
+			prepare: func(t *testing.T, repo string) {
+				t.Helper()
+				writeFile(t, filepath.Join(repo, "d", "a.x"), "content\n")
+				commitAll(t, repo)
+				writeFile(t, filepath.Join(repo, "d", "a.x"), "staged\n")
+				gitIn(t, repo, "add", filepath.Join("d", "a.x"))
+				if err := os.RemoveAll(filepath.Join(repo, "d")); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, filepath.Join(repo, "d"), "a file now\n")
+			},
+			wantStdout: "d/a.x: staged and unstaged changes; format it by hand or stage it whole\n" +
+				"== x: pass ==\ntoolbelt: 0 file(s) formatted, 0 failed, 0 errored, 1 partly staged\n",
+			wantCode: 1,
+		},
+		{
 			name: "a deleted staged file the named formatters' includes do not match is not reported",
 			prepare: func(t *testing.T, repo string) {
 				t.Helper()
