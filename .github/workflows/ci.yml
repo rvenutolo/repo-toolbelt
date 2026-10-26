@@ -98,8 +98,10 @@ jobs:
             to="${GITHUB_SHA}"
           fi
           # An all-zero before-SHA means the ref did not exist prior to this
-          # push, so there is no range to walk; lint the tip commit alone.
-          if [[ "${from}" =~ ^0+$ ]]; then
+          # push, and a workflow_dispatch run has no before-SHA at all; either
+          # way there is no range to walk, so lint the tip commit alone.
+          # Walking from an empty `from` would lint all of history.
+          if [[ -z "${from}" || "${from}" =~ ^0+$ ]]; then
             ./.ci/in-devshell commitlint --last --verbose
           else
             ./.ci/in-devshell commitlint --from "${from}" --to "${to}" --verbose
