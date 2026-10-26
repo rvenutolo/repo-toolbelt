@@ -141,6 +141,8 @@
                 # Reads govulncheck's JSON report in .ci/vuln.
                 jq
                 git
+                # The e2e suite builds a Git LFS consumer fixture with it.
+                git-lfs
                 just
                 commitlint
                 # nix.out, not bare `nix`: the default output is `dev`, which has
