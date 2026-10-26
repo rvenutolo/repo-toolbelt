@@ -11,6 +11,7 @@
   coreutils,
   findutils,
   gitMinimal,
+  git-lfs,
   gnugrep,
   yq-go,
 }:
@@ -26,6 +27,10 @@ dockerTools.streamLayeredImage {
     findutils
     # gitMinimal: no perl, python or docs, none of which a lint calls.
     gitMinimal
+    # A consumer's required LFS clean filter runs when a working-tree diff
+    # or status meets a file whose stat data changed; git fails the command
+    # when the filter's program is missing.
+    git-lfs
     gnugrep
     yq-go
     # /usr/bin/env, for `#!/usr/bin/env bash` shebangs.
@@ -48,6 +53,12 @@ dockerTools.streamLayeredImage {
       "PATH=/bin"
       "TOOLBELT_LINTS_DIR=/opt/toolbelt/lints"
       "TOOLBELT_FORMATTERS_DIR=/opt/toolbelt/formatters"
+      # The LFS clean filter writes under lfs.storage, by default inside the
+      # git dir, which the hooks mount read-only. Set in the environment
+      # because that scope outranks a repo's own lfs.storage.
+      "GIT_CONFIG_COUNT=1"
+      "GIT_CONFIG_KEY_0=lfs.storage"
+      "GIT_CONFIG_VALUE_0=/tmp/lfs"
     ];
   };
 }

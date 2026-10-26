@@ -69,7 +69,10 @@ Each hook runs the pinned image with `docker run`, mounting the checkout read-on
 as the caller's user and group. The lints it lists run concurrently in the one container. Hooks normally list only quick
 lints; a slow lint run from pre-commit prints a one-line warning and still runs. The hooks lint the working tree as it
 is on disk and warn when it holds unstaged or uncommitted edits. The pre-commit hook passes git's `GIT_INDEX_FILE` into
-the container, so under `git commit --all` that warning compares with the index being committed. A pre-commit hook
+the container, so under `git commit --all` that warning compares with the index being committed. Comparing the working
+tree runs the repo's clean filters on files whose stat data changed. The image carries git-lfs and points `lfs.storage`
+into the container, so a Git LFS repo needs nothing more; a required clean filter whose program the image lacks fails
+those runs with exit 2. A pre-commit hook
 that lists formatters first runs them in a container of their own with the checkout read-write (see
 [In the pre-commit hook](#in-the-pre-commit-hook)).
 
