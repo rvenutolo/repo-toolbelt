@@ -24,9 +24,11 @@ var hunkHeader = regexp.MustCompile(`^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]{1,9})(?:,(
 // the binary attribute (-diff) blanks the text, diff.external replaces the
 // output, diff.relative narrows it, diff.interHunkContext merges hunks across
 // unchanged lines, and renames would compare a file against another.
+// -O/dev/null also keeps a diff.orderFile naming a host file the container
+// lacks from making git refuse to diff at all.
 var diffOptions = []string{ //nolint:gochecknoglobals // immutable lookup table
 	"--unified=0", "--inter-hunk-context=0", "--no-renames", "--no-color",
-	"--no-ext-diff", "--no-textconv", "--no-relative", "--text",
+	"--no-ext-diff", "--no-textconv", "--no-relative", "--text", "-O/dev/null",
 }
 
 // ChangedLines returns the lines the working tree adds or changes relative
