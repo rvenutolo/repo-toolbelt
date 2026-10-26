@@ -110,7 +110,7 @@ func Exclude(files, globs []string) []string {
 func ownersOf(dir *os.Root, file string, formatters []manifest.Formatter) ([]string, error) {
 	var owners []string
 	for _, f := range formatters {
-		if slices.ContainsFunc(f.Include, func(glob string) bool { return matchesBase(glob, file) }) {
+		if ClaimedByName(f, file) {
 			owners = append(owners, f.Name)
 		}
 	}
@@ -148,6 +148,13 @@ func hasShebangFormatter(formatters []manifest.Formatter) bool {
 
 // matchesBase reports whether the include glob matches the base name of file.
 // An invalid glob matches nothing; the manifest rejects them.
+// ClaimedByName reports whether one of f's include globs matches the base
+// name of the repo-relative path file. A shebang claims only a file that can
+// be read, so it never counts here.
+func ClaimedByName(f manifest.Formatter, file string) bool {
+	return slices.ContainsFunc(f.Include, func(glob string) bool { return matchesBase(glob, file) })
+}
+
 func matchesBase(glob, file string) bool {
 	ok, _ := path.Match(glob, path.Base(file)) //nolint:errcheck // an invalid glob matches nothing, and the manifest validates its globs
 	return ok

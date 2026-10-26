@@ -105,18 +105,18 @@ func (r Runner) format(ctx context.Context, cmd *cobra.Command, args []string, o
 	if err != nil {
 		return err
 	}
-	var partly []string
-	if opts.staged {
-		if partly, err = plan.onlyStaged(ctx, root); err != nil {
-			return err
-		}
-	}
 
 	tree, err := os.OpenRoot(root)
 	if err != nil {
 		return setupf("open the repo root: %w", err) // coverage-exempt: the root was just found by git and passed access(2)
 	}
 	defer tree.Close()
+	var partly []string
+	if opts.staged {
+		if partly, err = plan.onlyStaged(ctx, root, tree); err != nil {
+			return err
+		}
+	}
 	before := make(map[string][sha256.Size]byte)
 	for _, files := range plan.files {
 		for _, file := range files {
