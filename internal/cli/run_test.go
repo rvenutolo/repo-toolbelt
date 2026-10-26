@@ -426,6 +426,19 @@ func TestRun_runTreeWarnings(t *testing.T) {
 			want: unstaged,
 		},
 		{
+			// The runner's container never has the host path a repo's config
+			// may name, and git refuses to diff without it.
+			name: "pre-commit unstaged edits with a diff.orderFile the checkout lacks",
+			hook: "pre-commit",
+			change: func(t *testing.T, repo string) {
+				t.Helper()
+				gitIn(t, repo, "config", "diff.orderFile", filepath.Join(t.TempDir(), "missing"))
+				writeFile(t, filepath.Join(repo, "tracked.txt"), "two\n")
+				writeFile(t, filepath.Join(repo, "src", "x.go"), "package y\n")
+			},
+			want: unstaged,
+		},
+		{
 			name: "pre-commit staged edit and untracked file",
 			hook: "pre-commit",
 			change: func(t *testing.T, repo string) {

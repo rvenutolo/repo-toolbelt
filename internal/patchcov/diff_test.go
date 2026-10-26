@@ -102,6 +102,19 @@ func TestChangedLines(t *testing.T) {
 			want:   map[string][]patchcov.Span{"a.txt": {{Start: 1, End: 1}, {Start: 10, End: 10}}},
 		},
 		{
+			// The lint runs in a container that never has the host path a
+			// repo's config may name, and git refuses to diff without it.
+			name:  "a diff.orderFile the checkout lacks is ignored",
+			files: map[string]string{"a.txt": ten},
+			change: func(t *testing.T, root string) {
+				t.Helper()
+				git(t, root, "config", "diff.orderFile", filepath.Join(t.TempDir(), "missing"))
+				writeFile(t, filepath.Join(root, "a.txt"), "1\n2\nthree\n4\n5\n6\n7\n8\n9\n10\n")
+			},
+			wanted: []string{"a.txt"},
+			want:   map[string][]patchcov.Span{"a.txt": {{Start: 3, End: 3}}},
+		},
+		{
 			name:  "only wanted files are diffed",
 			files: map[string]string{"a.txt": ten, "b.txt": ten},
 			change: func(t *testing.T, root string) {
