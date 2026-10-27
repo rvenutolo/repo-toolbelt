@@ -6,7 +6,7 @@ description: Install Nix, restore the Nix store cache, GC-root the devShell clos
 runs:
   using: composite
   steps:
-    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+    - uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
     # The key hashes this file as well as flake.lock, so a change to how the
     # store is rooted or collected saves under a fresh key. A primary-key hit
     # skips the save, GC included, so without the salt an existing oversized
@@ -23,7 +23,7 @@ runs:
         gc-max-store-size-linux: 0
     # Runs on the bare runner, not through .ci/in-devshell: it creates the GC
     # roots that the cache action's post-job save honours, and it uses only the
-    # nix that nix-installer-action just put on PATH.
+    # nix that determinate-nix-action just put on PATH.
     #
     # inputDerivation references every package the devShell provides, so its
     # closure is exactly what `.ci/in-devshell` needs at runtime. The flake
