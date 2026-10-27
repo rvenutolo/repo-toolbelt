@@ -187,8 +187,8 @@ jobs:
   # editing the ruleset. always(): without it a failed or cancelled dependency
   # would skip this job, and a skipped required check counts as passing.
   # No Nix: it only reads the needed jobs' results.
-  merge-gate:
-    name: merge-gate
+  ci-ok:
+    name: ci-ok
     needs: [gate, image, commitlint, shared-workflow-pin, shared-workflow]
     if: always()
     runs-on: ubuntu-latest
