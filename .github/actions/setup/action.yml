@@ -6,7 +6,12 @@ description: Install Nix, restore the Nix store cache, GC-root the devShell clos
 runs:
   using: composite
   steps:
+    # otel.determinate.systems is deliberately absent from every harden-runner
+    # allowlist, so the installer's telemetry is switched off rather than
+    # left to be dropped.
     - uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
+      env:
+        OTEL_SDK_DISABLED: "true"
     # The key hashes this file as well as flake.lock, so a change to how the
     # store is rooted or collected saves under a fresh key. A primary-key hit
     # skips the save, GC included, so without the salt an existing oversized

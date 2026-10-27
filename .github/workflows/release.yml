@@ -78,7 +78,7 @@ jobs:
           # westus2 runners: https://github.com/step-security/harden-runner/issues/708
           egress-policy: audit
           allowed-endpoints: >-
-            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443 nixos.org:443 objects.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443 nixos.org:443 objects.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 proxy.golang.org:443 raw.githubusercontent.com:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The next version is computed from the tags and the history since
@@ -139,7 +139,7 @@ jobs:
           # attestation, serve the trust root and countersign.
           # yamllint disable rule:line-length
           allowed-endpoints: >-
-            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 fulcio.sigstore.dev:443 ghcr.io:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443 nixos.org:443 objects.githubusercontent.com:443 pkg-containers.githubusercontent.com:443 proxy.golang.org:443 raw.githubusercontent.com:443 rekor.sigstore.dev:443 releases.nixos.org:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 timestamp.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
+            api.github.com:443 cache.nixos.org:443 channels.nixos.org:443 codeload.github.com:443 fulcio.sigstore.dev:443 ghcr.io:443 github.com:443 hosted-compute-*.githubapp.com:443 install.determinate.systems:443 nix-installer20230104193028379800000001.s3.dualstack.us-east-2.amazonaws.com:443 nixos.org:443 objects.githubusercontent.com:443 pkg-containers.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 proxy.golang.org:443 raw.githubusercontent.com:443 rekor.sigstore.dev:443 releases.nixos.org:443 results-receiver.actions.githubusercontent.com:443 storage.googleapis.com:443 sum.golang.org:443 tarballs.nixos.org:443 timestamp.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
           # yamllint enable rule:line-length
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

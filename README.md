@@ -392,7 +392,8 @@ runner built from the working tree; `./.ci/in-devshell ./.ci/fmt` rewrites what 
 `just test`, `just check`, `just lint` and `just fmt` are shortcuts for the first, second, linter-only and formatter
 commands. Nothing requires `just`.
 
-Commit subjects follow the Angular convention, checked by commitlint. This repo runs its own lints on itself, including
+Commit subjects follow the Angular convention, checked by commitlint. So is a pull request's title, linted as the merge
+commit's header `<title> (#N)`, which must fit the same 72-character limit. This repo runs its own lints on itself, including
 the coverage ratchet, so a commit that raises `.coverage-baseline.txt` carries a `Coverage-Drop:` trailer as above.
 
 ## Releasing
