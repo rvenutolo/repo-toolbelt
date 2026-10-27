@@ -10,6 +10,11 @@ runs:
     # allowlist, so the installer's telemetry is switched off rather than
     # left to be dropped.
     - uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3 # v3.24.1
+      with:
+        # Turns off the installer's diagnostics. They go to
+        # install.determinate.systems, the host the installer is downloaded from,
+        # so the harden-runner allowlist cannot separate them from the download.
+        diagnostic-endpoint: ""
       env:
         OTEL_SDK_DISABLED: "true"
     # The key hashes this file as well as flake.lock, so a change to how the
