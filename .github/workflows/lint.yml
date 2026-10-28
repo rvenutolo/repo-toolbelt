@@ -47,11 +47,9 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - if: inputs.harden-runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
-          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # The image pull, and the Sigstore and GitHub TUF roots for the
           # attestation check.
           allowed-endpoints: >-
@@ -111,11 +109,9 @@ jobs:
         group: ${{ fromJSON(needs.plan.outputs.matrix).groups }}
     steps:
       - if: inputs.harden-runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
-          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           # The checkout, the artifact download and the image pull.
           allowed-endpoints: >-
             api.github.com:443 codeload.github.com:443 github.com:443 ghcr.io:443 pkg-containers.githubusercontent.com:443 productionresultssa*.blob.core.windows.net:443 results-receiver.actions.githubusercontent.com:443
@@ -177,11 +173,9 @@ jobs:
     permissions: {}
     steps:
       - if: inputs.harden-runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # TODO: restore egress-policy block once block mode stops dropping allowed hosts on
-          # westus2 runners: https://github.com/step-security/harden-runner/issues/708
-          egress-policy: audit
+          egress-policy: block
           disable-sudo-and-containers: true
           allowed-endpoints: >-
             api.github.com:443 github.com:443
