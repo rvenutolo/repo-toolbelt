@@ -67,9 +67,11 @@ so.
 
 - `current-session.md` also holds `cap: <n>`, the batch as `issue <N> after <M>,<K>` lines (or `issue <N>` with no
   prerequisite), `workflow-script: <path>`, `workflow-args: <path>` and `workflow-run: <runId>`.
-- `.claude/backlog/parallel/<N>.md`: one issue's progress, written only by the review stage and the merge queue.
-  Lines `state: building|ready|merged|parked`, `branch:`, `pr:`, `plan:`, `worktrees:` (every worktree path the
-  issue's agents used), `ruling:` (one per ruling) and `park-note:`.
+- `.claude/backlog/parallel/<N>.md`: one issue's progress, written by the review stage and the merge queue during
+  the run and completed by the controller after it ("The run" step 5). Lines
+  `state: building|ready|merged|parked|skipped` (skipped: the user closed the issue or its PR mid-run), `branch:`,
+  `pr:`, `plan:`, `worktrees:` (every worktree path the issue's agents used), `ruling:` (one per ruling) and
+  `park-note:`.
 - `.claude/backlog/parallel/<N>-findings.md`: the issue's out-of-scope findings, unjudged, in `pending-findings.md`'s
   entry format.
 - `.claude/backlog/parallel/run-args.json`: the workflow's `args` ("The run").
@@ -98,8 +100,11 @@ so.
    relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId`; finished agents replay from cache and
    every agent prompt starts by reconciling against git and GitHub, so an agent interrupted mid-work picks up where
    its branch is. Never start a fresh run for a batch that has a `workflow-run`.
-5. The result is `{merged: [N...], parked: [{n, note}...], batchHalt: "<cause>" | null}`. Read every
-   `.claude/backlog/parallel/<N>.md` to confirm it; the files win where they disagree with the result.
+5. **Record.** The result is `{merged, parked: [{n, note}], skipped, batchHalt, records}`, one record per issue
+   with its `state`, `note`, `branch`, `pr`, `worktrees`, `rulings` and `unrecorded` findings (those no review
+   stage wrote down). For each record, write its `<N>.md` where the file is missing or says less (a builder that
+   parked before any review never had one written), and append its `unrecorded` findings to `<N>-findings.md`.
+   Where a file says `merged` and the record does not, the file wins: the merge queue writes it before cleanup.
 
 ## Ending
 

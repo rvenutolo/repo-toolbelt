@@ -8,8 +8,9 @@ applies, except its "Shared state is not yours" item: here it is.
 `/work-backlog`'s `merging.md` is the procedure; this file names where it differs. The rebase happens in a worktree
 of this agent's own, `<main>/.claude/worktrees/merge-<n>`, never in a builder's.
 
-Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used), `resolutionFindings` (empty,
-or the review of a conflict resolution this agent asked for), `date`, `main`.
+Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used), `resolutionReviewed` (true
+on the second call for a code resolution), `resolutionFindings` (that review's findings, possibly none), `date`,
+`main`.
 
 ## 1. Reconcile
 
@@ -19,9 +20,9 @@ return `state: "skipped"`.
 ## 2. Rebase
 
 1. `git fetch --prune origin`, then note the old remote SHA, `git rev-parse origin/<branch>`.
-2. If `merge-<n>` exists and `resolutionFindings` is non-empty, this is the second call for a reviewed resolution:
-   keep it and go to step 3. Otherwise remove a leftover `merge-<n>` (`git worktree remove`, path written out), then
-   `git worktree add --detach .claude/worktrees/merge-<n> origin/<branch>`.
+2. If `resolutionReviewed` is true and `merge-<n>` exists, this is the second call for a reviewed resolution: keep
+   the worktree and go to section 3, step 3. Otherwise remove a leftover `merge-<n>` (`git worktree remove`, path
+   written out), then `git worktree add --detach .claude/worktrees/merge-<n> origin/<branch>`.
 3. If `git -C <merge worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
    step 4. Otherwise `git -C <merge worktree> rebase origin/main`.
 4. **Conflicts.** For each conflicted file (in a rebase, `--ours` is `main`, `--theirs` is the branch's commit):

@@ -91,6 +91,13 @@ Inputs: `n`, `round` (1 or 2), `branch`, `pr`, `headWorktree` (where the latest 
    anything else is appended to `<n>-findings.md` and listed in `otherFindings`.
 4. **Return** `changeFindings`, `otherFindings`.
 
+**A conflict resolution** (inputs `resolution: true`, `mergeWorktree`, `conflictedFiles`, `branch`, `pr`, `n`,
+`main`, from `merge-queue.md`): skip step 1. Review only how the conflicts in `conflictedFiles` were resolved:
+`git -C <mergeWorktree> diff origin/main HEAD -- <files>` against what each side's PR meant
+(`gh pr view <pr>` and the `main` commits that touched those files). A wrong or lossy resolution is a
+`changeFindings` entry; a finding outside the resolution follows step 3 and is not this review's business beyond
+that.
+
 ## Fix
 
 Inputs: `n`, `round`, `branch`, `pr`, `changeFindings`, `date`, `main`.
