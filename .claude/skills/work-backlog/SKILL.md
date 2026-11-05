@@ -98,6 +98,8 @@ if any is missing.
   its worktree is removed. Step 2 reads a copy of any date as the point to resume from, step 3 reconciles it against
   git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
   answers and spec paths survive only in this file and under `docs/superpowers/`.
+- `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State").
+  This skill never writes them; `leftovers.md` folds any it finds.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`; the
@@ -116,11 +118,11 @@ state files are written there and nowhere else.
    the resume record step 3 reconciles, and only step 9 deletes it. Append today's line to `session-log.md`, with
    the count from `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already
    exists (a session restarted), keep it and add none.
-3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, and after `git worktree prune`,
-   `git worktree list` shows only the main checkout, `gh pr list --author @me --state open` is empty, and
-   `git branch` shows `main` alone. Then go to step 4. Otherwise follow `leftovers.md`, which sorts what is there
-   into this skill's unfinished work (finished before anything new is chosen), merged branches to delete, and the
-   user's own work, which is left alone.
+3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
+   empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
+   `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
+   Otherwise follow `leftovers.md`, which sorts what is there into this skill's unfinished work (finished before
+   anything new is chosen), merged branches to delete, and the user's own work, which is left alone.
 4. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
    This runs after step 3 so that a "fix it now" decision does not start new work while a leftover is unfinished.
 5. **Stall check.** Compare today's line with the third line above it ending in `done` (three finished sessions

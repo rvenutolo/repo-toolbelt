@@ -1,9 +1,9 @@
 # Leftovers
 
-Runs from `SKILL.md` step 3 when step 2 found a `current-session.md` or the main checkout holds anything beyond
-`main`. Five inputs feed it: the `current-session.md` step 2 read, which names the dead session's issues, spec, plans,
-halt answers and how far each issue got, and four listings, all run after `git worktree prune` (a worktree directory
-deleted by hand stays registered until then):
+Runs from `SKILL.md` step 3 when step 2 found a `current-session.md`, `.claude/backlog/parallel/` holds a file, or
+the main checkout holds anything beyond `main`. Five inputs feed it: the `current-session.md` step 2 read, which
+names the dead session's issues, spec, plans, halt answers and how far each issue got, and four listings, all run
+after `git worktree prune` (a worktree directory deleted by hand stays registered until then):
 
 - `git worktree list`
 - `gh pr list --author @me --state open --json number,body,headRefName`
@@ -11,6 +11,24 @@ deleted by hand stays registered until then):
 - `git branch --no-merged main --format='%(refname:short)'`
 
 Sort what they show into three kinds. Anything not claimed by the first two is the user's.
+
+## A parallel run's files
+
+`/work-backlog-parallel` writes per-issue files under `.claude/backlog/parallel/` (its `SKILL.md` "State"), and
+either skill may be the one that finds them. Fold them first, before sorting anything:
+
+- Each `<N>-findings.md` holds findings no one has judged: judge each by "The filing bar" in `SKILL.md`, append the
+  ones that pass to `pending-findings.md`, drop the rest, and delete the file by its literal path.
+- Each `<N>.md` says how far issue N got. `merged`: delete the file. `parked` or anything earlier: the issue is
+  unfinished work of this skill's (below), with the file's `branch:`, `pr:` and `worktrees:` telling where it is.
+  A `park-note:` holds the question the run could not ask: ask it with the question banner before resuming that
+  issue, recommending the note's answer, then delete the file once the issue merges or the user drops it.
+
+Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (detached) and
+`.claude/worktrees/wf_<runId>-<k>`, whose branch is either an issue branch (sorted below like any other) or its
+own `worktree-wf_<runId>-<k>`, or detached. A `merge-<N>` or detached or `worktree-wf_*` one with no commits that
+are not also on `origin/<branch>` of its issue, or on `origin/main`, holds nothing: remove it and delete its
+`worktree-wf_*` branch, naming each in the summary. One that holds such commits is resumed with its issue.
 
 ## This skill's unfinished work
 
