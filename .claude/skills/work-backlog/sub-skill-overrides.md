@@ -70,8 +70,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   handles them before the PR merges. This skill has no fix dispatch and no re-review ("Fix the Critical and
   Important findings yourself … in ONE pass", "Do not dispatch a re-review"), so the controller makes the sweep's
   fixes itself, in one pass, as that skill makes its own.
-- **superpowers:subagent-driven-development** and **superpowers:executing-plans**, "delete this plan's workspace
-  (`rm -rf <workspace>`)" at their finish: the ledger sweep runs first, because the skills collect only `Ruling:`
+- **superpowers:subagent-driven-development**, "delete this plan's workspace (`rm -rf <workspace>`)", and
+  **superpowers:executing-plans**, "delete this plan's workspace directory", at their finish: the ledger sweep runs
+  first, because the skills collect only `Ruling:`
   lines before the delete and the sweep needs the deferred, parked and out-of-scope lines too. Delete the workspace
   after the sweep, before the PR merges.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, rulings reported to the user in
@@ -94,6 +95,7 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   was tried, recommend, the rest of the chunk goes on after the answer) with options that fit: try a named
   different approach, leave the issue open for a later session, or close it as not planned.
 - **superpowers:systematic-debugging**, a cause found to be "truly environmental, timing-dependent, or external"
-  with "Implement appropriate handling (retry, timeout, error message); Add monitoring/logging": no handling is
+  with "Implement appropriate handling (retry, timeout, error message)" and "Add monitoring/logging for future
+  investigation": no handling is
   added on that finding alone. The bug is re-judged by the filing bar; one that fails it goes to the user as
   `bug-flow.md` step 3 says, and one that passes gets the fix its real trigger calls for.
