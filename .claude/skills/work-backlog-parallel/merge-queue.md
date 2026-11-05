@@ -3,10 +3,15 @@
 Instructions for the merge agent `run.workflow.js` starts once an issue is ready. The script runs one merge agent at
 a time, so this agent is the only one touching shared git state: it fetches, pulls `main`, adds and removes
 worktrees and deletes branches. It runs in the main checkout (`<main>`), not isolated, and works in other worktrees
-with `git -C <path>` and absolute paths. "Every agent" in `agents.md` applies, except its "Shared state is not
-yours" item: here it is.
+with `git -C <path>` and absolute paths. "Every agent" in `agents.md` applies, except the git-command limits of its
+"Shared state is not yours" item: fetching, pulling, worktrees and branch deletes are this agent's. It still never
+writes `current-session.md`, `pending-findings.md`, a spec or `.claude/rules/`, and never calls `ExitWorktree` or
+`EnterWorktree`.
 
-`/work-backlog`'s `merging.md` is the procedure; this file names where it differs.
+`/work-backlog`'s `merging.md` steps 1 and 2 are the procedure, with the differences below; its steps 3 and 4
+(leaving a worktree, recording in `current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here
+replace them. Rebases run as `git -C <rebase worktree> -c core.editor=true rebase …`, so `rebase --continue` never
+waits on an editor nobody will close, and one allow rule, `Bash(git -C *)`, covers every command here.
 
 Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used, the build agent's first),
 `resolutionReviewed` (true when the previous call returned `needs-review` and the review has run),
@@ -14,8 +19,14 @@ Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents
 
 ## 1. Reconcile
 
-`gh pr view <pr> --json state --jq .state`. `MERGED`: go to step 6 (a resumed merge). `CLOSED`: the user closed it;
-return `state: "skipped"`.
+`gh pr view <pr> --json state --jq .state`. `MERGED`: go to section 6 (a resumed merge). `CLOSED`: the user closed
+it; return `state: "skipped"`. Then two checks of what the user did while nobody watched:
+
+- `gh issue view <n> --json state --jq .state` printing `CLOSED`: the user closed the issue; return
+  `state: "skipped"`, leaving the PR open for them.
+- `gh pr view <pr> --json isDraft,reviewDecision,comments,reviews`: a draft, a non-empty review decision, or any
+  comment or review means the user has touched the PR (no agent of this run comments or reviews on GitHub). Park,
+  quoting what they wrote, with "resume the merge" or "leave it" as the question.
 
 ## 2. The rebase worktree
 
@@ -40,14 +51,13 @@ The rebase happens on the issue branch itself, so that after the merge the local
    When no worktree holds `<branch>`, add `merge-<n>` the same way. When the worktree holds commits
    `origin/<branch>` lacks, park: work exists only locally.
 5. If `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
-   section 3, step 1. Otherwise `GIT_EDITOR=true git -C <rebase worktree> rebase origin/main` (the editor setting
-   keeps `rebase --continue` from waiting on an editor nobody will close).
+   section 3, step 1. Otherwise `git -C <rebase worktree> -c core.editor=true rebase origin/main`.
 
 ## 3. Conflicts
 
 For each conflicted file (in a rebase, `--ours` is `main`, `--theirs` is the branch's commit), resolve it, then
-`git -C <rebase worktree> add <file>` and `GIT_EDITOR=true git -C <rebase worktree> rebase --continue`, until the
-rebase ends:
+`git -C <rebase worktree> add <file>` and `git -C <rebase worktree> -c core.editor=true rebase --continue`, until
+the rebase ends:
 
 - **List and registry lines** (`lints.toml`, `formatters.toml`, README lists and tables, `examples/consumer/` lint
   lists): keep both sides' entries. Where the file is sorted, keep it sorted; where it is in order of addition, put
@@ -62,8 +72,12 @@ rebase ends:
 Then:
 
 1. Confirm `git -C <rebase worktree> log --format='%G?' origin/main..HEAD` prints only `G`; any other letter parks.
-2. **Baseline.** If both `main` and the branch changed `.coverage-baseline.txt` since their merge base (conflicted or
-   merged cleanly: a clean text merge of the baseline is still a merge, which "Never" forbids), run
+2. **Baseline.** Regenerate it when this call took `main`'s `.coverage-baseline.txt` in a conflict, or when both
+   `main` and the branch changed it since their merge base (a clean text merge of the baseline is still a merge,
+   which "Never" forbids). Measure that from the branch as it was pushed, since after the rebase the merge base is
+   `origin/main` itself: with `base` from `git merge-base origin/main <old remote SHA>`, both
+   `git diff --quiet <base> <old remote SHA> -- .coverage-baseline.txt` and
+   `git diff --quiet <base> origin/main -- .coverage-baseline.txt` exit 1. To regenerate, run
    `./.ci/in-devshell ./run-tests` then `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline` in the
    rebase worktree. A changed file is committed as a new signed commit; a unit whose line rises carries the
    `Coverage-Drop:` trailer exactly as README "Recording a rise" says. Never amend.
@@ -81,13 +95,16 @@ Then:
 ## 4. CI
 
 `merging.md` step 1: watch, read the buckets, one rerun for an infrastructure failure, still red after the rerun
-parks. A real failure gets a fix only through review: commit the fix in the rebase worktree, do not push, and
-return `needs-review` with the fixed files as `conflictedFiles`, as section 3, step 4 does for the gate. A code
+parks. No check started after its three waits parks the issue (CI did not trigger for this PR); only a `gh` call that
+errors is batch-level. A real failure gets a fix only through review: commit the fix in the rebase worktree, do not
+push, and return `needs-review` with the fixed files as `conflictedFiles`, as section 3, step 4 does for the gate. A code
 change never reaches `main` without a review.
 
 ## 5. Merge
 
-`merging.md` step 2, with two differences:
+`merging.md` step 2, with three differences:
+
+- Where it says to go to step 3 (after `MERGED`, or when a resumed call finds the PR merged), go to section 6 here.
 
 - `BEHIND` or `DIRTY` (a Renovate PR merged meanwhile): go back to section 2, step 1. On the third time round, park.
 - Every blocked banner it names (`UNSTABLE`, `BLOCKED`, an unknown status) parks the issue, with the status and the
@@ -121,3 +138,6 @@ On a park, write `state: parked` and `park-note:` to `<main>/.claude/backlog/par
 every worktree in place (a later session resumes them through `leftovers.md`), and return `state: "parked"` with
 the note. If a rebase is in progress, `git -C <rebase worktree> rebase --abort` first, so the worktree is left on its
 branch. A batch-level failure ("Every agent" in `agents.md`) also sets `batchHalt`.
+
+Whatever the state returned, set `mergeWorktree` to the rebase worktree whenever section 2 chose or added one, so a
+`merge-<n>` this call made reaches the issue's record.

@@ -14,6 +14,33 @@ export const meta = {
 const A = args
 const SKILL = `${A.main}/.claude/skills/work-backlog-parallel`
 
+// A malformed args file must fail before any agent starts: a missing cap would leave every slot waiting forever, a
+// string issue number would slip past the cycle check, and a duplicate would build and merge one issue twice.
+function checkArgs() {
+  const bad = (why) => { throw new Error(`run-args.json is invalid: ${why}`) }
+  if (typeof A.date !== 'string' || !A.date) bad('date must be a non-empty string')
+  if (typeof A.main !== 'string' || !A.main) bad('main must be a non-empty string')
+  if (!Number.isInteger(A.cap) || A.cap < 1) bad('cap must be an integer of at least 1')
+  if (!Array.isArray(A.batch) || !A.batch.length) bad('batch must be a non-empty list')
+  const seen = new Set()
+  for (const item of A.batch) {
+    if (!Number.isInteger(item.n)) bad(`issue number ${JSON.stringify(item.n)} is not an integer`)
+    if (seen.has(item.n)) bad(`issue #${item.n} appears twice`)
+    seen.add(item.n)
+    if (item.kind !== 'bug' && item.kind !== 'feature') bad(`#${item.n} has kind ${JSON.stringify(item.kind)}`)
+    if (typeof item.spec !== 'string') bad(`#${item.n} needs a spec string (empty for a bug)`)
+    if (!Array.isArray(item.after)) bad(`#${item.n} needs an "after" list (empty when it has no prerequisite)`)
+  }
+  for (const item of A.batch) {
+    for (const m of item.after) {
+      if (!Number.isInteger(m)) bad(`#${item.n} lists ${JSON.stringify(m)} in "after", not an integer`)
+      // planning.md keeps a dependent out of the batch when its prerequisite is outside it and unmerged.
+      if (!seen.has(m)) bad(`#${item.n} depends on #${m}, which is not in the batch`)
+    }
+  }
+}
+checkArgs()
+
 const str = { type: 'string' }
 const strs = { type: 'array', items: str }
 const FINDING = {
@@ -34,8 +61,11 @@ const WRITER = {
 const CHANGE = { type: 'object', properties: { file: str, summary: str }, required: ['file', 'summary'] }
 const REVIEW = {
   type: 'object',
-  properties: { changeFindings: { type: 'array', items: CHANGE }, otherFindings: findings, batchHalt: str },
-  required: ['changeFindings', 'otherFindings', 'batchHalt'],
+  properties: {
+    changeFindings: { type: 'array', items: CHANGE }, otherFindings: findings, batchHalt: str,
+    recordedWriterFindings: { type: 'boolean' },
+  },
+  required: ['changeFindings', 'otherFindings', 'batchHalt', 'recordedWriterFindings'],
 }
 const MERGE = {
   type: 'object',
@@ -52,16 +82,19 @@ const prompt = (file, section, inputs) =>
   `You are a /work-backlog-parallel workflow agent. Read ${SKILL}/${file} and follow "Every agent" and the ` +
   `section "${section}". Inputs (JSON): ${JSON.stringify(inputs)}`
 
-// The cap bounds build, fix and merge agents together: each runs the full pre-push gate when it pushes.
+// The cap bounds build, fix and merge agents together: each runs the full pre-push gate when it pushes. Merge and
+// fix agents go ahead of builds still waiting, so ready work is not held behind issues that have not started and a
+// merge waiting on a slot does not let main move under a reviewed resolution.
 let free = A.cap
+const urgent = []
 const waiting = []
-async function slot(fn) {
+async function slot(fn, { priority = false } = {}) {
   if (free > 0) free--
-  else await new Promise((resolve) => waiting.push(resolve))
+  else await new Promise((resolve) => (priority ? urgent : waiting).push(resolve))
   try {
     return await fn()
   } finally {
-    const next = waiting.shift()
+    const next = urgent.shift() || waiting.shift()
     if (next) next()
     else free++
   }
@@ -76,17 +109,28 @@ function serial(fn) {
 }
 
 // A batch-level halt is recorded before the slot is released and checked once a slot is free, so an agent queued
-// behind the cap never starts after it.
+// behind the cap never starts after it. The first cause is the one the summary leads with.
 let batchHalt = ''
+const halt = (cause) => { if (cause && !batchHalt) batchHalt = cause }
 const HALTED = { halted: true }
 const unlessHalted = (start) => {
   if (batchHalt) return HALTED
   return start().then((result) => {
-    if (result && result.batchHalt && !batchHalt) batchHalt = result.batchHalt
+    if (result) halt(result.batchHalt)
     return result
   })
 }
 const haltNote = () => `Batch halted: ${batchHalt}`
+// The agent that hit a batch-level failure reports it in batchHalt and may leave parkNote empty.
+const writerNote = (result) => result.parkNote || (result.batchHalt ? `Batch halted: ${result.batchHalt}` : '')
+
+// An agent that dies (a sleeping laptop exhausting its API retries) returns null. One retry is safe because every
+// agent starts by reconciling against git and GitHub; parking at once would also park every dependent.
+async function call(text, opts) {
+  const result = await agent(text, opts)
+  if (result || batchHalt) return result
+  return agent(text, { ...opts, label: `${opts.label} retry` })
+}
 
 const records = {}
 const settle = {}
@@ -100,11 +144,11 @@ const afterOf = {}
 for (const item of A.batch) afterOf[item.n] = item.after
 function inCycle(start) {
   const seen = new Set()
-  const stack = [...(afterOf[start] || [])]
+  const stack = [...afterOf[start]]
   while (stack.length) {
     const m = stack.pop()
     if (m === start) return true
-    if (seen.has(m) || !afterOf[m]) continue
+    if (seen.has(m)) continue
     seen.add(m)
     stack.push(...afterOf[m])
   }
@@ -132,40 +176,49 @@ async function mergeIssue(rec) {
   let resolutionFindings = []
   let mergeWorktree = ''
   // Parking here, between merge calls, leaves a rebased branch no agent pushed; the note must say where it is.
-  const park = (note, halt = '') => ({
-    state: 'parked', batchHalt: halt,
+  const park = (note, cause = '') => ({
+    state: 'parked', batchHalt: cause,
     parkNote: mergeWorktree
       ? `${note} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
         `origin/${rec.branch}.`
       : note,
   })
-  // A code resolution goes to review and back; main can move during CI and force another, so three at most.
+  // A conflict resolution, or a fix for the gate or CI, goes to review and back; main can move during CI and force
+  // another, so three at most.
   for (const attempt of [1, 2, 3]) {
-    const merge = await slot(() => unlessHalted(() => agent(
+    const merge = await slot(() => unlessHalted(() => call(
       prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings }),
-      { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })))
+      { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })),
+    { priority: true })
     if (merge === HALTED) return park(haltNote())
-    if (!merge) return park('The merge agent died without a result.')
+    if (!merge) return park('The merge agent died twice without a result.')
+    // The merge agent may have made merge-<n>; the record must name every worktree it can leave behind.
+    if (merge.mergeWorktree && !rec.worktrees.includes(merge.mergeWorktree)) rec.worktrees.push(merge.mergeWorktree)
     rec.rulings.push(...(merge.rulings || []))
     rec.unrecorded.push(...(merge.findings || []))
     if (merge.state !== 'needs-review') return merge
     mergeWorktree = merge.mergeWorktree
+    if (attempt === 3) {
+      return park('Three changes needing review in a row (conflict resolutions, gate or CI fixes); the third was ' +
+        'not reviewed.')
+    }
+    if (batchHalt) return park(haltNote())
     // The review appends its out-of-scope findings to <n>-findings.md itself, so they are not unrecorded.
-    const review = await agent(
+    const review = await call(
       prompt('agents.md', 'Review', {
         n: rec.n, resolution: true, mergeWorktree, conflictedFiles: merge.conflictedFiles,
         branch: rec.branch, pr: rec.pr, main: A.main,
       }),
       { label: `review #${rec.n} resolution a${attempt}`, phase: 'Review', schema: REVIEW })
-    if (!review) return park('The resolution review agent died without a result.')
+    if (!review) return park('The resolution review agent died twice without a result.')
     if (review.batchHalt) {
+      halt(review.batchHalt)
       rec.unrecorded.push(...review.otherFindings)
-      return park(review.batchHalt, review.batchHalt)
+      return park(haltNote(), review.batchHalt)
     }
     resolutionReviewed = true
     resolutionFindings = review.changeFindings
   }
-  return park('Three code resolutions in a row: main kept moving under this branch.')
 }
 
 async function runIssue(item) {
@@ -175,66 +228,67 @@ async function runIssue(item) {
 
   if (inCycle(n)) return end(rec, 'parked', `Its "after" list forms a dependency cycle: ${item.after.join(', ')}.`)
   for (const m of item.after) {
-    if (!finished[m]) continue
     const state = await finished[m]
     if (state !== 'merged') return end(rec, 'parked', `Depends on #${m}, which ended ${state}.`)
   }
 
-  const build = await slot(() => unlessHalted(() => agent(
+  const build = await slot(() => unlessHalted(() => call(
     prompt('agents.md', 'Build', { n, kind: item.kind, spec: item.spec, date: A.date, main: A.main }),
     { label: `build #${n}`, phase: 'Build', schema: WRITER, isolation: 'worktree' })))
   if (build === HALTED) return end(rec, 'parked', haltNote())
-  if (!build) return end(rec, 'parked', 'The build agent died without a result.')
+  if (!build) return end(rec, 'parked', 'The build agent died twice without a result.')
   rec.branch = build.branch
   rec.pr = build.pr
   rec.plan = build.plan
   if (build.worktree) rec.worktrees.push(build.worktree)
   rec.rulings.push(...build.rulings)
   rec.unrecorded = build.findings
-  if (build.batchHalt) batchHalt = build.batchHalt
-  if (build.state !== 'ready') return end(rec, build.state, build.parkNote)
+  halt(build.batchHalt)
+  if (build.state !== 'ready') return end(rec, build.state, writerNote(build))
 
   let last = build
   let head = build.worktree
   for (const round of [1, 2]) {
     if (batchHalt) return end(rec, 'parked', haltNote())
-    const review = await agent(
+    const review = await call(
       prompt('agents.md', 'Review', {
         n, round, branch: rec.branch, pr: rec.pr, headWorktree: head, plan: rec.plan,
         worktrees: rec.worktrees, build: last, main: A.main,
       }),
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
-    if (!review) return end(rec, 'parked', `The round ${round} review agent died without a result.`)
-    // A review stopped by a batch halt may not have recorded the writer's findings; keep them for the controller.
+    if (!review) return end(rec, 'parked', `The round ${round} review agent died twice without a result.`)
+    // A review stopped by a batch halt may not have recorded the writer's findings; keep them for the controller
+    // unless it says it did.
     if (review.batchHalt) {
-      batchHalt = review.batchHalt
+      halt(review.batchHalt)
+      if (review.recordedWriterFindings) rec.unrecorded = []
       rec.unrecorded.push(...review.otherFindings)
       return end(rec, 'parked', haltNote())
     }
     rec.unrecorded = []
     if (!review.changeFindings.length) break
-    const fix = await slot(() => unlessHalted(() => agent(
+    const fix = await slot(() => unlessHalted(() => call(
       prompt('agents.md', 'Fix', {
         n, round, branch: rec.branch, pr: rec.pr, spec: item.spec, changeFindings: review.changeFindings,
         date: A.date, main: A.main,
       }),
-      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })))
+      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })), { priority: true })
     if (fix === HALTED) return end(rec, 'parked', haltNote())
-    if (!fix) return end(rec, 'parked', `The round ${round} fix agent died without a result.`)
+    if (!fix) return end(rec, 'parked', `The round ${round} fix agent died twice without a result.`)
     if (fix.worktree) rec.worktrees.push(fix.worktree)
     rec.rulings.push(...fix.rulings)
     rec.unrecorded = fix.findings
-    if (fix.batchHalt) batchHalt = fix.batchHalt
-    if (fix.state !== 'ready') return end(rec, fix.state, fix.parkNote)
+    halt(fix.batchHalt)
+    if (fix.state !== 'ready') return end(rec, fix.state, writerNote(fix))
     last = fix
     head = fix.worktree
   }
 
   const merged = await serial(() => mergeIssue(rec))
   if (!merged) return end(rec, 'parked', 'The merge agent died without a result.')
-  if (merged.batchHalt) batchHalt = merged.batchHalt
+  halt(merged.batchHalt)
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace
-  return end(rec, merged.state, merged.parkNote)
+  return end(rec, merged.state, writerNote(merged))
 }
 
 phase('Build')

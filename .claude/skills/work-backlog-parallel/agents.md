@@ -27,9 +27,14 @@ The merge agent is `merge-queue.md`.
   `parkNote` saying what happened, what was tried, the question the user would have been asked and the recommended
   answer. Decisions that do not change what gets built are `Ruling:` lines, returned in `rulings`.
 - **Batch-level failures** are not yours to park: `gh auth status --hostname github.com` failing, any `gh` call
-  failing twice a minute apart, Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 when a step needs a
-  container (the user's global Docker rule forbids running one then), and a red baseline on a fresh worktree
-  (`main` itself is broken). Return `state: "parked"` with `batchHalt` set to the cause.
+  that errors twice a minute apart, Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 when a step needs a
+  container (the user's global Docker rule forbids running one then), commit signing failing (the key has left
+  `ssh-agent`; every later commit would fail too), the main checkout's `HEAD` not an ancestor of `origin/main` (the
+  user committed on or switched local `main`, and a builder branching from it would carry that work into its PR),
+  and a red baseline that stays red on a rerun while the latest `ci.yml` run on `main`
+  (`gh run list --branch main --workflow ci.yml --limit 1 --json conclusion`) is red too (`main` itself is broken).
+  A baseline red only here, under four concurrent gates, is a flaky test: a finding, and the issue parks if it keeps
+  the work from going on. Return `state: "parked"` with `batchHalt` set to the cause and a `parkNote` naming it.
 - **Findings:** return every finding; never open an issue, comment on a PR, leave a `TODO` or decide for yourself
   what is worth reporting (the "Subagents" clause). Findings about the change itself are handled as `/work-backlog`
   says; every other finding goes in `findings`, in `pending-findings.md`'s entry format, unjudged. A test failure
@@ -37,6 +42,14 @@ The merge agent is `merge-queue.md`.
 - **Shared state is not yours.** Never run `git fetch` of anything but your issue's branch, `git pull`,
   `git worktree add` or `remove`, or `git branch --delete`, and never write `current-session.md`,
   `pending-findings.md`, a spec or `.claude/rules/`. Builders cannot write outside their worktree anyway.
+- **Never `ExitWorktree` or `EnterWorktree`.** Where a `/work-backlog` file says to leave the worktree to write
+  ("Leaving to write"), the write is not yours: findings and rulings go in your result, and the review stage copies
+  the plan.
+- **After a context compaction**, re-read this file's "Every agent" and your section, and the inputs in your prompt,
+  before anything else. Rules such as "never ask", "never fetch `main`" and "never end your turn mid-command" do not
+  survive a compaction otherwise.
+- **PR bodies change before a push, never after.** CI re-runs on an `edited` event and cancels the run in progress,
+  so a body edit right after a push throws away the CI run that push started. Edit the body first, then push.
 - **Long commands** (`git push`, whose pre-push hook runs the full gate, `./.ci/in-devshell ./run-tests`, and
   superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash tool's ten-minute limit. Run
   them with `run_in_background`, then wait for them with the Monitor tool until the command exits, and read its
@@ -51,13 +64,18 @@ The merge agent is `merge-queue.md`.
 
 ## Build
 
-Inputs: `n`, `kind` (`bug` or `feature`), `spec` (path in the main checkout, empty for a bug), `date`, `main`.
+Inputs: `n`, `kind` (`bug` or `feature`), `spec` (repo-relative path, read at `<main>/<spec>`; empty for a bug),
+`date`, `main`.
 
 1. **Reconcile.** An earlier agent may have started this issue (the workflow resumes interrupted agents from their
-   original prompt).
+   original prompt, and a resumed run re-runs most agents live).
    - `gh pr list --state all --search "#<n> in:body" --json number,state,headRefName,body`, keeping PRs whose body
-     ends with `Backlog-Session: <date>` and names `Closes #<n>` or `Part of #<n>`. A `MERGED` one: return
-     `state: "merged"`. An `OPEN` one: its `headRefName` is the branch.
+     ends with `Backlog-Session: <date>` and has a line that is exactly `Closes #<n>` or `Part of #<n>` (a substring
+     match would take a longer number's PR for this one). A `MERGED` one: return `state: "merged"`. An `OPEN` one is a finished
+     build, since a PR opens only after step 4's push: return `state: "ready"` at once with `branch` its
+     `headRefName`, `pr` its number, `rulings` the body's `Ruling:` lines, no `findings`, and `plan` from the
+     `plan:` line of `<main>/.claude/backlog/parallel/<n>.md` (empty when there is none). Do not build again: a
+     bug whose fix is already on the branch would no longer reproduce and park as "not a bug".
    - Otherwise a local branch from a dead builder: one matching `*/<n>-*` that `git worktree list --porcelain` shows
      checked out in a `.claude/worktrees/wf_*` or `.claude/worktrees/merge-<n>` worktree. A matching branch anywhere
      else is the user's: leave it alone, and park if its name is the one this issue would take.
@@ -68,12 +86,17 @@ Inputs: `n`, `kind` (`bug` or `feature`), `spec` (path in the main checkout, emp
      (`docs/superpowers/plans/`) and its ledger (`.superpowers/sdd/<plan-basename>/progress.md`) to the same relative
      paths here, since executing-plans looks for the ledger under the current worktree only and would otherwise
      start over. Work detached from here on and push with `git push origin HEAD:refs/heads/<branch>`. Resume the
-     plan from the ledger; work never committed in the dead worktree is lost and is redone.
+     plan from the ledger; work never committed in the dead worktree is lost and is redone. With no ledger, the
+     branch's commits beyond `origin/main` say how far it got: a feature whose plan tasks are all committed, or a bug
+     with its `fix:` commit, goes straight to step 4.
 2. **Fresh start** (nothing found): `gh issue view <n> --json state --jq .state`; `CLOSED` returns
-   `state: "skipped"`. Rename the branch with `git branch -m <type>/<n>-<description>` ("Branches"). Copy
-   `<main>/.claude/CLAUDE.md`, `<main>/.claude/rules/` and the spec to the same relative paths here
+   `state: "skipped"`. `git merge-base --is-ancestor HEAD origin/main` must succeed: the worktree starts from the
+   main checkout's `HEAD`, and when that is not on `origin/main` it holds the user's own commits, a batch-level
+   failure ("Every agent"). Rename the branch with `git branch -m <type>/<n>-<description>` ("Branches"). Copy
+   `<main>/.claude/CLAUDE.md`, `<main>/.claude/rules/` and `<main>/<spec>` to the same relative paths here
    (`mkdir --parents .claude docs/superpowers/specs docs/superpowers/plans` first), and read the copied rules that
-   apply to the files you will change.
+   apply to the files you will change. Then run the baseline, `./.ci/in-devshell ./run-tests`, before changing
+   anything: red here is judged as "Every agent" says for a red baseline, never fixed as part of this issue.
 3. **Build.**
    - **Bug:** `bug-flow.md` steps 2–4. "Not a bug" (step 3) parks, with "close as completed" or "close as not
      planned" as the recommended answer; skip step 3's cleanup (no worktree remove, branch delete or rebase: the
@@ -81,16 +104,18 @@ Inputs: `n`, `kind` (`bug` or `feature`), `spec` (path in the main checkout, emp
    - **Feature:** `feature-flow.md` step 6.3, planning only this issue's part of the spec, then step 6.4 with
      superpowers:executing-plans (the only executor available: superpowers:subagent-driven-development needs a
      subagent tool this agent lacks). Skip executing-plans' "Final Review"
-     entirely; the review stage replaces it. Before its "Finish" deletes the workspace, run the ledger sweep
-     ("Review" in `/work-backlog`): in-scope deferred findings are fixed, known-gap-commented or dropped,
-     out-of-scope notes go in `findings`, and every `Ruling:` goes in `rulings`. Where the merged code of an earlier
-     piece contradicts the spec, the code wins and the divergence is a ruling.
+     entirely and treat the final review as clean: the review stage replaces it, so write no `Final review:` ledger
+     line and send no message about it. Then run "Finish" except its workspace deletion, which waits for step 4 (a
+     death before the push would otherwise leave a finished branch with no ledger to resume from). Before that, run
+     the ledger sweep ("Review" in `/work-backlog`): in-scope deferred findings are fixed, known-gap-commented or
+     dropped, out-of-scope notes go in `findings`, and every `Ruling:` goes in `rulings`. Where the merged code of
+     an earlier piece contradicts the spec, the code wins and the divergence is a ruling.
 4. **Push and open the PR.** `git push --set-upstream origin <branch>` (or the detached form from step 1). A
    pre-push gate failure is fixed and pushed again, as a failing test would be. Then `gh pr create` per "PRs" and
    "PR title" in `/work-backlog`: `Closes #<n>` or `Part of #<n>`, the rulings, ending with
-   `Backlog-Session: <date>`. An open PR from step 1 gets `gh pr edit <pr> --body` with the rulings instead.
-5. **Return** `state: "ready"`, `branch`, `pr`, `plan` (the plan's path in this worktree, or empty), `worktree`,
-   `rulings`, `findings`.
+   `Backlog-Session: <date>`. Once the PR exists, delete the plan's workspace (`.superpowers/sdd/<plan-basename>/`).
+5. **Return** `state: "ready"`, `branch`, `pr`, `plan` (the plan's repo-relative path, `docs/superpowers/plans/…`,
+   or empty), `worktree`, `rulings`, `findings`.
 
 ## Review
 
@@ -99,10 +124,12 @@ agent's plan path), `worktrees` (every worktree path the issue's agents used so 
 fix agent's output, verbatim), `main`.
 
 1. **Record.** Write `<main>/.claude/backlog/parallel/<n>.md` ("State" in `SKILL.md`) from the inputs: `state:
-   ready`, `branch:`, `pr:`, `plan:` (from the `plan` input, never from `build`, whose `plan` a fix agent leaves
-   empty), `worktrees:`, and every ruling already in the file plus `build.rulings`. Append each entry of
-   `build.findings` to `<main>/.claude/backlog/parallel/<n>-findings.md`. In round 1, when `plan` is set, copy it to
-   `<main>/docs/superpowers/plans/`.
+   ready`, `branch:`, `pr:`, `plan:`, `worktrees:`, and every ruling already in the file plus `build.rulings` not
+   already there. Append each entry of `build.findings` not already in
+   `<main>/.claude/backlog/parallel/<n>-findings.md` to it (a re-run review must not add them twice). The plan comes
+   from the `plan` input, never from `build`, whose `plan` a fix agent leaves empty: when it is set and
+   `<main>/<plan>` does not exist yet, copy `<headWorktree>/<plan>` there, then write `plan: <main>/<plan>`, a path
+   that outlives the worktree.
 2. **Review** the pushed branch as superpowers:requesting-code-review's `code-reviewer.md` describes, with the
    "Subagents" clause. In the main checkout, `git fetch origin <branch>` (your issue's branch, which "Shared state"
    allows), then base `git merge-base origin/main origin/<branch>`, head `origin/<branch>`, inspected with
@@ -113,12 +140,14 @@ fix agent's output, verbatim), `main`.
    anything else is appended to `<n>-findings.md` and listed in `otherFindings`. Each "Declined to judge" line
    `code-reviewer.md` produces goes in `changeFindings` with its summary starting `Declined to judge:`, so the fix
    agent rules on it. The pre-push gate already ran the tests; the review does not rerun them.
-4. **Return** `changeFindings`, `otherFindings`, and `batchHalt` (empty unless a batch-level failure stopped the
-   review). When a halt stops the review, `otherFindings` holds only the out-of-scope findings not yet appended to
-   `<n>-findings.md`; the controller writes those.
+4. **Return** `changeFindings`, `otherFindings`, `recordedWriterFindings` (true once step 1 has appended
+   `build.findings`) and `batchHalt` (empty unless a batch-level failure stopped the review). When a halt stops the
+   review, `otherFindings` holds only the out-of-scope findings not yet appended to `<n>-findings.md`; the
+   controller writes those, and `build.findings` too when `recordedWriterFindings` is false.
 
 **A conflict resolution** (inputs `resolution: true`, `mergeWorktree`, `conflictedFiles`, `branch`, `pr`, `n`,
-`main`, from `merge-queue.md`): skip step 1. Review only how the conflicts in `conflictedFiles` were resolved:
+`main`, from `merge-queue.md`): skip step 1 and return `recordedWriterFindings: true`. Review only how the
+conflicts in `conflictedFiles` were resolved:
 `git -C <mergeWorktree> diff origin/main HEAD -- <files>` against what each side's PR meant
 (`gh pr view <pr>` and the `main` commits that touched those files). A wrong or lossy resolution is a
 `changeFindings` entry; a finding outside the resolution follows step 3 and is not this review's business beyond
@@ -126,15 +155,16 @@ that.
 
 ## Fix
 
-Inputs: `n`, `round`, `branch`, `pr`, `spec` (empty for a bug), `changeFindings`, `date`, `main`.
+Inputs: `n`, `round`, `branch`, `pr`, `spec` (repo-relative, empty for a bug), `changeFindings`, `date`, `main`.
 
 1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. If a commit on
    the branch already says it addresses this round's findings (a resumed fix), continue from what remains. Copy
-   `<main>/.claude/CLAUDE.md`, `<main>/.claude/rules/` and, for a feature, the spec in, as Build step 2 does.
+   `<main>/.claude/CLAUDE.md`, `<main>/.claude/rules/` and, for a feature, `<main>/<spec>` in, as Build step 2
+   does.
 2. **Handle each finding** as "Findings about the change itself" says: fixed (test first, then fix, as separate
    commits where a test applies), given a known-gap comment, or dropped with a ruling. A `Declined to judge:` entry
    always gets a ruling: the behavior stands, or it is now a finding and handled as one. Three failed attempts at one
    finding park the issue (`sub-skill-overrides.md`, the systematic-debugging entry).
-3. **Push** with `git push origin HEAD:refs/heads/<branch>` (the pre-push gate runs), and add any new rulings to the
-   PR body with `gh pr edit <pr> --body`.
+3. **Push:** first add any new rulings to the PR body with `gh pr edit <pr> --body` ("PR bodies change before a
+   push"), then `git push origin HEAD:refs/heads/<branch>` (the pre-push gate runs).
 4. **Return** `state: "ready"`, `worktree`, `rulings`, `findings`.
