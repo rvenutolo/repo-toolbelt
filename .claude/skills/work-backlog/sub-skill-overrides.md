@@ -99,3 +99,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   investigation": no handling is
   added on that finding alone. The bug is re-judged by the filing bar; one that fails it goes to the user as
   `bug-flow.md` step 3 says, and one that passes gets the fix its real trigger calls for.
+- **superpowers:receiving-code-review**, "STOP - do not implement anything yet / ASK for clarification on unclear
+  items", the "Should I [investigate/ask/proceed]?" question, and "IF conflicts with your human partner's prior
+  decisions: Stop and discuss with your human partner first": review findings are handled as "Findings about the
+  change itself" in `SKILL.md` says. An unclear item is read the most plausible way and handled under a `Ruling:`
+  that says how it was read; one that conflicts with an approval the user gave (the spec, a halt answer) keeps the
+  approval and records a `Ruling:`. The question banner only when the answer changes what gets built.

@@ -7,9 +7,14 @@ below.
 ## Choosing the batch
 
 `/work-backlog` "Choosing the chunk" holds (bugs first, related issues together, ordering factors, comments, earlier
-pieces), except "Size": the user picks the batch size. Ask nothing about it up front; propose a batch that fits the
-session shape the user asked for (a short session or a long unattended one), and when they named none, propose a
-short one and name the longer batch the backlog would support.
+pieces), except "Size" and the rules that a chunk is all bugs or one related feature family (`SKILL.md` "Named
+exceptions"): the user picks the batch size, and a batch may mix bugs with unrelated features. Ask nothing about
+size up front; propose a batch that fits the session shape the user asked for (a short session or a long unattended
+one), and when they named none, propose a short one and name the longer batch the backlog would support.
+
+**Each issue's kind** (`bug` or `feature`, which picks `bug-flow.md` or `feature-flow.md`, and is the `kind` in
+`run-args.json`) is decided as `/work-backlog` "Choosing the chunk" decides it, and the proposal names the issues
+whose kind did not come from the label, as there.
 
 ## The dependency graph
 
@@ -40,12 +45,16 @@ One message, ending with the question banner, naming everything `/work-backlog`'
   pushes);
 - **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
   bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review
-  and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about six minutes), and merges never
-  overlap. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes about
-  the longer of the longest chain and the first ready PR plus one merge round per issue. Say plainly that a short
+  and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never
+  overlap. A merge that meets a code conflict or a baseline regeneration takes 30 to 40 minutes (a second test run,
+  a resolution review, a second gate), and every new lint after the first in a batch meets one in the shared
+  registry files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes
+  about the longer of the longest chain and the first ready PR plus one merge round per issue; merges and fixes take
+  a free slot ahead of builds not yet started, so merging begins while later builds wait. Say plainly that a short
   batch of small bugs saves little over `/work-backlog`;
-- **the agent count** (estimate: per issue, one build, two review and two fix agents at most, and for a code
-  conflict up to three merge calls with a resolution review each; plan on eight per issue). Name the session's
+- **the agent count** (estimate: per issue, one build, two review and two fix agents at most, and up to three merge
+  calls with two resolution reviews between them: eleven at most, about eight in practice; a dead agent's one retry
+  and a resumed run's live re-runs add more). Name the session's
   workflow size guideline (the Workflow tool's description states it as "This session has the … workflow size
   guideline") and say whether the estimate exceeds it, adding: "This is a guideline for whoever writes the script,
   not a limit; nothing needs changing for the run to proceed." Name the hard limits (16 concurrent agents, 1000 per
@@ -68,15 +77,27 @@ would otherwise park an issue that a one-word answer now could keep going.
 ## The permission request
 
 `/work-backlog` "Permissions", widened: a workflow pauses on any permission prompt, which stalls every issue at once.
-Build the list by reading every command in `agents.md`, `merge-queue.md` and the `/work-backlog` files they cite,
-then keep those the allowlists do not cover. Among them: `./.ci/in-devshell` with `./run-tests`, `./run-all-checks`
-and `go run ./cmd/toolbelt update-coverage-baseline`; `git branch -m`, `git switch --detach`, `git fetch`,
-`git merge --ff-only`, `git rebase` (with `GIT_EDITOR=true`, `--continue` and `--abort`), `git checkout --ours`,
-`git add`, `git commit`, `git push` (to `HEAD:refs/heads/<branch>` and with `--force-with-lease`), `git pull
---ff-only`, `git worktree add`, `remove` and `unlock`, `git branch --delete`; `gh pr create`, `gh pr edit`,
-`gh pr checks`, `gh pr merge`, `gh pr list`, `gh pr view`, `gh issue view`, `gh run list`, `gh run rerun`; `cp`,
-`mkdir --parents` and a background `sleep 60`. Recommend starting the run with permissions bypassed when the list
-is long; "The run" step 2 checks again before launch.
+An allow rule matches a command by its literal prefix, so the request names rule strings, not commands:
+`Bash(git rebase *)` does not cover `git -C <path> rebase`. Build it by reading every command in `agents.md`,
+`merge-queue.md` and the `/work-backlog` files they cite, then keep the rules the allowlists lack. The run needs at
+least:
+
+- `Bash(./.ci/in-devshell *)`: the tests, the gate, single-test TDD runs, a bug's reproduction, `./.ci/fmt` and
+  `go run ./cmd/toolbelt update-coverage-baseline`;
+- `Bash(git -C *)`: every merge-queue command, and the resolution review's `diff`;
+- `Bash(git add *)`, `Bash(git commit *)`, `Bash(git push *)`, `Bash(git fetch *)`, `Bash(git switch *)`,
+  `Bash(git branch -m *)`, `Bash(git branch --delete *)`, `Bash(git merge --ff-only *)`, `Bash(git pull --ff-only*)`,
+  `Bash(git rebase *)`, `Bash(git checkout --ours *)`, `Bash(git merge-base *)`, `Bash(git rev-parse *)`,
+  `Bash(git log *)`, `Bash(git diff *)`, `Bash(git show *)`, `Bash(git status *)`;
+- `Bash(git worktree list *)`, `Bash(git worktree add *)`, `Bash(git worktree remove *)`,
+  `Bash(git worktree unlock *)`, `Bash(git worktree prune)`;
+- `Bash(gh *)`, or each of `gh pr create|edit|checks|merge|list|view`, `gh issue view`, `gh run list|rerun` and
+  `gh auth status`;
+- `Bash(cp *)`, `Bash(mkdir --parents *)`, `Bash(sleep *)`, `Bash(sysctl net.ipv4.ip_forward)`, `Bash(ssh-add -L)`
+  and the `rm` of a plan workspace that `/work-backlog` "Permissions" names.
+
+The list is long and a miss stalls every issue, so recommend running the session with permissions bypassed;
+`SKILL.md` "The session" step 1 asks about it before planning, and "The run" step 2 checks again before launch.
 
 ## Writing it down
 

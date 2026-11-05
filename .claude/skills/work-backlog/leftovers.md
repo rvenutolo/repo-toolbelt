@@ -24,6 +24,9 @@ anything the run names, whether to resume it with `/work-backlog-parallel` (whic
 run's cached results hold), take its issues over here, or leave them because the run is still going; recommend
 "leave" when a `wf_*` worktree is locked or holds a rebase in progress. Taking over strips the `workflow-*` and
 `cap:` lines from `current-session.md` first, so the parallel skill never resumes a run whose issues moved on.
+A `current-session.md` with `cap:` and `issue` lines but no `workflow-*` line is a parallel batch that was approved
+and never launched: ask with the question banner whether to launch it with `/work-backlog-parallel` (recommended:
+the approval was given for a parallel run) or take its issues over here.
 
 Then fold the files, before sorting anything:
 
@@ -32,7 +35,9 @@ Then fold the files, before sorting anything:
 - Each `<N>.md` says how far issue N got, with its `branch:`, `pr:`, `plan:` and `worktrees:` telling where it is.
   - `merged`: correct the spec for each divergence `ruling:` in it (the code that merged wins), sort the worktrees
     it lists (below), then delete the file.
-  - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then delete the file.
+  - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
+    deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
+    were for. Ask with the question banner whether to remove each worktree and its branch, recommending removal.
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it with the question banner before resuming that issue, recommending the
     note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
@@ -51,7 +56,12 @@ progress gets `git -C <path> rebase --abort`, which puts it back on its branch.
 
 - One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, when
   `origin/<branch>` exists, bring it up to date with `git pull --ff-only origin <branch>` (later rounds pushed from
-  other worktrees); a refused fast-forward means work in two places: ask with the question banner. When its PR
+  other worktrees); a refused fast-forward means work in two places: ask with the question banner. When the
+  issue's `park-note:` says the worktree holds an unpushed, rebased branch, that is expected, not lost work: the
+  next merge rebases again, so recommend dropping the rebase by moving the branch back to `origin/<branch>`
+  (`git -C <path> switch --detach origin/<branch>`, then, once the user confirms,
+  `git branch --force <branch> origin/<branch>` and `git -C <path> switch <branch>`), and offer pushing it instead
+  only when the note says a resolution review passed it. When its PR
   merges, `merging.md` step 4 removes it by its own path, not the `<N-description>` one.
 - A detached or `worktree-wf_*` one with no commits that are not on its issue's `origin/<branch>` or on
   `origin/main` holds nothing: remove it and delete its `worktree-wf_*` branch, naming each in the summary.
@@ -97,9 +107,10 @@ To resume:
   `git pull --ff-only origin <type/N-description>` inside it so the branch matches the remote.
 - If the worktree holds a ledger (`.superpowers/sdd/*/progress.md`) with unfinished tasks, the plan is half built:
   resume the plan sub-skill from the ledger first, with the plan from `docs/superpowers/plans/` (its path is in
-  `current-session.md`). Red CI on such a PR is the unbuilt part, not a check to fix. The ledger sweep ("Review" in
-  `SKILL.md`) then runs at its normal place before the merge, and sweeps what the dead session parked along with
-  the rest; when every task is complete, the sweep is the next step.
+  `current-session.md`, or in the issue's `<N>.md` `plan:` line for a parallel run). Red CI on such a PR is the
+  unbuilt part, not a check to fix. The ledger sweep ("Review" in `SKILL.md`) then runs at its normal place before
+  the merge, and sweeps what the dead session parked along with the rest; when every task is complete, the sweep is
+  the next step.
 - A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built.
 
 ## Done

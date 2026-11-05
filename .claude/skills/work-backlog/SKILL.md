@@ -155,8 +155,11 @@ from inside a worktree is fine.
 ## Choosing the chunk
 
 Read every open issue with `gh issue list --state open --limit 1000 --json number,title,labels,body` (the default
-limit hides older issues). If any open issue has the `bug` label, the chunk is bugs; otherwise it is features,
-whatever other labels the issues carry.
+limit hides older issues). An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body
+reports something that is wrong now with a way to reproduce it; otherwise it is a feature, whatever other labels it
+carries. Few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a
+Fable review. The proposal names every issue whose kind came from something other than the label, so the user can
+correct it with the chunk OK. If any open issue is a bug, the chunk is bugs; otherwise it is features.
 
 - **Bugs:** related bugs together (same code, same root cause). With none related, a batch of several small bugs.
 - **Features:** one feature, or several that are closely related: they share code, one is a direct prerequisite of
