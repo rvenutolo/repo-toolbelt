@@ -1,7 +1,9 @@
 # Merging
 
-The commands behind "Merging" in `SKILL.md`. Every command runs inside the worktree unless it names the main checkout
-with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run it in the background.
+The commands behind "Merging" in `SKILL.md`. Steps 1 and 2 run inside the worktree; step 3 leaves it, and the rest
+runs in the main checkout, because a session in a worktree may not write to the main checkout or run git there
+("Leaving to write" in `SKILL.md`). The CI watch is a long command ("Long commands" in `SKILL.md`): run it in the
+background.
 
 1. **Wait for CI** with `gh pr checks <number> --watch --fail-fast`, then read the result from
    `gh pr checks <number> --json bucket`, since the exit code alone does not tell the cases apart (a cancelled check
@@ -18,11 +20,10 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
      step repeats once from the watch. If CI is still red after the rerun, blocked banner.
    - A non-zero exit with no JSON and any other message is a failed `gh` call (blocked banner).
 2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this
-   step (record it in `current-session.md` if missing and go to step 3). Otherwise `gh pr merge <number> --merge`:
-   the repo allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local
-   branch is checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing
-   `MERGED`, and record the merge in `current-session.md` at once, before the cleanup, so a compaction here does not
-   lead to a second merge attempt. A refused merge is read from
+   step: go to step 3. Otherwise `gh pr merge <number> --merge`: the repo allows merge commits only and deletes the
+   remote branch itself. Do not pass `--delete-branch`; the local branch is checked out in the worktree and the
+   delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go straight to step 3, which records
+   the merge; a compaction before that record is caught by this `MERGED` check. A refused merge is read from
    `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
    - `UNKNOWN`: GitHub is still computing the status after a push. Wait a minute and read it again, up to three
      times.
@@ -40,13 +41,14 @@ with `-C`. The CI watch is a long command ("Long commands" in `SKILL.md`): run i
    - `BLOCKED` with green CI: a rule other than up-to-date refused it, such as an unresolved review thread (the
      ruleset requires every thread resolved) or an unsigned commit. Blocked banner, saying which. Never pass
      `--admin`, which `gh` itself suggests, and never resolve a thread; both are the user's.
-3. **Pull `main`** with `git -C "<main checkout>" pull --ff-only`, so the merge is on local `main`. If the pull is
-   refused (the user has committed on or dirtied local `main`), run `git -C "<main checkout>" fetch --prune origin`
-   instead, leave `main` as the user left it, and say in the summary that the next session's preconditions will fail
-   until the user reconciles it; the next worktree starts from `origin/main` either way.
-4. **Clean up.** `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`), then from the
-   main checkout `git worktree remove .claude/worktrees/<N-description>` and `git branch --delete
-   <type/N-description>`. Either may refuse: the delete does when local `main` does not yet hold the merge (step 3's
-   refused pull), the remove when the worktree has a stray file. Leave a refused one in place and name it in the
-   summary; never pass `--force` or `-D`. The next session's step 3 classifies it once `main` is current. Record the
-   cleanup in `current-session.md`.
+3. **Leave, record and pull.** `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`).
+   From the main checkout, record the merge in `current-session.md` if it is not there yet, so a compaction from
+   here on does not lead to a second merge attempt. Then `git pull --ff-only`, so the merge is on local `main`. If
+   the pull is refused (the user has committed on or dirtied local `main`), run `git fetch --prune origin` instead,
+   leave `main` as the user left it, and say in the summary that the next session's preconditions will fail until
+   the user reconciles it; the next worktree starts from `origin/main` either way.
+4. **Clean up.** From the main checkout, `git worktree remove .claude/worktrees/<N-description>` and
+   `git branch --delete <type/N-description>`. Either may refuse: the delete does when local `main` does not yet
+   hold the merge (step 3's refused pull), the remove when the worktree has a stray file. Leave a refused one in
+   place and name it in the summary; never pass `--force` or `-D`. The next session's step 3 classifies it once
+   `main` is current. Record the cleanup in `current-session.md`.

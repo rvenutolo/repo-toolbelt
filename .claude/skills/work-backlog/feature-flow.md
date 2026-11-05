@@ -65,8 +65,9 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
       piece on, read the merged code of the earlier pieces first: the spec was written before any of it existed, and
       where it describes a helper or interface differently from what landed, the code wins and the spec is corrected
       in the main checkout and copied again. The plan is written to `docs/superpowers/plans/`, a local path: write it
-      in the worktree, copy it to the main checkout so it survives the worktree's removal, and record its path
-      against the issue in `current-session.md`.
+      in the worktree, then, in one round trip out of it ("Leaving to write" in `SKILL.md`, which a spec correction
+      shares), copy it to the main checkout so it survives the worktree's removal and record its path against the
+      issue in `current-session.md`.
    4. **Execute** in whatever way fits the plan best: superpowers:subagent-driven-development,
       superpowers:executing-plans, or another approach. Choose without asking; the plan header's required-sub-skill
       line names the usual two and does not bind the choice.

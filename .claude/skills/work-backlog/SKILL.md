@@ -20,7 +20,11 @@ never invoked) apply to every session, plan-driven or not.
 
 **After a context compaction**, re-read this file and `.claude/backlog/current-session.md` ("State"), which records
 the approved chunk and where the session is in it, then the spec, plan and ledger it names, if any. Nothing else
-about the session survives the compaction, and the skill cannot be re-invoked by the model.
+about the session survives the compaction, and the skill cannot be re-invoked by the model. Then check where the
+session is: `git rev-parse --show-toplevel` names the main checkout or a worktree. A compaction can land while the
+session has left a worktree to write ("Leaving to write"): if the record shows an issue whose worktree still exists
+and whose merge is not recorded, and the session is in the main checkout, re-enter that worktree and carry on from
+the record.
 
 ## How the session runs
 
@@ -44,7 +48,9 @@ what gets built; everything else the session settles itself and records as a `Ru
   requires on a message that waits for the user. A question-banner halt resumes after the answer; a blocked-banner
   halt ends the unattended part until the user has acted. Before sending either, append the halt (the issue, the
   question, the options) to `current-session.md`, and the answer once it arrives: a compaction while the message
-  waits would otherwise hand the user's one-word reply to a session that no longer knows the question.
+  waits would otherwise hand the user's one-word reply to a session that no longer knows the question. From inside a
+  worktree both writes leave it first ("Leaving to write"); before a blocked banner the session stays out, and
+  re-enters only when the user's reply resumes that issue.
 - **Halt question:** a question the unattended part would otherwise stop to ask; the global "Unattended Execution /
   Pre-Answer Halt Questions" rule calls them halt points. The chunk proposal (bugs) or the question round (features)
   asks every likely one in advance, each with a recommended answer and a one-line reason.
@@ -102,8 +108,9 @@ if any is missing.
   This skill never writes them; `leftovers.md` folds any it finds.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
-from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`; the
-state files are written there and nowhere else.
+from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`. The
+state files are written there and nowhere else, and only from the main checkout ("Leaving to write"); reading them
+from inside a worktree is fine.
 
 ## The session
 
@@ -188,8 +195,9 @@ The proposal is one message, ending with the question banner, that names:
 
 The normal sequence per issue: create a worktree and enter it, copy the instruction files in, build the change
 (`feature-flow.md` or `bug-flow.md`), push as soon as the local gate passes and open the PR, review, merge on green
-CI, pull `main`, remove the worktree. Strictly one issue at a time: the next worktree is created only after the
-previous PR has merged, because it starts from the merged `origin/main` and, in a family, builds on the earlier
+CI, leave the worktree, pull `main`, remove the worktree. Strictly one issue at a time: the next worktree is
+created only after the previous PR has merged, because it starts from the merged `origin/main` and, in a family,
+builds on the earlier
 piece's code.
 
 - **Branches:** `<type>/<N>-<description>`, where N is the issue number, so a branch or worktree can be tied to its
@@ -221,9 +229,22 @@ piece's code.
   - Copy, right after entering and before any subagent is dispatched: `.claude/CLAUDE.md`, `.claude/rules/` and,
     for a feature chunk, the chunk's spec, at the same paths (`mkdir --parents docs/superpowers/specs
     docs/superpowers/plans` first). They are local files ("State") and so absent in a new worktree. The copies are
-    throwaway: a change to the spec, the plan, or a rule or rule override is made in the main checkout's file and
-    copied again; a change made only in the worktree dies with it.
-  - Resume a leftover worktree or PR as `leftovers.md` says. Remove in `merging.md` step 4.
+    throwaway: a change to the spec, the plan, or a rule or rule override is made in the main checkout's file
+    ("Leaving to write") and copied again; a change made only in the worktree dies with it.
+  - Resume a leftover worktree or PR as `leftovers.md` says. Leave and remove in `merging.md` steps 3 and 4.
+- **Leaving to write:** a session that entered a worktree with `EnterWorktree` is isolated in it. Claude Code
+  refuses the Write and Edit tools on a main-checkout path and `git -C` on the main checkout; reading is allowed.
+  So every write to a main-checkout file (the state files, a plan copy, a spec or rule correction) is made from the
+  main checkout:
+  1. Never while an Agent call is outstanding; a background Bash command keeps its own directory and may run on.
+  2. `ExitWorktree` with `action: keep`.
+  3. Make the write.
+  4. `EnterWorktree` with the worktree's absolute `path` again, and confirm `git rev-parse --show-toplevel` prints
+     that path before the next command.
+
+  Writes that fall together share one round trip. Never write a main-checkout file from inside a worktree with Bash
+  (`cp`, a redirect): it gets through only because the guard checks the file tools and `git`, not Bash paths, and a
+  stricter guard would stop an unattended run partway.
 - **Long commands:** the pre-push gate, the baseline tests, and the CI watch each run for minutes, past the Bash
   tool's two-minute default and sometimes its ten-minute foreground maximum. Run them with `run_in_background` and
   read the output when the command exits; a foreground timeout is not a failure of the command.
@@ -247,8 +268,9 @@ piece's code.
     own loops, which run as those skills define them; no extra PR review follows. Before the PR merges, and before
     the sub-skill deletes its workspace, the controller runs the ledger sweep: every in-scope finding the ledger
     deferred or parked is handled as "Findings about the change itself" says, every out-of-scope note is judged
-    by the filing bar, the ones that pass moving to `pending-findings.md`, and the PR body is updated with the
-    rulings the ledger holds. For plan-driven work this sweep is the
+    by the filing bar, the ones that pass moving to `pending-findings.md` (one round trip out of the worktree,
+    "Leaving to write"), and the PR body is updated with the rulings the ledger holds. For plan-driven work this
+    sweep is the
     only time out-of-scope findings are written; a finding a subagent reports mid-plan goes in the ledger, not
     straight to the file, so nothing is recorded twice.
   - All other work gets superpowers:requesting-code-review before merge, with the base at
@@ -294,8 +316,8 @@ A finding that passes the bar but lies outside the chunk:
 - **Same PR** when it is a bug, the fix is under about 20 changed lines plus its test, and the fix lands in files or a
   shared helper the PR already changes: its own `test:` commit, then its own `fix:` commit.
 - **Otherwise** append it to `pending-findings.md` in the main checkout's `.claude/backlog/` (from inside a worktree,
-  resolve the main checkout as "State" says) the moment it is found (for plan-driven work, at the ledger sweep in
-  "Review"), and carry on.
+  as "Leaving to write" says) the moment it is found (for plan-driven work, at the ledger sweep in "Review"), and
+  carry on.
 
 The session never opens an issue, PR comment or `TODO` for an out-of-scope finding. In this skill, "report them" in
 the global "Fixing Findings" rule means `pending-findings.md` and nothing else. The known-gap comment, and the global
@@ -304,17 +326,18 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 ## Merging
 
 Approval ("Terms") covers every push and merge in the chunk, so none waits for the user. The normal case: watch CI,
-confirm every check's bucket is `pass` or `skipping`, `gh pr merge <number> --merge`, record the merge in
-`current-session.md` as soon as it is confirmed, pull `main` in the main checkout, exit and remove the worktree,
-delete the branch. Two traps at the watch: right after the PR opens, `gh pr checks` exits non-zero with "no checks
+confirm every check's bucket is `pass` or `skipping`, `gh pr merge <number> --merge`, then as soon as it is
+confirmed exit the worktree, record the merge in `current-session.md`, pull `main`, remove the worktree, delete the
+branch. Two traps at the watch: right after the PR opens, `gh pr checks` exits non-zero with "no checks
 reported" until the first check starts, which is a wait and not a failed call; and a cancelled check exits 0, so
 green is read from the buckets, never from the exit code. `merging.md` gives the commands and handles the
 exceptions: a check that fails, a coverage-ratchet failure, an infrastructure failure worth one rerun, a branch
 that fell behind `main` or conflicts with it, a merge the ruleset refuses, and a pull or delete that is refused.
 
-A blocked-banner halt in `merging.md` stops the chunk at that issue. Tell the user what stopped it and what the
-session would do next; after the user's reply, go on with the issues that do not depend on the halted one, or stop,
-as the user says. Record the halt in `current-session.md`.
+A blocked-banner halt in `merging.md` stops the chunk at that issue. Leave the worktree and record the halt in
+`current-session.md` ("Banners"), then tell the user what stopped it and what the session would do next; after the
+user's reply, go on with the issues that do not depend on the halted one, or stop, as the user says. Steps 8 and 9
+then run from the main checkout.
 
 ## Ending early
 
