@@ -42,8 +42,10 @@ const MERGE = {
   properties: {
     state: { type: 'string', enum: ['merged', 'parked', 'skipped', 'needs-review'] },
     parkNote: str, batchHalt: str, mergeWorktree: str, conflictedFiles: strs, leftInPlace: strs,
+    rulings: strs, findings,
   },
-  required: ['state', 'parkNote', 'batchHalt', 'mergeWorktree', 'conflictedFiles', 'leftInPlace'],
+  required: ['state', 'parkNote', 'batchHalt', 'mergeWorktree', 'conflictedFiles', 'leftInPlace', 'rulings',
+    'findings'],
 }
 
 const prompt = (file, section, inputs) =>
@@ -93,6 +95,22 @@ for (const item of A.batch) {
   finished[item.n] = new Promise((resolve) => { settle[item.n] = resolve })
 }
 
+// An issue whose `after` chain leads back to itself would wait forever and hang the whole run.
+const afterOf = {}
+for (const item of A.batch) afterOf[item.n] = item.after
+function inCycle(start) {
+  const seen = new Set()
+  const stack = [...(afterOf[start] || [])]
+  while (stack.length) {
+    const m = stack.pop()
+    if (m === start) return true
+    if (seen.has(m) || !afterOf[m]) continue
+    seen.add(m)
+    stack.push(...afterOf[m])
+  }
+  return false
+}
+
 const TERMINAL = ['merged', 'parked', 'skipped']
 function end(rec, state, note) {
   if (TERMINAL.includes(state)) {
@@ -102,6 +120,7 @@ function end(rec, state, note) {
     rec.state = 'parked'
     rec.note = `The issue stopped in state "${state}". ${note || ''}`.trim()
   }
+  if (rec.state === 'skipped' && rec.worktrees.length) rec.leftInPlace = [...rec.worktrees]
   settle[rec.n](rec.state)
   return rec
 }
@@ -111,26 +130,42 @@ async function mergeIssue(rec) {
   const inputs = { n: rec.n, branch: rec.branch, pr: rec.pr, worktrees: rec.worktrees, date: A.date, main: A.main }
   let resolutionReviewed = false
   let resolutionFindings = []
+  let mergeWorktree = ''
+  // Parking here, between merge calls, leaves a rebased branch no agent pushed; the note must say where it is.
+  const park = (note, halt = '') => ({
+    state: 'parked', batchHalt: halt,
+    parkNote: mergeWorktree
+      ? `${note} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
+        `origin/${rec.branch}.`
+      : note,
+  })
   // A code resolution goes to review and back; main can move during CI and force another, so three at most.
   for (const attempt of [1, 2, 3]) {
     const merge = await slot(() => unlessHalted(() => agent(
       prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings }),
       { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })))
-    if (merge === HALTED) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
-    if (!merge || merge.state !== 'needs-review') return merge
+    if (merge === HALTED) return park(haltNote())
+    if (!merge) return park('The merge agent died without a result.')
+    rec.rulings.push(...(merge.rulings || []))
+    rec.unrecorded.push(...(merge.findings || []))
+    if (merge.state !== 'needs-review') return merge
+    mergeWorktree = merge.mergeWorktree
+    // The review appends its out-of-scope findings to <n>-findings.md itself, so they are not unrecorded.
     const review = await agent(
       prompt('agents.md', 'Review', {
-        n: rec.n, resolution: true, mergeWorktree: merge.mergeWorktree, conflictedFiles: merge.conflictedFiles,
+        n: rec.n, resolution: true, mergeWorktree, conflictedFiles: merge.conflictedFiles,
         branch: rec.branch, pr: rec.pr, main: A.main,
       }),
       { label: `review #${rec.n} resolution a${attempt}`, phase: 'Review', schema: REVIEW })
-    if (!review) return { state: 'parked', parkNote: 'The resolution review agent died without a result.', batchHalt: '' }
-    if (review.batchHalt) return { state: 'parked', parkNote: review.batchHalt, batchHalt: review.batchHalt }
-    rec.unrecorded.push(...review.otherFindings)
+    if (!review) return park('The resolution review agent died without a result.')
+    if (review.batchHalt) {
+      rec.unrecorded.push(...review.otherFindings)
+      return park(review.batchHalt, review.batchHalt)
+    }
     resolutionReviewed = true
     resolutionFindings = review.changeFindings
   }
-  return { state: 'parked', parkNote: 'Three code resolutions in a row: main kept moving under this branch.', batchHalt: '' }
+  return park('Three code resolutions in a row: main kept moving under this branch.')
 }
 
 async function runIssue(item) {
@@ -138,6 +173,7 @@ async function runIssue(item) {
   const rec = { n, state: 'building', note: '', branch: '', pr: '', worktrees: [], rulings: [], unrecorded: [] }
   records[n] = rec
 
+  if (inCycle(n)) return end(rec, 'parked', `Its "after" list forms a dependency cycle: ${item.after.join(', ')}.`)
   for (const m of item.after) {
     if (!finished[m]) continue
     const state = await finished[m]
@@ -169,15 +205,18 @@ async function runIssue(item) {
       }),
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
     if (!review) return end(rec, 'parked', `The round ${round} review agent died without a result.`)
-    rec.unrecorded = []
+    // A review stopped by a batch halt may not have recorded the writer's findings; keep them for the controller.
     if (review.batchHalt) {
       batchHalt = review.batchHalt
+      rec.unrecorded.push(...review.otherFindings)
       return end(rec, 'parked', haltNote())
     }
+    rec.unrecorded = []
     if (!review.changeFindings.length) break
     const fix = await slot(() => unlessHalted(() => agent(
       prompt('agents.md', 'Fix', {
-        n, round, branch: rec.branch, pr: rec.pr, changeFindings: review.changeFindings, date: A.date, main: A.main,
+        n, round, branch: rec.branch, pr: rec.pr, spec: item.spec, changeFindings: review.changeFindings,
+        date: A.date, main: A.main,
       }),
       { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })))
     if (fix === HALTED) return end(rec, 'parked', haltNote())

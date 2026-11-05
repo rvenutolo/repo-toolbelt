@@ -13,9 +13,11 @@ concurrently by a workflow and merged one at a time. Everything `/work-backlog` 
 or a file beside it names an exception. Read `.claude/skills/work-backlog/SKILL.md` and its sub-files before step 1;
 the names below ("Terms", "State", "The filing bar", "PRs", "Merging" and the rest) are sections of that file.
 
-**After a context compaction**, re-read this file, `/work-backlog`'s `SKILL.md` and `.claude/backlog/current-session.md`.
-If it names a `workflow-script`, a run was started: go to "The run", step 4 (never steps 1–2) before doing anything
-else.
+**On invocation and after a context compaction**, read `.claude/backlog/current-session.md` first (after a
+compaction, re-read this file and `/work-backlog`'s `SKILL.md` too). If it names a `workflow-script` and no
+`workflow-done`, a run was started and not recorded as finished: go to "The run", step 4 (never steps 1–2) before
+anything else, `/work-backlog` step 1 included. `leftovers.md` must not take that run's issues over while the run
+can be resumed.
 
 ## How the session runs
 
@@ -67,10 +69,12 @@ so.
 `/work-backlog`'s "State", plus:
 
 - `current-session.md` also holds `cap: <n>`, the batch as `issue <N> after <M>,<K>` lines (or `issue <N>` with no
-  prerequisite), `workflow-script: <path>`, `workflow-args: <path>` and `workflow-run: <runId>`.
+  prerequisite), `workflow-script: <path>`, `workflow-args: <path>`, `workflow-run: <runId>` and, once the result
+  is recorded, `workflow-done: <runId>`.
 - `.claude/backlog/parallel/<N>.md`: one issue's progress, written by the review stage and the merge queue during
-  the run and completed by the controller after it ("The run" step 5). Lines
-  `state: building|ready|merged|parked|skipped` (skipped: the user closed the issue or its PR mid-run), `branch:`,
+  the run and completed by the controller after it ("The run" step 5). An issue with no file has not reached its
+  first review. Lines `state: ready|merged|parked|skipped` (skipped: the user closed the issue or its PR mid-run),
+  `branch:`,
   `pr:`, `plan:`, `worktrees:` (every worktree path the issue's agents used), `ruling:` (one per ruling) and
   `park-note:`.
 - `.claude/backlog/parallel/<N>-findings.md`: the issue's out-of-scope findings, unjudged, in `pending-findings.md`'s
@@ -93,27 +97,36 @@ so.
    of `{"n": <N>, "kind": "bug" | "feature", "after": [<M>, ...], "spec": "<spec path, or empty for a bug>"}`.
    Record `workflow-script: .claude/skills/work-backlog-parallel/run.workflow.js` and the args path in
    `current-session.md`.
-2. Invoke the Workflow tool with `scriptPath` set to the script's absolute path and `args` set to the file's
-   contents (as a JSON value, not a string). The moment the tool returns, record `workflow-run: <runId>`.
-3. Wait for the completion notification; do not poll. A workflow pauses for a permission prompt, so one prompt
-   stalls every issue: that is why the permission request covers every agent's commands.
-4. **Resume.** A compaction does not stop a background workflow, and its completion notification still arrives:
-   after one, keep waiting. The run is gone only when the session itself restarted (the conversation begins anew),
-   since background tasks die with their session. Then:
-   - With a `workflow-run` recorded, relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId`.
-     Replay covers the longest unchanged prefix of agent calls; in a concurrent script that prefix can end early, so
-     later agents may run again live. That is safe because every agent prompt starts by reconciling against git and
-     GitHub, which is the reason those steps exist.
-   - With `workflow-script` but no `workflow-run` (the session died between the launch and the record), the run's
-     id is lost. Do not relaunch: end the run as a batch-level halt, cause "run id lost", and go to step 5 with no
-     result; every issue is sorted from its files and git as `leftovers.md` does.
-   Never start a fresh run for a batch that has a `workflow-script`.
+2. **Check the permissions before launching.** Nobody will answer a prompt, and one prompt stalls every issue. The
+   run proceeds only when the session runs with permissions bypassed, or when every command in the permission
+   request (`planning.md`) is covered by an allow rule in `$CLAUDE_CONFIG_DIR/settings.json` or the main checkout's
+   `.claude/settings*.json`, read now. Otherwise ask the user to add the missing ones, naming them.
+3. Invoke the Workflow tool with `scriptPath` set to the script's absolute path and `args` set to the file's
+   contents (as a JSON value, not a string). The moment the tool returns, record `workflow-run: <runId>`. Then wait
+   for the completion notification; do not poll.
+4. **Resume.** First, `workflow-done` recorded: the result is in; go to "Ending". A compaction does not stop a
+   background workflow, and its completion notification still arrives: after one, keep waiting. The run is gone
+   only when the session itself restarted (the conversation begins anew, and the user has just invoked the skill),
+   since background tasks die with their session. The user is present then, so ask with the question banner
+   before relaunching, recommending it:
+   - With a `workflow-run` recorded, relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId`, and
+     record the run id the relaunch returns in place of the old one. Replay covers the longest unchanged prefix of
+     agent calls; in a concurrent script that prefix can end early, so later agents may run again live. That is safe
+     because every agent prompt starts by reconciling against git and GitHub, which is the reason those steps exist.
+   - With `workflow-script` but no `workflow-run` (the session died between recording the script and recording the
+     id), check for traces of a run: `gh pr list --state all --search "Backlog-Session: <date> in:body"` and any
+     `.claude/worktrees/wf_*`. None: nothing ran; launch from step 2. Any: the run's id is lost, so end it as a
+     batch-level halt, cause "run id lost", go to step 5 with no result, and sort every issue from its files and git
+     as `leftovers.md` does.
+
+   Never start a fresh run for a batch whose run left traces.
 5. **Record.** The result is `{merged, parked: [{n, note}], skipped, batchHalt, records}`, one record per issue
    with its `state`, `note`, `branch`, `pr`, `worktrees`, `rulings`, `unrecorded` findings (those no review stage
    wrote down) and `leftInPlace` (worktrees and branches the merge queue could not remove). For each record, write
    its `<N>.md`: the record's state wins over the file's, except that a file saying `merged` wins (the merge queue
    writes it before cleanup); keep the file's other lines and add the record's. Append its `unrecorded` findings to
-   `<N>-findings.md`.
+   `<N>-findings.md`. Then record `workflow-done: <runId>` in `current-session.md`, so a compaction during "Ending"
+   does not wait for a notification that already came.
 
 ## Ending
 
@@ -123,7 +136,8 @@ so.
 3. Run `/work-backlog` step 8 (the walkthrough). When the batch halted because `gh` failed, skip it and say so: the
    findings wait in `pending-findings.md` for the next session.
 4. **Summary:** everything `/work-backlog` step 9 names, led by the batch-level halt cause if there was one, then
-   every parked issue with its note and recommended answer, then every `leftInPlace` entry. A note the script wrote
+   every parked issue with its note and recommended answer, then every `leftInPlace` entry and every path a merged
+   issue's `worktrees:` line names that still exists (a merge agent that died after the merge). A note the script wrote
    itself (a dependency, a batch halt, a dead agent) carries no question: give it one, normally "resume #N in the
    next session" once its cause is settled.
 5. **Trim or delete `current-session.md`.** With parked issues, keep the date and flow lines and, for parked issues
@@ -137,7 +151,7 @@ so.
 
 - Run two merges at once, or let any agent but the merge queue fetch `main`, pull, add or remove a worktree, or
   delete a branch.
-- Start a second workflow run for a batch that has a `workflow-script` recorded.
+- Start a second workflow run for a batch whose run left traces ("The run", step 4).
 - Text-merge `.coverage-baseline.txt` or edit `CHANGELOG.md`.
 
 ## Red flags

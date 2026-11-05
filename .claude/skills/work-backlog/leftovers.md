@@ -1,9 +1,10 @@
 # Leftovers
 
 Runs from `SKILL.md` step 3 when step 2 found a `current-session.md`, `.claude/backlog/parallel/` holds a file, or
-the main checkout holds anything beyond `main`. Five inputs feed it: the `current-session.md` step 2 read, which
-names the dead session's issues, spec, plans, halt answers and how far each issue got, and four listings, all run
-after `git worktree prune` (a worktree directory deleted by hand stays registered until then):
+the main checkout holds anything beyond `main`. Its inputs: the `current-session.md` step 2 read, which names the
+dead session's issues, spec, plans, halt answers and how far each issue got; the files under
+`.claude/backlog/parallel/`; and four listings, all run after `git worktree prune` (a worktree directory deleted by
+hand stays registered until then):
 
 - `git worktree list`
 - `gh pr list --author @me --state open --json number,body,headRefName`
@@ -15,33 +16,49 @@ Sort what they show into three kinds. Anything not claimed by the first two is t
 ## A parallel run's files
 
 `/work-backlog-parallel` writes per-issue files under `.claude/backlog/parallel/` (its `SKILL.md` "State"), and
-either skill may be the one that finds them. If `current-session.md` names a `workflow-script` and its date is
-today, a parallel session may still be running in another terminal: ask with the question banner before touching
-anything it names. Otherwise fold the files first, before sorting anything:
+either skill may be the one that finds them.
+
+**A run may still be going.** A long parallel run crosses midnight, so the date proves nothing. When
+`current-session.md` names a `workflow-script` or `workflow-run`, ask with the question banner, before touching
+anything the run names, whether to resume it with `/work-backlog-parallel` (which also recovers findings only the
+run's cached results hold), take its issues over here, or leave them because the run is still going; recommend
+"leave" when a `wf_*` worktree is locked or holds a rebase in progress. Taking over strips the `workflow-*` and
+`cap:` lines from `current-session.md` first, so the parallel skill never resumes a run whose issues moved on.
+
+Then fold the files, before sorting anything:
 
 - Each `<N>-findings.md` holds findings no one has judged: judge each by "The filing bar" in `SKILL.md`, append the
   ones that pass to `pending-findings.md`, drop the rest, and delete the file by its literal path.
-- Each `<N>.md` says how far issue N got. `merged`: delete the file. `parked` or anything earlier: the issue is
-  unfinished work of this skill's (below), with the file's `branch:`, `pr:` and `worktrees:` telling where it is.
-  A `park-note:` holds the question the run could not ask: ask it with the question banner before resuming that
-  issue, recommending the note's answer, then delete the file once the issue merges or the user drops it.
+- Each `<N>.md` says how far issue N got, with its `branch:`, `pr:`, `plan:` and `worktrees:` telling where it is.
+  - `merged`: correct the spec for each divergence `ruling:` in it (the code that merged wins), sort the worktrees
+    it lists (below), then delete the file.
+  - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then delete the file.
+  - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
+    question the run could not ask: ask it with the question banner before resuming that issue, recommending the
+    note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
+    whether to resume the issue now that its cause is settled. Delete the file once the issue merges or the user
+    drops it.
 - An `issue <N>` line in `current-session.md` with no `<N>.md`, no PR and no branch was approved but never built: it
-  is unfinished work, resumed from the start of its flow under the approval the file records.
+  is unfinished work, resumed from the start of its flow under the approval the file records, after every issue its
+  `after` list names.
+- `run-args.json`: delete it once `current-session.md` holds no `workflow-*` line.
 
 Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on the issue branch) and
 `.claude/worktrees/wf_<runId>-<k>`, whose branch is an issue branch, or its own `worktree-wf_<runId>-<k>`, or none
-(detached). A `<N>.md` lists every one an issue used under `worktrees:`. One that is locked although no run is going
-is unlocked with `git worktree unlock <path>` before anything else touches it.
+(detached). A `<N>.md` lists every one an issue used under `worktrees:`. Before sorting one: a locked one is
+unlocked with `git worktree unlock <path>` (once the user has said no run is going), and one with a rebase in
+progress gets `git -C <path> rebase --abort`, which puts it back on its branch.
 
-- One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, bring it up
-  to date with `git pull --ff-only origin <branch>` (later rounds pushed from other worktrees), and when its PR
+- One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, when
+  `origin/<branch>` exists, bring it up to date with `git pull --ff-only origin <branch>` (later rounds pushed from
+  other worktrees); a refused fast-forward means work in two places: ask with the question banner. When its PR
   merges, `merging.md` step 4 removes it by its own path, not the `<N-description>` one.
-- A detached or `worktree-wf_*` one, or a `merge-<N>` whose rebase is in progress (`git -C <path> rebase --abort`
-  first), with no commits that are not on its issue's `origin/<branch>` or on `origin/main`, holds nothing: remove
-  it and delete its `worktree-wf_*` branch, naming each in the summary. A `worktree-wf_*` branch is this skill's
-  even when it looks like a merged branch the user made.
+- A detached or `worktree-wf_*` one with no commits that are not on its issue's `origin/<branch>` or on
+  `origin/main` holds nothing: remove it and delete its `worktree-wf_*` branch, naming each in the summary.
 - One that holds such commits, or that no `<N>.md` names: ask with the question banner whether to keep it for its
   issue or remove it.
+- A `worktree-wf_*` branch is this skill's even with no worktree left and even when it looks like a merged branch
+  the user made: delete it once `origin/main` contains it.
 
 ## This skill's unfinished work
 
@@ -89,8 +106,9 @@ To resume:
 
 A branch other than `main` that the `--merged` listing shows with upstream `[gone]`. If a worktree under
 `.claude/worktrees/` still holds it (a session that died between the merge and the cleanup),
-`git worktree remove .claude/worktrees/<N-description>` first, since the delete fails while the branch is checked
-out; then `git branch --delete <name>`, naming each, and list the deleted names in the session summary.
+remove that worktree first (the path `git worktree list` shows holding the branch: `<N-description>`, or a
+parallel run's `wf_<runId>-<k>` or `merge-<N>`), since the delete fails while the branch is checked out; then
+`git branch --delete <name>`, naming each, and list the deleted names in the session summary.
 
 ## The user's own work
 

@@ -129,7 +129,8 @@ state files are written there and nowhere else.
    earlier, however many calendar days apart; lines without `done` are skipped). If that line exists and today's count
    is not lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it. Then write
-   `current-session.md`, or add the chunk to the one a step 4 fix started.
+   `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or it holds
+   parked issues of a parallel run left for later); never overwrite one.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** One message that names: what merged and which issues it closed; any merged change that alters an
@@ -206,7 +207,8 @@ piece's code.
   with permissions bypassed before the unattended part starts. Check the allowlists rather than assuming; the
   candidates are `cp` (the instruction-file copy on every worktree entry), `./.ci/in-devshell` (baseline tests and
   lint checks), `git worktree add`, `git worktree remove`, `git worktree prune`, `git branch --delete`,
-  `git pull --ff-only`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
+  `git pull --ff-only` (in the main checkout and, resuming a parallel run's worktree, `origin <branch>` there),
+  `git worktree unlock`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
   needs beyond the devShell's. A deferral ("do whatever you think") answers no permission question; a follow-up
   message carrying only this request is allowed and is not a second question round.
 - **Worktrees:** every branch is a worktree.

@@ -27,7 +27,9 @@ The batch is a graph, not a list. Issue B depends on issue A, written `issue B a
 Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, README sections, `examples/consumer/`,
 `.coverage-baseline.txt`) are not a dependency: the merge queue resolves those conflicts (`merge-queue.md`).
 
-An issue with no edge runs as soon as a slot is free.
+An issue with no edge runs as soon as a slot is free. An `after` list names only issues in the batch: a
+prerequisite outside it is either merged already (drop the edge) or not, and then the dependent stays out of the
+batch too.
 
 ## The proposal
 
@@ -66,11 +68,15 @@ would otherwise park an issue that a one-word answer now could keep going.
 ## The permission request
 
 `/work-backlog` "Permissions", widened: a workflow pauses on any permission prompt, which stalls every issue at once.
-List every command the build, review, fix and merge agents run (`agents.md`, `merge-queue.md`) that the allowlists
-do not cover, including `./.ci/in-devshell` with `./run-tests` and `./run-all-checks`, `git branch -m`,
-`git switch --detach`, `git rebase`, `git push` to `HEAD:refs/heads/<branch>`, `git push --force-with-lease`,
-`gh pr create`, `gh pr edit`, `gh pr merge`, `gh run rerun`, `git worktree add` and `remove`, `git branch --delete`
-and `cp`. Recommend starting the run with permissions bypassed when the list is long.
+Build the list by reading every command in `agents.md`, `merge-queue.md` and the `/work-backlog` files they cite,
+then keep those the allowlists do not cover. Among them: `./.ci/in-devshell` with `./run-tests`, `./run-all-checks`
+and `go run ./cmd/toolbelt update-coverage-baseline`; `git branch -m`, `git switch --detach`, `git fetch`,
+`git merge --ff-only`, `git rebase` (with `GIT_EDITOR=true`, `--continue` and `--abort`), `git checkout --ours`,
+`git add`, `git commit`, `git push` (to `HEAD:refs/heads/<branch>` and with `--force-with-lease`), `git pull
+--ff-only`, `git worktree add`, `remove` and `unlock`, `git branch --delete`; `gh pr create`, `gh pr edit`,
+`gh pr checks`, `gh pr merge`, `gh pr list`, `gh pr view`, `gh issue view`, `gh run list`, `gh run rerun`; `cp`,
+`mkdir --parents` and a background `sleep 60`. Recommend starting the run with permissions bypassed when the list
+is long; "The run" step 2 checks again before launch.
 
 ## Writing it down
 

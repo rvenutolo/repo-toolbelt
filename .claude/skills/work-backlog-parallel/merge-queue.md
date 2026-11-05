@@ -24,16 +24,23 @@ The rebase happens on the issue branch itself, so that after the merge the local
 
 1. `git fetch --prune origin`, then note the old remote SHA, `git rev-parse origin/<branch>`.
 2. The rebase worktree is the one `git worktree list` shows on `<branch>`: normally the build agent's (the first of
-   `worktrees`). If none holds it (its builder's worktree is gone), add one:
-   `git worktree add .claude/worktrees/merge-<n> <branch>` (the path written out).
-3. `git -C <rebase worktree> status --porcelain` must show no tracked change, and
-   `git -C <rebase worktree> merge --ff-only origin/<branch>` must succeed (fix rounds pushed from other worktrees,
-   so the local branch is usually behind). Either failing means work exists only locally: park, naming it.
-4. **A reviewed resolution** (`resolutionReviewed` true): if the branch is already rebased onto the current
-   `origin/main` and only the review's findings are left, go to section 3, step 3. If `main` moved again since, carry
-   on here as for a first call: `resolutionReviewed` covers only the resolution that was reviewed.
+   `worktrees`). If a rebase is in progress there (`git -C <it> rebase --abort` succeeds), an earlier merge agent
+   died mid-rebase: carry on from the clean branch.
+3. **A reviewed resolution** (`resolutionReviewed` true): the rebase worktree holds the rebased, unpushed branch
+   from the previous call, which diverges from `origin/<branch>` by design. If
+   `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, `main` has not moved: go to
+   section 3, step 3. If it has, rebase again from step 5; `resolutionReviewed` covered only the resolution that was
+   reviewed, so a new code conflict goes back to review.
+4. **Otherwise**, bring the local branch up to `origin/<branch>` (fix rounds pushed from other worktrees, so it is
+   usually behind): `git -C <rebase worktree> status --porcelain` must show no tracked change and
+   `git -C <rebase worktree> merge --ff-only origin/<branch>` must succeed. When either fails but the worktree's
+   `HEAD` is an ancestor of `origin/<branch>` (a dead builder left files behind; everything it committed was
+   pushed), free the branch with `git -C <that worktree> switch --detach`, which keeps its files, and add a clean
+   one: `git worktree add .claude/worktrees/merge-<n> <branch>` (the path written out), then the `--ff-only` there.
+   When no worktree holds `<branch>`, add `merge-<n>` the same way. When the worktree holds commits
+   `origin/<branch>` lacks, park: work exists only locally.
 5. If `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
-   section 3, step 4. Otherwise `GIT_EDITOR=true git -C <rebase worktree> rebase origin/main` (the editor setting
+   section 3, step 1. Otherwise `GIT_EDITOR=true git -C <rebase worktree> rebase origin/main` (the editor setting
    keeps `rebase --continue` from waiting on an editor nobody will close).
 
 ## 3. Conflicts
@@ -60,11 +67,11 @@ Then:
    `./.ci/in-devshell ./run-tests` then `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline` in the
    rebase worktree. A changed file is committed as a new signed commit; a unit whose line rises carries the
    `Coverage-Drop:` trailer exactly as README "Recording a rise" says. Never amend.
-3. **Code resolution:** when this rebase made one and `resolutionReviewed` is false, return
-   `state: "needs-review"`, `mergeWorktree` (the rebase worktree), `conflictedFiles`. Do not push. The script runs the
-   review stage on the resolution and calls this agent again. When `resolutionReviewed` is true, handle each of
-   `resolutionFindings` as "Findings about the change itself" says, committing in the rebase worktree; a finding
-   that cannot be fixed parks.
+3. **Code resolution:** when a rebase in this call made one, return `state: "needs-review"`, `mergeWorktree` (the
+   rebase worktree), `conflictedFiles`. Do not push. The script runs the review stage on the resolution and calls
+   this agent again. On that call (`resolutionReviewed` true, arriving here from section 2, step 3), handle each of
+   `resolutionFindings` as "Findings about the change itself" says, committing in the rebase worktree (a finding
+   that cannot be fixed parks), then run steps 1 and 2 again for those commits before step 4.
 4. **Push** if the branch changed: `git -C <rebase worktree> push --force-with-lease=<branch>:<old remote SHA>
    origin <branch>`. The pre-push hook runs the full gate in the rebase worktree. A failure that comes from combining
    the branch with the new `main` (a test or manifest that expects the old set of lints, say) is fixed like a code
@@ -73,8 +80,10 @@ Then:
 
 ## 4. CI
 
-`merging.md` step 1, unchanged: watch, read the buckets, fix a real failure in the rebase worktree and push, one
-rerun for an infrastructure failure. Still red after the rerun parks.
+`merging.md` step 1: watch, read the buckets, one rerun for an infrastructure failure, still red after the rerun
+parks. A real failure gets a fix only through review: commit the fix in the rebase worktree, do not push, and
+return `needs-review` with the fixed files as `conflictedFiles`, as section 3, step 4 does for the gate. A code
+change never reaches `main` without a review.
 
 ## 5. Merge
 
@@ -91,13 +100,20 @@ cleanup.
 
 1. `git pull --ff-only` in the main checkout. A refusal (the user committed on or dirtied local `main`) is a
    batch-level halt: return `batchHalt` with that cause, after cleanup.
-2. List `git worktree list --porcelain` first. For every path in `worktrees` that still exists, plus `merge-<n>`:
+2. List `git worktree list --porcelain` first. For every path in `worktrees` that still exists, plus the rebase
+   worktree of section 2 (a dead builder's, from an earlier run, is not in `worktrees`) and `merge-<n>`:
    note its branch (a fix agent's worktree is detached; its own branch is `worktree-<directory name>`, as
    `git branch --list 'worktree-wf_*'` shows), then `git worktree remove <path>`, each written out. A locked one
    whose agent has finished is unlocked first with `git worktree unlock <path>`.
 3. `git branch --delete` the issue branch and each noted `worktree-wf_*` branch. A refused remove or delete is left
    in place and listed in `leftInPlace`; never `--force` or `-D`.
 4. Return `state: "merged"`, `leftInPlace`.
+
+## Rulings and findings
+
+Every ruling this agent makes (a resolution finding dropped, a conflict resolved one way) goes in `rulings` and, before
+the push in section 3, step 4, into the PR body with `gh pr edit <pr> --body`. Every out-of-scope finding goes in
+`findings`, unjudged; the script hands both to the controller.
 
 ## Parking
 

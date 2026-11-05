@@ -41,7 +41,8 @@ The merge agent is `merge-queue.md`.
   superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash tool's ten-minute limit. Run
   them with `run_in_background`, then wait for them with the Monitor tool until the command exits, and read its
   output. Never end your turn while one is running: your final message is your result, and a result sent early is
-  a wrong one.
+  a wrong one. A flow that says "wait a minute and run again" waits the same way: `sleep 60` with
+  `run_in_background`, then the Monitor tool, never a foreground `sleep`.
 - **Your worktree is the worktree.** superpowers:using-git-worktrees, loaded by executing-plans, finds this one
   already linked; it creates none, runs no project setup and enters nothing (`sub-skill-overrides.md` entries for
   it apply except the creation command, which the workflow did).
@@ -57,7 +58,9 @@ Inputs: `n`, `kind` (`bug` or `feature`), `spec` (path in the main checkout, emp
    - `gh pr list --state all --search "#<n> in:body" --json number,state,headRefName,body`, keeping PRs whose body
      ends with `Backlog-Session: <date>` and names `Closes #<n>` or `Part of #<n>`. A `MERGED` one: return
      `state: "merged"`. An `OPEN` one: its `headRefName` is the branch.
-   - Otherwise `git branch --list '*/<n>-*'`: a local branch from a dead builder is the branch.
+   - Otherwise a local branch from a dead builder: one matching `*/<n>-*` that `git worktree list --porcelain` shows
+     checked out in a `.claude/worktrees/wf_*` or `.claude/worktrees/merge-<n>` worktree. A matching branch anywhere
+     else is the user's: leave it alone, and park if its name is the one this issue would take.
    - With a branch found: `git fetch origin <branch>` (when the remote has it), then `git switch --detach` to
      whichever of `<branch>` and `FETCH_HEAD` contains the other (`git merge-base --is-ancestor`); if neither does,
      park, since work exists in two places. A branch checked out in a dead builder's worktree cannot be checked out
@@ -100,16 +103,19 @@ fix agent's output, verbatim), `main`.
    empty), `worktrees:`, and every ruling already in the file plus `build.rulings`. Append each entry of
    `build.findings` to `<main>/.claude/backlog/parallel/<n>-findings.md`. In round 1, when `plan` is set, copy it to
    `<main>/docs/superpowers/plans/`.
-2. **Review** the branch as superpowers:requesting-code-review's `code-reviewer.md` describes, with the
-   "Subagents" clause: base `git -C <headWorktree> merge-base origin/main HEAD`, head `HEAD` of `headWorktree`,
-   inspected with `git -C <headWorktree> diff` and `git -C <headWorktree> show` only. The requirements are the
-   issue (`gh issue view <n>`) and, for a feature, the spec and plan. Do not edit any file in any worktree.
+2. **Review** the pushed branch as superpowers:requesting-code-review's `code-reviewer.md` describes, with the
+   "Subagents" clause. In the main checkout, `git fetch origin <branch>` (your issue's branch, which "Shared state"
+   allows), then base `git merge-base origin/main origin/<branch>`, head `origin/<branch>`, inspected with
+   `git diff` and `git show` only. The pushed branch, not `headWorktree`, is what merges, and a writer's worktree
+   may already be gone. The requirements are the issue (`gh issue view <n>`) and, for a feature, the spec and plan.
+   Edit no file in any issue worktree.
 3. **Sort** each finding: about the change itself (a hole in this PR's code or tests) goes in `changeFindings`;
    anything else is appended to `<n>-findings.md` and listed in `otherFindings`. Each "Declined to judge" line
    `code-reviewer.md` produces goes in `changeFindings` with its summary starting `Declined to judge:`, so the fix
    agent rules on it. The pre-push gate already ran the tests; the review does not rerun them.
 4. **Return** `changeFindings`, `otherFindings`, and `batchHalt` (empty unless a batch-level failure stopped the
-   review; then the findings are whatever was gathered).
+   review). When a halt stops the review, `otherFindings` holds only the out-of-scope findings not yet appended to
+   `<n>-findings.md`; the controller writes those.
 
 **A conflict resolution** (inputs `resolution: true`, `mergeWorktree`, `conflictedFiles`, `branch`, `pr`, `n`,
 `main`, from `merge-queue.md`): skip step 1. Review only how the conflicts in `conflictedFiles` were resolved:
@@ -120,10 +126,11 @@ that.
 
 ## Fix
 
-Inputs: `n`, `round`, `branch`, `pr`, `changeFindings`, `date`, `main`.
+Inputs: `n`, `round`, `branch`, `pr`, `spec` (empty for a bug), `changeFindings`, `date`, `main`.
 
 1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. If a commit on
-   the branch already says it addresses this round's findings (a resumed fix), continue from what remains.
+   the branch already says it addresses this round's findings (a resumed fix), continue from what remains. Copy
+   `<main>/.claude/CLAUDE.md`, `<main>/.claude/rules/` and, for a feature, the spec in, as Build step 2 does.
 2. **Handle each finding** as "Findings about the change itself" says: fixed (test first, then fix, as separate
    commits where a test applies), given a known-gap comment, or dropped with a ruling. A `Declined to judge:` entry
    always gets a ruling: the behavior stands, or it is now a finding and handled as one. Three failed attempts at one
