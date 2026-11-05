@@ -16,7 +16,8 @@ Per bug, in the order the chunk proposal gave:
    fixed: ask the user right then, with the question banner (the halt goes in `current-session.md` first, "Banners"
    in `SKILL.md`), before touching the next issue. Explain what was found, recommend "close as completed" or "close
    as not planned", and let the user decide as in `triage.md`. Then clean up: a worktree or branch made for it with
-   no commits is removed (`git worktree remove`, `git branch --delete`); when it shares a PR with another bug, drop
+   no commits is removed from the main checkout after `ExitWorktree` with `action: keep` (`git worktree remove`,
+   `git branch --delete`); when it shares a PR with another bug, drop
    its `Closes #N` line with `gh pr edit <number> --body`, and drop its commits (its test included) with a
    non-interactive rebase, since the Bash tool runs no interactive command: `git rebase --onto <parent-of-first>
    <last-dropped>` when they are contiguous, otherwise `GIT_SEQUENCE_EDITOR='sed --in-place "/<sha-prefix>/d"'
