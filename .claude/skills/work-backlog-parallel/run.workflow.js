@@ -34,8 +34,8 @@ const WRITER = {
 const CHANGE = { type: 'object', properties: { file: str, summary: str }, required: ['file', 'summary'] }
 const REVIEW = {
   type: 'object',
-  properties: { changeFindings: { type: 'array', items: CHANGE }, otherFindings: findings },
-  required: ['changeFindings', 'otherFindings'],
+  properties: { changeFindings: { type: 'array', items: CHANGE }, otherFindings: findings, batchHalt: str },
+  required: ['changeFindings', 'otherFindings', 'batchHalt'],
 }
 const MERGE = {
   type: 'object',
@@ -73,7 +73,19 @@ function serial(fn) {
   return run
 }
 
+// A batch-level halt is recorded before the slot is released and checked once a slot is free, so an agent queued
+// behind the cap never starts after it.
 let batchHalt = ''
+const HALTED = { halted: true }
+const unlessHalted = (start) => {
+  if (batchHalt) return HALTED
+  return start().then((result) => {
+    if (result && result.batchHalt && !batchHalt) batchHalt = result.batchHalt
+    return result
+  })
+}
+const haltNote = () => `Batch halted: ${batchHalt}`
+
 const records = {}
 const settle = {}
 const finished = {}
@@ -81,11 +93,44 @@ for (const item of A.batch) {
   finished[item.n] = new Promise((resolve) => { settle[item.n] = resolve })
 }
 
+const TERMINAL = ['merged', 'parked', 'skipped']
 function end(rec, state, note) {
-  rec.state = state
-  if (note) rec.note = note
-  settle[rec.n](state)
+  if (TERMINAL.includes(state)) {
+    rec.state = state
+    if (note) rec.note = note
+  } else {
+    rec.state = 'parked'
+    rec.note = `The issue stopped in state "${state}". ${note || ''}`.trim()
+  }
+  settle[rec.n](rec.state)
   return rec
+}
+
+async function mergeIssue(rec) {
+  if (batchHalt) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
+  const inputs = { n: rec.n, branch: rec.branch, pr: rec.pr, worktrees: rec.worktrees, date: A.date, main: A.main }
+  let resolutionReviewed = false
+  let resolutionFindings = []
+  // A code resolution goes to review and back; main can move during CI and force another, so three at most.
+  for (const attempt of [1, 2, 3]) {
+    const merge = await slot(() => unlessHalted(() => agent(
+      prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings }),
+      { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })))
+    if (merge === HALTED) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
+    if (!merge || merge.state !== 'needs-review') return merge
+    const review = await agent(
+      prompt('agents.md', 'Review', {
+        n: rec.n, resolution: true, mergeWorktree: merge.mergeWorktree, conflictedFiles: merge.conflictedFiles,
+        branch: rec.branch, pr: rec.pr, main: A.main,
+      }),
+      { label: `review #${rec.n} resolution a${attempt}`, phase: 'Review', schema: REVIEW })
+    if (!review) return { state: 'parked', parkNote: 'The resolution review agent died without a result.', batchHalt: '' }
+    if (review.batchHalt) return { state: 'parked', parkNote: review.batchHalt, batchHalt: review.batchHalt }
+    rec.unrecorded.push(...review.otherFindings)
+    resolutionReviewed = true
+    resolutionFindings = review.changeFindings
+  }
+  return { state: 'parked', parkNote: 'Three code resolutions in a row: main kept moving under this branch.', batchHalt: '' }
 }
 
 async function runIssue(item) {
@@ -98,14 +143,15 @@ async function runIssue(item) {
     const state = await finished[m]
     if (state !== 'merged') return end(rec, 'parked', `Depends on #${m}, which ended ${state}.`)
   }
-  if (batchHalt) return end(rec, 'parked', `Batch halted: ${batchHalt}`)
 
-  const build = await slot(() => agent(
+  const build = await slot(() => unlessHalted(() => agent(
     prompt('agents.md', 'Build', { n, kind: item.kind, spec: item.spec, date: A.date, main: A.main }),
-    { label: `build #${n}`, phase: 'Build', schema: WRITER, isolation: 'worktree' }))
+    { label: `build #${n}`, phase: 'Build', schema: WRITER, isolation: 'worktree' })))
+  if (build === HALTED) return end(rec, 'parked', haltNote())
   if (!build) return end(rec, 'parked', 'The build agent died without a result.')
   rec.branch = build.branch
   rec.pr = build.pr
+  rec.plan = build.plan
   if (build.worktree) rec.worktrees.push(build.worktree)
   rec.rulings.push(...build.rulings)
   rec.unrecorded = build.findings
@@ -115,20 +161,26 @@ async function runIssue(item) {
   let last = build
   let head = build.worktree
   for (const round of [1, 2]) {
+    if (batchHalt) return end(rec, 'parked', haltNote())
     const review = await agent(
       prompt('agents.md', 'Review', {
-        n, round, branch: rec.branch, pr: rec.pr, headWorktree: head, plan: build.plan,
+        n, round, branch: rec.branch, pr: rec.pr, headWorktree: head, plan: rec.plan,
         worktrees: rec.worktrees, build: last, main: A.main,
       }),
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
     if (!review) return end(rec, 'parked', `The round ${round} review agent died without a result.`)
     rec.unrecorded = []
+    if (review.batchHalt) {
+      batchHalt = review.batchHalt
+      return end(rec, 'parked', haltNote())
+    }
     if (!review.changeFindings.length) break
-    const fix = await slot(() => agent(
+    const fix = await slot(() => unlessHalted(() => agent(
       prompt('agents.md', 'Fix', {
         n, round, branch: rec.branch, pr: rec.pr, changeFindings: review.changeFindings, date: A.date, main: A.main,
       }),
-      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' }))
+      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })))
+    if (fix === HALTED) return end(rec, 'parked', haltNote())
     if (!fix) return end(rec, 'parked', `The round ${round} fix agent died without a result.`)
     if (fix.worktree) rec.worktrees.push(fix.worktree)
     rec.rulings.push(...fix.rulings)
@@ -139,27 +191,7 @@ async function runIssue(item) {
     head = fix.worktree
   }
 
-  const merged = await serial(async () => {
-    if (batchHalt) return { state: 'parked', parkNote: `Batch halted: ${batchHalt}`, batchHalt: '' }
-    const inputs = { n, branch: rec.branch, pr: rec.pr, worktrees: rec.worktrees, date: A.date, main: A.main }
-    const first = await slot(() => agent(
-      prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed: false, resolutionFindings: [] }),
-      { label: `merge #${n}`, phase: 'Merge', schema: MERGE }))
-    if (!first || first.state !== 'needs-review') return first
-    const review = await agent(
-      prompt('agents.md', 'Review', {
-        n, resolution: true, mergeWorktree: first.mergeWorktree, conflictedFiles: first.conflictedFiles,
-        branch: rec.branch, pr: rec.pr, main: A.main,
-      }),
-      { label: `review #${n} resolution`, phase: 'Review', schema: REVIEW })
-    if (!review) return { state: 'parked', parkNote: 'The resolution review agent died without a result.', batchHalt: '' }
-    rec.unrecorded.push(...review.otherFindings)
-    return slot(() => agent(
-      prompt('merge-queue.md', 'Merge queue', {
-        ...inputs, resolutionReviewed: true, resolutionFindings: review.changeFindings,
-      }),
-      { label: `merge #${n} resolved`, phase: 'Merge', schema: MERGE }))
-  })
+  const merged = await serial(() => mergeIssue(rec))
   if (!merged) return end(rec, 'parked', 'The merge agent died without a result.')
   if (merged.batchHalt) batchHalt = merged.batchHalt
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace

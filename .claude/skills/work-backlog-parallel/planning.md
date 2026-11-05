@@ -18,7 +18,11 @@ The batch is a graph, not a list. Issue B depends on issue A, written `issue B a
 - B builds on code A adds (a family piece, an umbrella piece, a lint that uses A's helper);
 - A and B both need a helper, runner or template the spec names: the issue that owns it in the spec goes first, the
   rest depend on it;
-- A and B are bugs with the same root cause, so B's fix would rebase onto A's change in the same lines.
+- A and B are bugs with the same root cause, so B's fix would rebase onto A's change in the same lines;
+- A and B change the same lines of a file that is not a registry or doc file listed below (the same step of a
+  workflow, the same function), so the second would meet the first as a code conflict. When an issue's comment
+  says the two belong in one change, say so in the proposal: one PR per issue still holds, so the edge orders them
+  and the second PR builds on the first.
 
 Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, README sections, `examples/consumer/`,
 `.coverage-baseline.txt`) are not a dependency: the merge queue resolves those conflicts (`merge-queue.md`).
@@ -32,14 +36,20 @@ One message, ending with the question banner, naming everything `/work-backlog`'
 - the graph, as the `issue <N> after <M>` lines `current-session.md` will hold;
 - **the cap**: how many build, fix and merge agents run at once (default 4; each runs the full pre-push gate when it
   pushes);
-- **a wall-clock estimate**: the longest dependency chain's build time, plus one serial merge round per issue
-  (rebase, pre-push gate, CI of about six minutes). Say plainly that merges do not overlap, so a short batch of small
-  bugs saves little over `/work-backlog`;
-- **the agent count** (estimate: per issue, one build, two review and two fix agents at most, one merge agent and
-  one more review for a resolved code conflict; so up to seven per issue). Name the session's workflow size
-  guideline from the Workflow tool's description and say whether the estimate exceeds it, adding: "This is a
-  guideline for whoever writes the script, not a limit; nothing needs changing for the run to proceed." Name the hard
-  limits (16 concurrent agents, 1000 per run) only when the batch would reach them.
+- **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
+  bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review
+  and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about six minutes), and merges never
+  overlap. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes about
+  the longer of the longest chain and the first ready PR plus one merge round per issue. Say plainly that a short
+  batch of small bugs saves little over `/work-backlog`;
+- **the agent count** (estimate: per issue, one build, two review and two fix agents at most, and for a code
+  conflict up to three merge calls with a resolution review each; plan on eight per issue). Name the session's
+  workflow size guideline (the Workflow tool's description states it as "This session has the … workflow size
+  guideline") and say whether the estimate exceeds it, adding: "This is a guideline for whoever writes the script,
+  not a limit; nothing needs changing for the run to proceed." Name the hard limits (16 concurrent agents, 1000 per
+  run) only when the batch would reach them;
+- **issues the session cannot do**, such as a setting only the user can change in a GitHub App or another repo:
+  leave them out of the batch and name them, as `/work-backlog` names an issue that asks for what it forbids.
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`. Halt
 questions are fewer here: every per-issue halt parks the issue (`SKILL.md` "Named exceptions"), so ask only what

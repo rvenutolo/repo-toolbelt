@@ -14,7 +14,8 @@ or a file beside it names an exception. Read `.claude/skills/work-backlog/SKILL.
 the names below ("Terms", "State", "The filing bar", "PRs", "Merging" and the rest) are sections of that file.
 
 **After a context compaction**, re-read this file, `/work-backlog`'s `SKILL.md` and `.claude/backlog/current-session.md`.
-If it names a `workflow-run`, the run may still be going: go to "The run" before doing anything else.
+If it names a `workflow-script`, a run was started: go to "The run", step 4 (never steps 1–2) before doing anything
+else.
 
 ## How the session runs
 
@@ -96,28 +97,39 @@ so.
    contents (as a JSON value, not a string). The moment the tool returns, record `workflow-run: <runId>`.
 3. Wait for the completion notification; do not poll. A workflow pauses for a permission prompt, so one prompt
    stalls every issue: that is why the permission request covers every agent's commands.
-4. **Resume.** After a compaction with the run still going, keep waiting. If the run is gone (a restart killed it),
-   relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId`; finished agents replay from cache and
-   every agent prompt starts by reconciling against git and GitHub, so an agent interrupted mid-work picks up where
-   its branch is. Never start a fresh run for a batch that has a `workflow-run`.
+4. **Resume.** A compaction does not stop a background workflow, and its completion notification still arrives:
+   after one, keep waiting. The run is gone only when the session itself restarted (the conversation begins anew),
+   since background tasks die with their session. Then:
+   - With a `workflow-run` recorded, relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId`.
+     Replay covers the longest unchanged prefix of agent calls; in a concurrent script that prefix can end early, so
+     later agents may run again live. That is safe because every agent prompt starts by reconciling against git and
+     GitHub, which is the reason those steps exist.
+   - With `workflow-script` but no `workflow-run` (the session died between the launch and the record), the run's
+     id is lost. Do not relaunch: end the run as a batch-level halt, cause "run id lost", and go to step 5 with no
+     result; every issue is sorted from its files and git as `leftovers.md` does.
+   Never start a fresh run for a batch that has a `workflow-script`.
 5. **Record.** The result is `{merged, parked: [{n, note}], skipped, batchHalt, records}`, one record per issue
-   with its `state`, `note`, `branch`, `pr`, `worktrees`, `rulings` and `unrecorded` findings (those no review
-   stage wrote down). For each record, write its `<N>.md` where the file is missing or says less (a builder that
-   parked before any review never had one written), and append its `unrecorded` findings to `<N>-findings.md`.
-   Where a file says `merged` and the record does not, the file wins: the merge queue writes it before cleanup.
+   with its `state`, `note`, `branch`, `pr`, `worktrees`, `rulings`, `unrecorded` findings (those no review stage
+   wrote down) and `leftInPlace` (worktrees and branches the merge queue could not remove). For each record, write
+   its `<N>.md`: the record's state wins over the file's, except that a file saying `merged` wins (the merge queue
+   writes it before cleanup); keep the file's other lines and add the record's. Append its `unrecorded` findings to
+   `<N>-findings.md`.
 
 ## Ending
 
 1. **Fold findings.** For each `<N>-findings.md`, judge every entry by "The filing bar"; append the ones that pass to
    `pending-findings.md` and drop the rest. Then delete the folded file by its literal path.
 2. **Correct the spec** in the main checkout for every divergence ruling in a merged PR's body.
-3. Run `/work-backlog` step 8 (the walkthrough).
+3. Run `/work-backlog` step 8 (the walkthrough). When the batch halted because `gh` failed, skip it and say so: the
+   findings wait in `pending-findings.md` for the next session.
 4. **Summary:** everything `/work-backlog` step 9 names, led by the batch-level halt cause if there was one, then
-   every parked issue with its note and recommended answer.
-5. **Trim or delete `current-session.md`.** With parked issues, keep only them: their issue lines, halt answers,
-   spec and plan paths, allowed commands and park notes, without `workflow-*` lines; a later session of either skill
-   resumes them through `leftovers.md`. With none, delete it. Delete every `<N>.md` of a merged issue. Append `done`
-   to today's line in `session-log.md`.
+   every parked issue with its note and recommended answer, then every `leftInPlace` entry. A note the script wrote
+   itself (a dependency, a batch halt, a dead agent) carries no question: give it one, normally "resume #N in the
+   next session" once its cause is settled.
+5. **Trim or delete `current-session.md`.** With parked issues, keep the date and flow lines and, for parked issues
+   only, their issue lines, halt answers, spec and plan paths, allowed commands and park notes, without `workflow-*`
+   lines; a later session of either skill resumes them through `leftovers.md`. With none, delete it. Delete every
+   `<N>.md` of a merged issue. Append `done` to today's line in `session-log.md`.
 
 ## Never
 
@@ -125,7 +137,7 @@ so.
 
 - Run two merges at once, or let any agent but the merge queue fetch `main`, pull, add or remove a worktree, or
   delete a branch.
-- Start a second workflow run for a batch that has a `workflow-run` recorded.
+- Start a second workflow run for a batch that has a `workflow-script` recorded.
 - Text-merge `.coverage-baseline.txt` or edit `CHANGELOG.md`.
 
 ## Red flags

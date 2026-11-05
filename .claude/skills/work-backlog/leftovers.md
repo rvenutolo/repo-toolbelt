@@ -15,7 +15,9 @@ Sort what they show into three kinds. Anything not claimed by the first two is t
 ## A parallel run's files
 
 `/work-backlog-parallel` writes per-issue files under `.claude/backlog/parallel/` (its `SKILL.md` "State"), and
-either skill may be the one that finds them. Fold them first, before sorting anything:
+either skill may be the one that finds them. If `current-session.md` names a `workflow-script` and its date is
+today, a parallel session may still be running in another terminal: ask with the question banner before touching
+anything it names. Otherwise fold the files first, before sorting anything:
 
 - Each `<N>-findings.md` holds findings no one has judged: judge each by "The filing bar" in `SKILL.md`, append the
   ones that pass to `pending-findings.md`, drop the rest, and delete the file by its literal path.
@@ -23,12 +25,23 @@ either skill may be the one that finds them. Fold them first, before sorting any
   unfinished work of this skill's (below), with the file's `branch:`, `pr:` and `worktrees:` telling where it is.
   A `park-note:` holds the question the run could not ask: ask it with the question banner before resuming that
   issue, recommending the note's answer, then delete the file once the issue merges or the user drops it.
+- An `issue <N>` line in `current-session.md` with no `<N>.md`, no PR and no branch was approved but never built: it
+  is unfinished work, resumed from the start of its flow under the approval the file records.
 
-Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (detached) and
-`.claude/worktrees/wf_<runId>-<k>`, whose branch is either an issue branch (sorted below like any other) or its
-own `worktree-wf_<runId>-<k>`, or detached. A `merge-<N>` or detached or `worktree-wf_*` one with no commits that
-are not also on `origin/<branch>` of its issue, or on `origin/main`, holds nothing: remove it and delete its
-`worktree-wf_*` branch, naming each in the summary. One that holds such commits is resumed with its issue.
+Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on the issue branch) and
+`.claude/worktrees/wf_<runId>-<k>`, whose branch is an issue branch, or its own `worktree-wf_<runId>-<k>`, or none
+(detached). A `<N>.md` lists every one an issue used under `worktrees:`. One that is locked although no run is going
+is unlocked with `git worktree unlock <path>` before anything else touches it.
+
+- One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, bring it up
+  to date with `git pull --ff-only origin <branch>` (later rounds pushed from other worktrees), and when its PR
+  merges, `merging.md` step 4 removes it by its own path, not the `<N-description>` one.
+- A detached or `worktree-wf_*` one, or a `merge-<N>` whose rebase is in progress (`git -C <path> rebase --abort`
+  first), with no commits that are not on its issue's `origin/<branch>` or on `origin/main`, holds nothing: remove
+  it and delete its `worktree-wf_*` branch, naming each in the summary. A `worktree-wf_*` branch is this skill's
+  even when it looks like a merged branch the user made.
+- One that holds such commits, or that no `<N>.md` names: ask with the question banner whether to keep it for its
+  issue or remove it.
 
 ## This skill's unfinished work
 

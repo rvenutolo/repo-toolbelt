@@ -141,7 +141,8 @@ state files are written there and nowhere else.
    pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`); every chunk
    issue that did not merge and why (a halt, a skipped piece, an issue the user closed); and every issue the user's
    decision opened or closed this session (the walkthrough, `bug-flow.md` step 3, `triage.md`). Then append `done`
-   to today's line in `session-log.md` and delete `current-session.md`.
+   to today's line in `session-log.md` and delete `current-session.md`, unless it still holds parked issues of a
+   parallel run that the user left for later: then trim it to them, as `/work-backlog-parallel`'s "Ending" says.
 
 ## Choosing the chunk
 
