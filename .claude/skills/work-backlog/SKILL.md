@@ -98,6 +98,8 @@ if any is missing.
   its worktree is removed. Step 2 reads a copy of any date as the point to resume from, step 3 reconciles it against
   git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
   answers and spec paths survive only in this file and under `docs/superpowers/`.
+- `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State").
+  This skill never writes them; `leftovers.md` folds any it finds.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`; the
@@ -116,18 +118,19 @@ state files are written there and nowhere else.
    the resume record step 3 reconciles, and only step 9 deletes it. Append today's line to `session-log.md`, with
    the count from `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already
    exists (a session restarted), keep it and add none.
-3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, and after `git worktree prune`,
-   `git worktree list` shows only the main checkout, `gh pr list --author @me --state open` is empty, and
-   `git branch` shows `main` alone. Then go to step 4. Otherwise follow `leftovers.md`, which sorts what is there
-   into this skill's unfinished work (finished before anything new is chosen), merged branches to delete, and the
-   user's own work, which is left alone.
+3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
+   empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
+   `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
+   Otherwise follow `leftovers.md`, which sorts what is there into this skill's unfinished work (finished before
+   anything new is chosen), merged branches to delete, and the user's own work, which is left alone.
 4. **Leftover findings.** If `pending-findings.md` has entries, walk through them with `findings-walkthrough.md`.
    This runs after step 3 so that a "fix it now" decision does not start new work while a leftover is unfinished.
 5. **Stall check.** Compare today's line with the third line above it ending in `done` (three finished sessions
    earlier, however many calendar days apart; lines without `done` are skipped). If that line exists and today's count
    is not lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it. Then write
-   `current-session.md`, or add the chunk to the one a step 4 fix started.
+   `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or it holds
+   parked issues of a parallel run left for later); never overwrite one.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** One message that names: what merged and which issues it closed; any merged change that alters an
@@ -139,7 +142,8 @@ state files are written there and nowhere else.
    pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`); every chunk
    issue that did not merge and why (a halt, a skipped piece, an issue the user closed); and every issue the user's
    decision opened or closed this session (the walkthrough, `bug-flow.md` step 3, `triage.md`). Then append `done`
-   to today's line in `session-log.md` and delete `current-session.md`.
+   to today's line in `session-log.md` and delete `current-session.md`, unless it still holds parked issues of a
+   parallel run that the user left for later: then trim it to them, as `/work-backlog-parallel`'s "Ending" says.
 
 ## Choosing the chunk
 
@@ -203,7 +207,8 @@ piece's code.
   with permissions bypassed before the unattended part starts. Check the allowlists rather than assuming; the
   candidates are `cp` (the instruction-file copy on every worktree entry), `./.ci/in-devshell` (baseline tests and
   lint checks), `git worktree add`, `git worktree remove`, `git worktree prune`, `git branch --delete`,
-  `git pull --ff-only`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
+  `git pull --ff-only` (in the main checkout and, resuming a parallel run's worktree, `origin <branch>` there),
+  `git worktree unlock`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
   needs beyond the devShell's. A deferral ("do whatever you think") answers no permission question; a follow-up
   message carrying only this request is allowed and is not a second question round.
 - **Worktrees:** every branch is a worktree.
