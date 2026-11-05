@@ -12,11 +12,9 @@ exceptions"): the user picks the batch size, and a batch may mix bugs with unrel
 size up front; propose a batch that fits the session shape the user asked for (a short session or a long unattended
 one), and when they named none, propose a short one and name the longer batch the backlog would support.
 
-**Each issue's kind** (`bug` or `feature`, which picks `bug-flow.md` or `feature-flow.md`): `bug` when the issue has
-the `bug` label, its title starts `fix:`, or its body reports something that is wrong now with a way to reproduce
-it; otherwise `feature`. Few issues carry the label, and a three-line fix sent down the feature flow costs a
-brainstorm, a spec and a Fable review. Name in the proposal every issue whose kind came from something other than
-the label, so the user can correct it with the batch OK.
+**Each issue's kind** (`bug` or `feature`, which picks `bug-flow.md` or `feature-flow.md`, and is the `kind` in
+`run-args.json`) is decided as `/work-backlog` "Choosing the chunk" decides it, and the proposal names the issues
+whose kind did not come from the label, as there.
 
 ## The dependency graph
 

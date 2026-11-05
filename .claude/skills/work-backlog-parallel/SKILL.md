@@ -42,8 +42,8 @@ so.
   Replaces "Strictly one issue at a time" ("Doing the work") and its red flag.
 - **No chunk size limit.** Replaces "Size" in "Choosing the chunk".
 - **A batch may mix bugs and features and hold unrelated families.** Replaces the bugs-first exclusivity and the
-  "Features" relatedness rule in "Choosing the chunk"; bugs still come first in the order. `planning.md` says how an
-  issue's kind is decided.
+  "Features" relatedness rule in "Choosing the chunk"; bugs still come first in the order. An issue's kind is
+  decided as "Choosing the chunk" says.
 - **Feature batches** get one brainstorm and spec per family, then one combined question round and one permission
   request (`planning.md`). A mixed batch asks its bug halt questions in that round.
 - **A halt parks the issue and the batch goes on.** Every point where `/work-backlog` or a file it cites would send a
