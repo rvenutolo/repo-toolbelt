@@ -23,22 +23,8 @@ unattended work by satisfying the rule instead of asking, as `.claude/CLAUDE.md`
 `sub-skill-overrides.md` before the first sub-skill invocation of the session; its first two entries (the subagent
 clause and the skill that is never invoked) apply to every session, plan-driven or not.
 
-## After a compaction
-
-Nothing about the session survives a context compaction except what is on disk, and the skill cannot be re-invoked by
-the model. So, in order:
-
-1. Re-read this file.
-2. Re-read `.claude/backlog/current-session.md` ("State"), which records the approved chunk and where the session is
-   in it, then the spec, plan and ledger it names, if any. Check where the session is: `git rev-parse
-   --show-toplevel` names the main checkout or a worktree.
-3. If the record's last banner halt has no answer, stay in (or return to) the main checkout and ask it again: the
-   user's reply may have been lost with the context. Go no further until it is answered.
-4. Otherwise carry on from the record. A compaction can land while the session has left a worktree to write
-   ("Leaving to write"): if the record shows an issue whose worktree still exists and whose merge is not recorded,
-   and the session is in the main checkout, re-enter that worktree. Re-read the reference file of the current step
-   (`feature-flow.md`, `bug-flow.md`, `merging.md`, …); if a sub-skill was in progress, re-invoke it and re-read
-   `sub-skill-overrides.md`, since its pauses would otherwise run as the sub-skill writes them.
+`resume.md` says what to do after a compaction, how a halt is recorded, and what a session that ends early leaves;
+`state.md` gives the state files' formats. Read `resume.md` first after a compaction.
 
 ## How the session runs
 
@@ -53,7 +39,7 @@ says a decision is "settled as 'How the session runs' says" means this test. The
   something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge,
   commit signing that fails, a long command that hangs past its 30 minutes ("Long commands"), Docker unreachable or
   `sysctl net.ipv4.ip_forward` not 1 when a step needs a container, since the user's global Docker rule forbids
-  running one then). Both are recorded as "Halting" says.
+  running one then). Both are recorded as "Halting" in `resume.md` says.
 
 ## Arguments
 
@@ -111,59 +97,27 @@ The invocation's arguments, in any order:
 - **`Ruling:`:** one line recording a decision the session made where a sub-skill would have asked the user. Every
   ruling goes in the PR body ("PRs"). Calls made before approval (`feature-flow.md` steps 3 and 4) are recorded in
   the spec instead; they are design decisions, not rulings.
-- **The marker:** the line `Backlog-Session: YYYY-MM-DD`, with the session's `session-date:` ("State"), that ends
+- **The marker:** the line `Backlog-Session: YYYY-MM-DD`, with the session's `session-date:` (`state.md`), that ends
   every PR body this skill writes. The user never writes it, so it is what tells this skill's PRs from the user's.
-
-## Halting
-
-Before sending a banner, append the halt (the issue, the question, the options) to `current-session.md`, and the
-answer once it arrives: a compaction while the message waits would otherwise hand the user's one-word reply to a
-session that no longer knows the question ("After a compaction" step 3). This applies once `current-session.md`
-exists ("State"). A banner sent before that (the chunk proposal, a step 3 to 5 question, the bad-argument question) is
-not recorded: after a compaction with no file, run steps 1 to 6 again (step 2 keeps the log line) and the user
-answers the re-sent message. From inside a worktree both writes leave it first ("Leaving to write"). Before a blocked
-banner the session stays out of the worktree, and re-enters only when the user's reply resumes that issue.
 
 ## State
 
-Local files under `.claude/backlog/` in the main checkout. Everything this skill writes outside a PR is local and
-untracked: `.claude/` apart from `.claude/skills/`, `docs/superpowers/` and `.superpowers/` are ignored by the user's
-global git excludes, not this repo's `.gitignore`. So the state files, specs, plans, ledgers, worktrees and rule
-copies never appear in `git status` and are never force-added. Step 2 creates the directory and the first two files
-if any is missing.
+Local files under `.claude/backlog/` in the main checkout; `state.md` gives their formats. Everything this skill
+writes outside a PR is local and untracked: `.claude/` apart from `.claude/skills/`, `docs/superpowers/` and
+`.superpowers/` are ignored by the user's global git excludes, not this repo's `.gitignore`. So the state files,
+specs, plans, ledgers, worktrees and rule copies never appear in `git status` and are never force-added. Step 2
+creates the directory and the first two files if any is missing.
 
-- `session-log.md`: one line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start; step 9
-  appends the word `done` when the session reaches its summary, so a line without it is a session that died before
-  it chose work and says nothing about the backlog. No header or other lines, because the stall check (step 5) counts
-  lines.
-- `pending-findings.md`: out-of-scope findings waiting for the user's decision, one entry each:
-
-  ```markdown
-  ## <one-line symptom>
-
-  - File: <repo-relative path>
-  - Trigger: <the realistic input that triggers it>
-  - Passes the bar: <why it is real and wrong now, in one line>
-  - Found while: <issue or PR being worked>
-  ```
-
-- `current-session.md`: the resume record, written as soon as the session has anything to resume: at step 6 once the
-  chunk is approved, or earlier when a "fix it now" in step 4 makes a worktree. It holds a `session-date:
-  YYYY-MM-DD` line, the date of the `session-log.md` line this session's step 2 appended (a file carried over from an
-  earlier session gets this line rewritten, step 6); the flow (bug or feature); the issues in order; the halt answers
-  and the commands the user allowed, from the chunk OK (bugs) or `feature-flow.md` step 5 (features); the spec path
-  once `feature-flow.md` step 2 writes it; `spec approved` after `feature-flow.md` step 5; each issue's plan path;
-  every banner halt with its answer ("Halting"); a `started:` line with the UTC time the unattended part began
-  ("Budgets" says which step writes it); and one line per issue as it reaches a PR, as its PR merges (or is left
-  `pr open, not merged` by a shakedown "no", `merging.md` step 2), and as its worktree is removed. Step 2
-  reads a copy of any date as the point to resume from, step 3 reconciles it against git and GitHub
-  (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
-  answers and spec paths survive only in this file and under `docs/superpowers/`.
+- `session-log.md`: one line per session with its open-issue count; the stall check (step 5) and the proposal's
+  trend line read it.
+- `pending-findings.md`: out-of-scope findings waiting for the user's decision (`findings-walkthrough.md`).
+- `current-session.md`: the resume record: the approved chunk, its answers, and how far each issue got. Step 6
+  writes it (or `findings-walkthrough.md` step 6, earlier), step 3 reconciles it, step 9 deletes it, and `resume.md`
+  reads it. One a parallel run owns is sorted by `leftovers.md`.
 - `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State"). This
   skill writes them only when `leftovers.md` records a finished run's result, and folds any it finds.
-- `config`: the user's settings for both backlog skills, `key: value` lines: `shakedown:` ("Shakedown"),
-  `max-hours:` and `max-parked:` ("Budgets"). An absent file or key means the default. Written only on the user's
-  word; never a leftover.
+- `config`: the user's settings for both backlog skills ("Shakedown", "Budgets"). Written only on the user's word;
+  never a leftover.
 - `reports/`: one file per finished session, named by its `session-date:` ("End-of-run report"). Kept, never a
   leftover.
 
@@ -182,13 +136,10 @@ from inside a worktree is fine.
    if it fails again, stop with the blocked banner, and never log a count or choose work from a partial or guessed
    result.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
-   `current-session.md`: its existence means unfinished work). If `current-session.md` exists, from any date, read
-   it: it is the resume record step 3 reconciles, and only step 9 deletes it. Append today's line to
-   `session-log.md`, with
-   the count from `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already
-   exists without `done`, this is the same session restarted: keep it and add none. If it ends in `done`, an earlier
-   session finished today and this one appends its own line. A line whose date is the `session-date:` of a
-   carried-over `current-session.md` holding `workflow-*` lines belongs to that run: append this session's own line.
+   `current-session.md`: its existence means unfinished work, which step 3 reads it for). Append `YYYY-MM-DD open=N`
+   to `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless today's
+   line exists without `done`: that is this session restarted, so keep it and add none. Any other line, whatever its
+   date, is another session's.
 3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
    empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
    `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
@@ -205,25 +156,20 @@ from inside a worktree is fine.
    it.
    A swapped-in issue gets the proposal's per-issue items (comments, earlier pieces, kind, halt questions) in a
    follow-up message; like the permission follow-up (`permissions.md`), it is not a second question round. Then write
-   `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or it holds
-   parked issues of a parallel run left for later); never overwrite one. Either way its `session-date:` line names
-   the date of the line this session's step 2 appended, and the halt answers and allowed commands go in with the
-   chunk; for a bug chunk the `started:` line goes in now too ("Budgets"), since the OK begins the unattended part.
-   The one exception is a file that still holds `workflow-*` lines: a parallel run the user left going in
-   step 3 owns it, and that run's "Ending" and lost-run check read its date. Then the session chooses no chunk, says
-   why, and goes to step 8.
+   `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or `leftovers.md`
+   left a parallel run's parked issues in it); never overwrite one. Either way its `session-date:` line names the
+   date of the line this session's step 2 appended, and the halt answers and allowed commands go in with the chunk;
+   for a bug chunk the `started:` line goes in now too ("Budgets"), since the OK begins the unattended part. A file
+   `leftovers.md` says a running parallel run owns gets no chunk: the session chooses none, says why, and goes to
+   step 8, because that run's merge queue is the only thing that may pull `main` or touch worktrees while it runs,
+   and a second merger would collide with it.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** Write the end-of-run report ("End-of-run report" gives its sections and what goes in each) and send
-   it as one
-   message. Then append `done` to the `session-log.md` line this session's step 2 appended or kept. A long
-   unattended run crosses midnight, so today's date may name no line: once step 6 has written this session's chunk,
-   the line is
-   the one `current-session.md`'s `session-date:` names; before that (a halt in steps 3 to 5, or no chunk chosen), it
-   is the line this session's step 2 appended or kept, since a carried-over `current-session.md` still holds a dead
-   session's date. Delete `current-session.md`, unless it still holds `workflow-*` lines of a run the user left
-   going (leave it as it is), or parked issues of a parallel run that the user left for later (trim it to them, as
-   `/work-backlog-parallel`'s "Ending" says).
+   it as one message. Then append `done` to the `session-log.md` line step 2 appended or kept (its date, not today's:
+   a run crosses midnight, and step 6 copies that date into `session-date:`). Delete `current-session.md`, unless
+   `leftovers.md` says a running parallel run owns it (leave it as it is) or left parked issues in it (trim it to
+   them, as `/work-backlog-parallel`'s "Ending" step 4 says).
 
 ## Choosing the chunk
 
@@ -240,11 +186,12 @@ pages. `refs` and `umbrella` show the dependencies and umbrella issues "Order" a
 exit is a failed `gh` call (step 1).
 
 An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body reports something that is wrong
-now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. A check that fails on
-`main` today, or a config whose present value is wrong, is a reproduction; a `ci:` or `chore:` title is a judgment
-call the proposal names. The `kind` column decides only the first two (`bug`, or `feature` from a `feat:` title or
-the `enhancement` label); `?` is neither. Few issues carry the label, and a three-line fix sent down the feature
-flow costs a brainstorm, a spec and a Fable review. The proposal names every issue whose kind was a judgment call, so
+now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. The body counts because
+few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable
+review. A check that fails on `main` today, or a config whose present value is wrong, is a reproduction; a `ci:` or
+`chore:` title is a judgment call the proposal names. The `kind` column decides only the first two (`bug`, or
+`feature` from a `feat:` title or the `enhancement` label); `?` is neither. The proposal names every issue whose kind
+was a judgment call, so
 the user can correct it with the chunk OK: a bug found from its body alone, and a `?` row. An issue whose kind
 follows from its label or title is not named. A kind the OK corrects re-sorts the chunk: the issue follows the
 corrected flow, and a chunk now holding both kinds splits as "Arguments" says, bugs this chunk and features the
@@ -467,10 +414,12 @@ infrastructure failure worth one rerun, a branch that fell behind `main` or conf
 refuses, and a pull or delete that is refused.
 
 A blocked-banner halt in `merging.md` stops the chunk at that issue. Leave the worktree and record the halt in
-`current-session.md` ("Halting"), then tell the user what stopped it and what the session would do next; after the
+`current-session.md` ("Halting" in `resume.md`), then tell the user what stopped it and what the session would do
+next; after the
 user's reply, go on with the issues that do not depend on the halted one, or stop, as the user says. Steps 8 and 9
 then run from the main checkout, except that a halt caused by a failed `gh` call skips step 8: the walkthrough needs
-`gh` to open issues, and the findings wait in `pending-findings.md` for the next session. The summary says so.
+`gh` to open issues, and the findings wait in `pending-findings.md` for the next session. The summary says so. A
+session that ends before the chunk is done leaves what "Ending early" in `resume.md` describes.
 
 ## Shakedown
 
@@ -479,7 +428,7 @@ backlog skills start in shakedown: `shakedown: on` is the default while `.claude
 (step 6 reads the file). While it is on, a chunk is one issue: form and order the chunk as usual, then take its
 first issue as the chunk and name the rest as the runner-up; with named issues, the first named bug, or the first
 named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the question banner
-once CI is green, recorded as "Halting" says. The summary offers to lift it; on the user's yes, write
+once CI is green, recorded as "Halting" in `resume.md` says. The summary offers to lift it; on the user's yes, write
 `shakedown: off` to the config (create the file, or replace the key's line). The user may also turn it off or on with
 the chunk OK. Turned off with the OK: write `shakedown: off` then, and send a full-size proposal (its halt questions
 included) as a follow-up before starting; like the permission follow-up (`permissions.md`), it is not a second
@@ -519,13 +468,6 @@ runs can be compared. The message sent is the same text. `plan` writes no report
   longer has (`sub-skill-overrides.md`); a piece skipped because the user closed its issue; an issue the brainstorm
   added to or dropped from the chunk; and every item in `.claude/backlog/parallel/summary.md`, which `leftovers.md`
   writes when step 3 finishes a parallel run's "Ending" (delete that file once the summary is sent).
-
-## Ending early
-
-If the session ends before the chunk is done, the unfinished issues stay open and step 3 of the next session picks up
-their worktrees or PRs, with the approval, halt answers and spec path from `current-session.md` ("State"). Findings
-already judged are in `pending-findings.md`; findings a plan sub-skill parked may still be in the leftover
-worktree's ledger, which `leftovers.md` has the next session sweep before that PR merges.
 
 ## Never
 

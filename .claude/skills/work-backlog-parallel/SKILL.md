@@ -27,6 +27,8 @@ this one are read at the step that uses them, not up front; the agents read the 
 the controller does not.
 
 - **Before step 1:** `/work-backlog` `SKILL.md`.
+- **After a compaction, or when a halt is recorded:** `/work-backlog` `resume.md` ("On invocation" below says
+  which of its steps apply here).
 - **"The session" step 1:** the files `/work-backlog` steps 1–5 name as they come up (`leftovers.md`,
   `findings-walkthrough.md`, and `triage.md` when the stall check fires); leftover work finished with
   `/work-backlog`'s own flow reads what that flow reads.
@@ -134,7 +136,8 @@ whatever the budgets say.
 - **No `EnterWorktree` or `ExitWorktree` during the run.** From step 2 of "The session" until `workflow-done` is
   recorded ("The run" step 5), neither the controller nor any workflow agent calls either; from "Ending" on, the
   shakedown merge and a "fix it now" in the walkthrough enter a worktree as `/work-backlog` says. Replaces the
-  re-enter step of "After a compaction" during the run (the controller follows "On invocation" instead).
+  re-enter step of "After a compaction" in `resume.md` during the run (the controller follows "On invocation"
+  instead).
 - **No "Leaving to write" during the run.** Every write an agent would make to the main checkout is returned as
   `findings` or `rulings`, or made by the review stage, which runs in the main checkout. Replaces "Leaving to write"
   for workflow agents.
@@ -193,9 +196,9 @@ whatever the budgets say.
 ## On invocation
 
 On invocation and after a context compaction, read `.claude/backlog/current-session.md` first. After a compaction,
-re-read this file first, then follow `/work-backlog` "After a compaction" (which re-reads its own `SKILL.md`), with
-one change: the session stays in the main checkout (it re-enters no worktree, except during "Ending" step 1's
-shakedown merge, where `/work-backlog` "After a compaction" step 4 applies as written), and this section says where
+re-read this file first, then follow "After a compaction" in `/work-backlog` `resume.md` (which re-reads that skill's
+`SKILL.md`), with one change: the session stays in the main checkout (it re-enters no worktree, except during
+"Ending" step 1's shakedown merge, where that section's step 4 applies as written), and this section says where
 to go. Take the first that matches:
 
 - **`workflow-done`:** the run is recorded: go to "Ending" and redo each step whose output is missing (findings not
