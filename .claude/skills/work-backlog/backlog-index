@@ -7,11 +7,13 @@
 #              far past what one tool result shows.
 # @option --out <file> where to write the full JSON (default .claude/tmp/issues.json)
 # @arg $@ issue numbers to index instead of every open issue
-# @stdout a header line, then per issue: number, kind (bug, feature or ? for a
-#         judgment call), labels, title, repro (yes when the body describes a
-#         reproduction), refs (other issue numbers the body names), umbrella
-#         (yes when the body calls itself an umbrella or tracks sub-issues),
-#         bytes (body length)
+# @stdout a header line, then per issue: number, state (OPEN; a named issue
+#         that is closed prints CLOSED, or MERGED when the number is in fact a
+#         pull request's), kind (bug, feature or ? for a
+#         judgment call), labels, title, repro (yes when the body says it
+#         reproduces something or gives steps to), refs (other issue numbers
+#         the body names), umbrella (yes when the body calls itself an umbrella
+#         or tracks sub-issues), bytes (body length)
 # @exitcode 0 the index was written
 # @exitcode 1 a gh call failed
 # @exitcode 2 wrong arguments
@@ -21,26 +23,28 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-readonly FIELDS='number,title,labels,body'
+readonly FIELDS='number,state,title,labels,body'
 
 # The kind rules are the skill's: a `bug` label or a `fix:` title is a bug, a
 # `feat:` title or an `enhancement` label is a feature, anything else is a
-# judgment call the proposal names.
+# judgment call the proposal names. The repro test wants a verb or a heading,
+# not the stem alone: "reproducible" is a feature's word, not a bug's.
 # shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
 readonly TABLE_JQ='
-  ["number", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
+  ["number", "state", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
   (sort_by(.number)[]
     | (.body // "") as $body
     | ([.labels[].name]) as $labels
     | .number as $self
     | [
         .number,
+        .state,
         (if ($labels | index("bug")) or (.title | test("^fix(\\([^)]*\\))?!?:")) then "bug"
          elif (.title | test("^feat(\\([^)]*\\))?!?:")) or ($labels | index("enhancement")) then "feature"
          else "?" end),
         ($labels | join(",")),
         .title,
-        (if $body | test("repro"; "i") then "yes" else "" end),
+        (if $body | test("reproduc(e|tion|es|ed)|steps to reproduce|repro:"; "i") then "yes" else "" end),
         ([$body | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber | select(. != $self)]
           | unique | map(tostring) | join(",")),
         (if ($body | test("- \\[[ xX]\\] [^\\n]*#[0-9]+")) or ($body | test("sub-issue|umbrella"; "i"))

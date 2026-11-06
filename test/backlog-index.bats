@@ -23,18 +23,37 @@ function setup() {
   PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
 }
 
-# @description Write the `gh issue list` fixture: a JSON array of the issues
-#              given as `number|title|labels-csv|body` arguments.
+# @description Print one issue as JSON from a `number|title|labels-csv|body`
+#              spec, with the given state.
+# @arg $1 state OPEN or CLOSED
+# @arg $2 spec the issue spec
+function issue_json() {
+  local -r state="$1"
+  local -r spec="$2"
+  jq --null-input --arg state "${state}" --arg spec "${spec}" '
+    ($spec | split("|")) as $f
+    | {number: ($f[0] | tonumber), state: $state, title: $f[1],
+       labels: [($f[2] | split(",")[] | select(. != "") | {name: .})],
+       body: ($f[3:] | join("|"))}'
+}
+
+# @description Write the `gh issue list` fixture: a JSON array of the open
+#              issues given as `number|title|labels-csv|body` arguments.
 # @arg $@ one issue per argument
 function list_fixture() {
   local issue
   for issue in "$@"; do
-    jq --null-input --arg spec "${issue}" '
-      ($spec | split("|")) as $f
-      | {number: ($f[0] | tonumber), title: $f[1],
-         labels: [($f[2] | split(",")[] | select(. != "") | {name: .})],
-         body: ($f[3:] | join("|"))}'
+    issue_json OPEN "${issue}"
   done | jq --slurp '.' > "${FIXTURES}/list.json"
+}
+
+# @description Write a `gh issue view` fixture for one issue.
+# @arg $1 state OPEN or CLOSED
+# @arg $2 spec the issue spec, `number|title|labels-csv|body`
+function view_fixture() {
+  local -r state="$1"
+  local -r spec="$2"
+  issue_json "${state}" "${spec}" > "${FIXTURES}/${spec%%|*}.json"
 }
 
 # @description Print the given column of the row for one issue number.
@@ -64,7 +83,7 @@ function cell() {
   list_fixture '1|feat: a||body'
   run "${BACKLOG_INDEX}" --out "${OUT}"
   assert_success
-  assert_line --index 0 "$(printf 'number\tkind\tlabels\ttitle\trepro\trefs\tumbrella\tbytes')"
+  assert_line --index 0 "$(printf 'number\tstate\tkind\tlabels\ttitle\trepro\trefs\tumbrella\tbytes')"
 }
 
 @test 'writes the full issue JSON to the --out file' {
@@ -100,73 +119,94 @@ function cell() {
 @test 'classifies a bug label as a bug whatever the title' {
   list_fixture '1|feat: looks like a feature|bug|x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 2)" 'bug'
+  assert_equal "$(cell 1 3)" 'bug'
 }
 
 @test 'classifies fix: titles, scoped or breaking, as bugs' {
   list_fixture '1|fix: a||x' '2|fix(ci): b||x' '3|fix!: c||x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 2) $(cell 2 2) $(cell 3 2)" 'bug bug bug'
+  assert_equal "$(cell 1 3) $(cell 2 3) $(cell 3 3)" 'bug bug bug'
 }
 
 @test 'classifies feat: titles and enhancement labels as features' {
   list_fixture '1|feat: a||x' '2|Add a thing|enhancement|x' '3|feat(lint): c||x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 2) $(cell 2 2) $(cell 3 2)" 'feature feature feature'
+  assert_equal "$(cell 1 3) $(cell 2 3) $(cell 3 3)" 'feature feature feature'
 }
 
 @test 'marks an issue with no kind signal as a judgment call' {
   list_fixture '1|ci: save caches||x' '2|Renovate has never run||x' '3|fixes the thing||x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 2) $(cell 2 2) $(cell 3 2)" '? ? ?'
+  assert_equal "$(cell 1 3) $(cell 2 3) $(cell 3 3)" '? ? ?'
+}
+
+@test 'prints the state of every issue' {
+  list_fixture '1|feat: a||x'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 1 2)" 'OPEN'
+}
+
+@test 'prints CLOSED for a named issue that is closed' {
+  view_fixture CLOSED '5|fix: a||x'
+  view_fixture OPEN '9|feat: b||y'
+  run "${BACKLOG_INDEX}" --out "${OUT}" 5 9
+  assert_success
+  assert_equal "$(cell 5 2) $(cell 9 2)" 'CLOSED OPEN'
 }
 
 @test 'joins the label names with commas' {
   list_fixture '1|feat: a|enhancement,ci|x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 3)" 'enhancement,ci'
+  assert_equal "$(cell 1 4)" 'enhancement,ci'
 }
 
 @test 'prints the title' {
   list_fixture '1|feat: add the widget||x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 4)" 'feat: add the widget'
+  assert_equal "$(cell 1 5)" 'feat: add the widget'
 }
 
 @test 'marks a body that describes a reproduction' {
-  list_fixture '1|fix: a||## Steps to reproduce' '2|fix: b||Reproduction: run it' '3|fix: c||no steps here'
+  list_fixture '1|fix: a||## Steps to reproduce' '2|fix: b||Reproduction: run it' '3|fix: c||no steps here' \
+    '4|fix: d||Repro: run it twice' '5|fix: e||It reproduces on main' '6|fix: f||REPRODUCED with go test'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 5),$(cell 2 5),$(cell 3 5)" 'yes,yes,'
+  assert_equal "$(cell 1 6),$(cell 2 6),$(cell 3 6),$(cell 4 6),$(cell 5 6),$(cell 6 6)" 'yes,yes,,yes,yes,yes'
+}
+
+@test 'does not read a feature body that says reproducible as a reproduction' {
+  list_fixture '1|feat: a||Builds must be reproducible' '2|feat: b||ensures reproducibility of the image'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 1 6),$(cell 2 6)" ','
 }
 
 @test 'lists the other issues a body names, once each and in order' {
   list_fixture '7|feat: a||See #12, #3 and #12 again; this is #7.'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 7 6)" '3,12'
+  assert_equal "$(cell 7 7)" '3,12'
 }
 
 @test 'does not read headings or anchors as issue references' {
   list_fixture '7|feat: a||##2 heading, a page#5 anchor'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 7 6)" ''
+  assert_equal "$(cell 7 7)" ''
 }
 
 @test 'marks an umbrella issue' {
   list_fixture '1|feat: a||Umbrella for lints' '2|feat: b||Filed as sub-issues' '3|feat: c||- [ ] do it in #9'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 7),$(cell 2 7),$(cell 3 7)" 'yes,yes,yes'
+  assert_equal "$(cell 1 8),$(cell 2 8),$(cell 3 8)" 'yes,yes,yes'
 }
 
 @test 'does not mark a plain task list as an umbrella' {
   list_fixture '1|feat: a||- [ ] write it'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 7)" ''
+  assert_equal "$(cell 1 8)" ''
 }
 
 @test 'prints the body length in bytes' {
   list_fixture '1|feat: a||héllo'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 8)" '6'
+  assert_equal "$(cell 1 9)" '6'
 }
 
 @test 'keeps a title with a tab on one row' {
@@ -177,11 +217,11 @@ function cell() {
 }
 
 @test 'views only the named issues' {
-  jq --null-input '{number: 5, title: "fix: a", labels: [], body: "x"}' > "${FIXTURES}/5.json"
-  jq --null-input '{number: 9, title: "feat: b", labels: [], body: "y"}' > "${FIXTURES}/9.json"
+  view_fixture OPEN '5|fix: a||x'
+  view_fixture OPEN '9|feat: b||y'
   run "${BACKLOG_INDEX}" --out "${OUT}" 9 5
   assert_success
-  assert_equal "$(tail --lines=+2 <<< "${output}" | cut --fields=1,2 | paste --serial --delimiters=' ')" \
+  assert_equal "$(tail --lines=+2 <<< "${output}" | cut --fields=1,3 | paste --serial --delimiters=' ')" \
     "$(printf '5\tbug 9\tfeature')"
   run grep --count '^issue list' "${GH_LOG}"
   assert_output '0'
@@ -194,7 +234,7 @@ function cell() {
 }
 
 @test 'exits 1 when gh fails to view one named issue' {
-  jq --null-input '{number: 5, title: "fix: a", labels: [], body: "x"}' > "${FIXTURES}/5.json"
+  view_fixture OPEN '5|fix: a||x'
   run "${BACKLOG_INDEX}" --out "${OUT}" 5 6
   assert_failure 1
   assert_output --partial 'gh failed to list the issues'

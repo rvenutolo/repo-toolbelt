@@ -29,7 +29,7 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    and found by the user. The reviewer returns every finding and filters none, as "Subagents" in `SKILL.md` says;
    design findings are judged on soundness ("Findings about the change itself" in `SKILL.md`). Apply what does not
    change what gets built; hold the rest for step 5.
-5. **One question round.** A single message, ending with the question banner, that asks:
+5. **One question round.** A single message, beginning with the question banner, that asks:
    - everything held from steps 3 and 4;
    - every likely halt question for the unattended part ("Terms" in `SKILL.md`; `halt-questions.md` lists the kinds
      that recur), each with a recommended answer and a one-line reason;
@@ -42,8 +42,9 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    answer. Write the answers into the spec. If the user defers ("do whatever you think"), every recommended answer
    is the answer; write each into the spec as a call. A deferral answers no permission request (`permissions.md`
    "When to ask"). A spec that has passed steps 3–5 counts as approved; the user does not review the written
-   document. Then append to `current-session.md`: `spec approved: <path>`, the commands the user allowed, and the
-   halt answers, so a session resumed from that file knows the brainstorm and this round are done.
+   document. Then append to `current-session.md`: `spec approved: <path>`, the commands the user allowed, the halt
+   answers, and the `started:` line ("Budgets" in `SKILL.md`), since the unattended part begins here, so a session
+   resumed from that file knows the brainstorm and this round are done.
 
    A rule fix or override the user chose in this round is written in the main checkout's `.claude/rules/` and copied
    into every worktree the flow creates afterwards. A rule conflict that only surfaces later is settled as "Copied

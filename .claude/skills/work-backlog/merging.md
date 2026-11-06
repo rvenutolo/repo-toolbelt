@@ -41,7 +41,9 @@ background.
 2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this step:
    go to step 3 (step 0 also catches this when it runs first). While shakedown is on ("Shakedown" in `SKILL.md`), ask
    first with the question banner whether to merge, naming the PR and its green checks, and record the halt and its
-   answer as "Halting" says; a "no" leaves the PR open for the user and is named in the summary. Coming back here after
+   answer as "Halting" says. On "no": `ExitWorktree` with `action: keep`, record `pr open, not merged` against the
+   issue in `current-session.md`, leave the PR, worktree and branch for the next session's step 3, name the PR in
+   the summary, and go on with the next issue; steps 3 and 4 are the merge path and do not run. Coming back here after
    a `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
    allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local branch is
    checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go
@@ -88,4 +90,6 @@ background.
    `git branch --delete <type/N-description>`. Either may refuse: the delete does when local `main` does not yet
    hold the merge (step 3's refused pull), the remove when the worktree has a stray file. Leave a refused one in
    place and name it in the summary; never pass `--force` or `-D`. The next session's step 3 classifies it once
-   `main` is current. Record the cleanup in `current-session.md`.
+   `main` is current. A PR built by a parallel run has several worktrees, listed on its `<N>.md` `worktrees:` line:
+   remove each by its own path and delete each `worktree-<runId>-<k>` branch they held, as `merge-queue.md` section
+   6 does. Record the cleanup in `current-session.md`.
