@@ -12,6 +12,9 @@ exceptions"): the user picks the batch size, and a batch may mix bugs with unrel
 size up front; propose a batch that fits the session shape the user asked for (a short session or a long unattended
 one), and when they named none, propose a short one and name the longer batch the backlog would support.
 
+An umbrella issue contributes one piece per batch (`SKILL.md` "Named exceptions"): the next unbuilt piece its spec
+names, as the issue's `piece`. A later piece waits for a later batch, or for `/work-backlog`.
+
 **Each issue's kind** (`bug` or `feature`, which picks `bug-flow.md` or `feature-flow.md`, and is the `kind` in
 `run-args.json`) is decided as `/work-backlog` "Choosing the chunk" decides it, and the proposal names the issues
 whose kind did not come from the label, as there.
@@ -40,7 +43,7 @@ batch too.
 
 One message, ending with the question banner, naming everything `/work-backlog`'s proposal names, plus:
 
-- the graph, as the `issue <N> after <M>` lines `current-session.md` will hold;
+- the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece;
 - **the cap**: how many build, fix and merge agents run at once (default 4; each runs the full pre-push gate when it
   pushes);
 - **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
@@ -59,8 +62,6 @@ One message, ending with the question banner, naming everything `/work-backlog`'
   guideline") and say whether the estimate exceeds it, adding: "This is a guideline for whoever writes the script,
   not a limit; nothing needs changing for the run to proceed." Name the hard limits (16 concurrent agents, 1000 per
   run) only when the batch would reach them;
-- **issues the session cannot do**, such as a setting only the user can change in a GitHub App or another repo:
-  leave them out of the batch and name them, as `/work-backlog` names an issue that asks for what it forbids.
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`. Halt
 questions are fewer here: every per-issue halt parks the issue (`SKILL.md` "Named exceptions"), so ask only what
@@ -76,30 +77,34 @@ would otherwise park an issue that a one-word answer now could keep going.
 
 ## The permission request
 
-`/work-backlog` "Permissions", widened: a workflow pauses on any permission prompt, which stalls every issue at once.
-An allow rule matches a command by its literal prefix, so the request names rule strings, not commands:
-`Bash(git rebase *)` does not cover `git -C <path> rebase`. Build it by reading every command in `agents.md`,
-`merge-queue.md` and the `/work-backlog` files they cite, then keep the rules the allowlists lack. The run needs at
-least:
+`/work-backlog` "Permissions" (literal-prefix matching, its candidate list), widened: an agent that meets a
+permission prompt waits for an answer nobody gives, holding its slot and stalling its issue and every issue that
+depends on it. The request names rule strings, not commands. Build it by reading every command in `common.md`,
+`agents.md`, `merge-queue.md` and the `/work-backlog` files they cite, then keep the rules the allowlists lack. The
+run needs at least:
 
 - `Bash(./.ci/in-devshell *)`: the tests, the gate, single-test TDD runs, a bug's reproduction, `./.ci/fmt` and
-  `go run ./cmd/toolbelt update-coverage-baseline`;
+  `go run ./cmd/toolbelt update-coverage-baseline`; the merge agent runs it as `cd <worktree> && ./.ci/in-devshell
+  …`, so also `Bash(cd *)`;
 - `Bash(git -C *)`: every merge-queue command, and the resolution review's `diff`;
 - `Bash(git add *)`, `Bash(git commit *)`, `Bash(git push *)`, `Bash(git fetch *)`, `Bash(git switch *)`,
   `Bash(git branch -m *)`, `Bash(git branch --delete *)`, `Bash(git merge --ff-only *)`, `Bash(git pull --ff-only*)`,
   `Bash(git rebase *)`, `Bash(git checkout --ours *)`, `Bash(git merge-base *)`, `Bash(git rev-parse *)`,
-  `Bash(git log *)`, `Bash(git diff *)`, `Bash(git show *)`, `Bash(git status *)`;
+  `Bash(git log *)`, `Bash(git diff *)`, `Bash(git show *)`, `Bash(git status *)`, `Bash(git branch --list *)`;
 - `Bash(git worktree list *)`, `Bash(git worktree add *)`, `Bash(git worktree remove *)`,
   `Bash(git worktree unlock *)`, `Bash(git worktree prune)`;
 - `Bash(gh *)`, or each of `gh pr create|edit|checks|merge|list|view`, `gh issue view`, `gh run list|rerun` and
   `gh auth status`;
-- `Bash(cp *)`, `Bash(mkdir --parents *)`, `Bash(sleep *)`, `Bash(sysctl net.ipv4.ip_forward)`, `Bash(ssh-add -L)`
-  and the `rm` of a plan workspace that `/work-backlog` "Permissions" names.
+- `Bash(cp *)`, `Bash(mkdir --parents *)`, `Bash(timeout *)` (the waits in `common.md` "Long commands"),
+  `Bash(kill -0 *)`, `Bash(sysctl net.ipv4.ip_forward)`, `Bash(ssh-add -L)`, and what `/work-backlog` "Permissions"
+  names for executing-plans: its helper scripts and the `rm` of a plan workspace.
 
-The list is long and a miss stalls every issue, so recommend running the session with permissions bypassed;
-`SKILL.md` "The session" step 1 asks about it before planning, and "The run" step 2 checks again before launch.
+The list is long and a miss stalls that issue, its slot and its dependents, so recommend running the session with
+permissions bypassed; `SKILL.md` "The session" step 1 asks about it before planning, and "The run" step 2 checks
+again before launch.
 
 ## Writing it down
 
 After the OK (and, for features, the answered question round), write `current-session.md` as `/work-backlog` step 6
-does, plus `cap:` and the `issue` lines (`SKILL.md` "State"). Then go to "The run".
+does, plus `cap:`, the `issue` and `piece` lines (`SKILL.md` "State") and each halt answer with the issues it bears
+on (they become each issue's `haltAnswers`). Then go to "The run".
