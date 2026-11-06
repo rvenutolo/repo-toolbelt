@@ -13,7 +13,9 @@ there is a park here, with the status and the rule in the note. Its steps 3 and 
 `current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here replace them. Git commands in the
 rebase worktree run as `git -C <rebase worktree> …`, rebases as `git -C <rebase worktree> -c core.editor=true
 rebase …`, so `rebase --continue` never waits on an editor nobody will close. Devshell commands run there as
-`cd <rebase worktree> && ./.ci/in-devshell …`.
+`cd <rebase worktree> && ./.ci/in-devshell …`. Long commands (the push, the baseline regeneration and its tests,
+`gh pr checks --watch`) follow `common.md` "Long commands", with their status files in the rebase worktree's
+`.claude/tmp/`, never the main checkout's.
 
 Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used, the build agent's first),
 `resolutionReviewed` (true when the previous call returned `needs-review` and the review has run), `resolutionFindings`
@@ -71,14 +73,22 @@ the rebase ends:
 - **List and registry lines** (`lints.toml`, `formatters.toml`, README lists and tables, `examples/consumer/` lint
   lists): keep both sides' entries. Where the file is sorted, keep it sorted; where it is in order of addition, put
   `main`'s entries first, since they landed first.
-- **`.coverage-baseline.txt`:** take `main`'s version (`git checkout --ours`); it is regenerated after the rebase.
+- **`.coverage-baseline.txt`:** take `main`'s version (`git -C <rebase worktree> checkout --ours <file>`); it is
+  regenerated after the rebase.
 - **`CHANGELOG.md`:** take `main`'s version. No session edits it.
-- **Anything else, between two of this batch's own PRs:** every `main` commit that touched the file since the branch's
-  base (`git -C <rebase worktree> log --format=%H "$(git -C <rebase worktree> merge-base origin/<branch>
-  origin/main)"..origin/main -- <file>`) belongs to a PR whose body ends with `Backlog-Session: <date>` (`gh api
-  repos/{owner}/{repo}/commits/<sha>/pulls --jq '.[].body'`). When the intent on both sides is clear from the two
-  commits and their PRs (README prose included), resolve it and remember the file: this is a code resolution. The
-  batch's own concurrency made this conflict, so the run settles it, behind the review stage.
+
+These three rules hold whoever made the `main` side: they lose nothing, so a Renovate bump or the user's own commit
+is handled the same way as a batch PR.
+
+- **Anything else, between two of this batch's own PRs:** every commit since the branch's base that wrote `main`'s
+  side of the conflicting hunk belongs to a PR whose body ends with `Backlog-Session: <date>`. Find them with
+  `git -C <rebase worktree> blame -L <first>,<last> origin/main -- <file>`, where `<first>,<last>` is the hunk's
+  line range in `origin/main`'s version, keeping the commits after
+  `git -C <rebase worktree> merge-base origin/<branch> origin/main`; map each to its PR with `gh api
+  repos/{owner}/{repo}/commits/<sha>/pulls --jq '.[].body'`. Test the hunk, not the file: an outside commit
+  elsewhere in the same file did not make this conflict. When the intent on both sides is clear from the two commits
+  and their PRs (README prose included), resolve it and remember the file: this is a code resolution. The batch's
+  own concurrency made this conflict, so the run settles it, behind the review stage.
 - **Any other conflict**, or intent unclear: `git -C <rebase worktree> rebase --abort` and park, with the
   conflicting hunks and both sides' intent in the note. A conflict with work from outside the batch is one
   `/work-backlog` would stop on too (`merging.md` step 2), and the park is this run's stop.
@@ -103,13 +113,13 @@ Then:
 
 ## 4. CI
 
-`merging.md` step 1: watch, read the buckets, one rerun for an infrastructure failure, still red after the rerun
-parks, and CI that did not trigger parks. A real failure is the merge-time fix it describes, reviewed by the review
-stage in place of superpowers:requesting-code-review: note `HEAD`, commit the fix in the rebase worktree, do not
-push, and return `needs-review` with `reason: "ci"`, the noted commit as `fixBase`, the failing job's output as
-`failure`, and the fixed files as `conflictedFiles`. Every merge-time change gets one review stage; the fixes for that
-review's findings (section 2, step 3) are not reviewed again, as `/work-backlog` does not review fixes after its last
-review round. A CI rerun is a `Summary:` line ("Rulings and findings").
+`merging.md` step 1, the watch run as `common.md` "Long commands" says: watch, read the buckets, one rerun for an
+infrastructure failure, still red after the rerun parks, and CI that did not trigger parks. A real failure is the
+merge-time fix it describes, reviewed by the review stage in place of superpowers:requesting-code-review: note `HEAD`,
+commit the fix in the rebase worktree, do not push, and return `needs-review` with `reason: "ci"`, the noted commit as
+`fixBase`, the failing job's output as `failure`, and the fixed files as `conflictedFiles`. Every merge-time change gets
+one review stage; the fixes for that review's findings (section 2, step 3) are not reviewed again, as `/work-backlog`
+does not review fixes after its last review round. A CI rerun is a `Summary:` line ("Rulings and findings").
 
 ## 5. Merge
 

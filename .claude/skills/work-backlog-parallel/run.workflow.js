@@ -25,11 +25,13 @@ function checkArgs() {
   const seen = new Set()
   for (const item of A.batch) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) bad('every batch entry must be an object')
-    if (!Number.isInteger(item.n)) bad(`issue number ${JSON.stringify(item.n)} is not an integer`)
+    if (!Number.isInteger(item.n) || item.n < 1) bad(`issue number ${JSON.stringify(item.n)} is not a positive integer`)
     if (seen.has(item.n)) bad(`issue #${item.n} appears twice`)
     seen.add(item.n)
     if (item.kind !== 'bug' && item.kind !== 'feature') bad(`#${item.n} has kind ${JSON.stringify(item.kind)}`)
     if (typeof item.spec !== 'string') bad(`#${item.n} needs a spec string (empty for a bug)`)
+    // A feature's build copies <main>/<spec> in; an empty spec would copy the whole main checkout's path.
+    if (item.kind === 'feature' && !item.spec) bad(`#${item.n} is a feature with no spec`)
     if (!Array.isArray(item.after)) bad(`#${item.n} needs an "after" list (empty when it has no prerequisite)`)
     if (typeof item.piece !== 'string') bad(`#${item.n} needs a piece string (empty unless it is an umbrella piece)`)
     if (typeof item.haltAnswers !== 'string') bad(`#${item.n} needs a haltAnswers string (empty when none)`)
@@ -130,11 +132,14 @@ const unlessHalted = (start) => {
   })
 }
 const haltNote = () => `Batch halted: ${batchHalt}`
-// The agent that hit a batch-level failure reports it in batchHalt and may leave parkNote empty.
-const writerNote = (result) => result.parkNote || (result.batchHalt ? `Batch halted: ${result.batchHalt}` : '')
+// The agent that hit a batch-level failure reports it in batchHalt and may leave parkNote empty. A park with no note
+// at all still needs one: the summary and leftovers.md ask the user the note's question.
+const writerNote = (result) => result.parkNote || (result.batchHalt ? `Batch halted: ${result.batchHalt}` : '') ||
+  (result.state === 'parked' ? 'The agent parked the issue without saying why; read its PR and branch.' : '')
 
-// An agent that hits terminal API errors returns null; one that stalls on every attempt or exceeds the
-// StructuredOutput retry cap throws. Either way one retry is safe because every agent starts by reconciling against
+// An agent returns null on terminal API errors and when the user skips it from /workflows; the script cannot tell
+// the two apart. One that stalls on every attempt or exceeds the StructuredOutput retry cap throws. Either way one
+// retry is safe because every agent starts by reconciling against
 // git and GitHub, and parking at once would also park every dependent. A second throw reaches runIssue's catch. Once
 // a batch halt is set there is no retry, and the caller reports the halt, not a death (dead()).
 async function call(text, opts) {
@@ -147,7 +152,8 @@ async function call(text, opts) {
   if (batchHalt) return null
   return agent(text, { ...opts, label: `${opts.label} retry` })
 }
-const dead = (who) => (batchHalt ? haltNote() : `The ${who} died twice without a result.`)
+const dead = (who) =>
+  (batchHalt ? haltNote() : `The ${who} returned no result twice (an API failure, or skipped from /workflows).`)
 
 const records = {}
 const settle = {}
@@ -181,7 +187,6 @@ function end(rec, state, note) {
     rec.state = 'parked'
     rec.note = `The issue stopped in state "${state}". ${note || ''}`.trim()
   }
-  if (rec.state === 'skipped' && rec.worktrees.length) rec.leftInPlace = [...rec.worktrees]
   settle[rec.n](rec.state)
   return rec
 }
@@ -221,6 +226,10 @@ async function mergeIssue(rec) {
     rec.rulings.push(...(merge.rulings || []))
     rec.unrecorded.push(...(merge.findings || []))
     if (merge.state !== 'needs-review') return merge
+    // The resolution review needs both to judge the change; without them it would review nothing.
+    if (!merge.mergeWorktree || !merge.reason) {
+      return park('The merge agent asked for review without a merge worktree or a reason.')
+    }
     pendingRulings.push(...(merge.rulings || []).filter((r) => !r.startsWith('Summary:')))
     mergeWorktree = merge.mergeWorktree
     if (attempt === 3) {
@@ -276,7 +285,10 @@ async function runIssue(item) {
   rec.rulings.push(...build.rulings)
   rec.unrecorded = build.findings
   halt(build.batchHalt)
+  // A build that skipped at its first step changed nothing, so its worktree is not left in place.
   if (build.state !== 'ready') return end(rec, build.state, writerNote(build))
+  // Every review, fix and merge prompt names the branch and PR; without them the rest would act on nothing.
+  if (!build.branch || !build.pr) return end(rec, 'parked', 'The build agent returned ready without a branch or PR.')
 
   let last = build
   let head = build.worktree
@@ -297,7 +309,7 @@ async function runIssue(item) {
       rec.unrecorded.push(...review.otherFindings)
       return end(rec, 'parked', haltNote())
     }
-    rec.unrecorded = []
+    if (review.recordedWriterFindings) rec.unrecorded = []
     if (!review.changeFindings.length) break
     const fix = await slot(() => unlessHalted(() => call(
       prompt('agents.md', 'Fix', {
@@ -311,6 +323,8 @@ async function runIssue(item) {
     rec.rulings.push(...fix.rulings)
     rec.unrecorded = fix.findings
     halt(fix.batchHalt)
+    // A fix skipped after the build pushed leaves the build's worktree behind.
+    if (fix.state === 'skipped') rec.leftInPlace = [...rec.worktrees]
     if (fix.state !== 'ready') return end(rec, fix.state, writerNote(fix))
     last = fix
     head = fix.worktree
@@ -321,6 +335,7 @@ async function runIssue(item) {
   const merged = await serial(() => mergeIssue(rec))
   halt(merged.batchHalt)
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace
+  else if (merged.state === 'skipped') rec.leftInPlace = [...rec.worktrees]
   return end(rec, merged.state, writerNote(merged))
 }
 

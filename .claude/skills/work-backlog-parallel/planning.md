@@ -8,8 +8,16 @@ below.
 
 `/work-backlog` "Choosing the chunk" holds, minus what `SKILL.md` "Named exceptions" replaces (size, the bugs-only
 or one-family rule, every piece of an umbrella issue). What is left to say here is how to propose a size: ask
-nothing about it up front; propose a batch that fits the session shape the user asked for (a short session or a long
-unattended one), and when they named none, propose a short one and name the longer batch the backlog would support.
+nothing about it up front; propose a batch that fits the session shape the user asked for, and when they named none,
+propose a short one and name the long batch the backlog would support.
+
+- **Short:** the doable bugs, or one feature family when there are none, about two hours by the estimate below.
+- **Long:** the doable bugs plus as many feature families as fit an unattended run of about eight hours by that
+  estimate. Every family adds a brainstorm and a spec to the sitting, so name the families and let the user drop
+  some.
+
+The runner-up `/work-backlog`'s proposal names is the other size here (the long batch beside a short proposal, the
+short one beside a long proposal), or "none" when the backlog holds nothing more.
 
 An umbrella issue's one piece is the next unbuilt piece its spec names, recorded as the issue's `piece`. Each
 issue's `kind` in `run-args.json` (`bug` or `feature`) is the kind "Choosing the chunk" decides.
@@ -27,8 +35,9 @@ The batch is a graph, not a list. Issue B depends on issue A, written `issue B a
   says the two belong in one change, say so in the proposal: one PR per issue still holds, so the edge orders them
   and the second PR builds on the first.
 
-Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, README sections, `examples/consumer/`,
-`.coverage-baseline.txt`) are not a dependency: the merge queue resolves conflicts in them (`merge-queue.md`). Any
+Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, README lists and tables,
+`examples/consumer/` lint lists, `.coverage-baseline.txt`) are not a dependency: the merge queue resolves conflicts
+in them (`merge-queue.md`). README prose follows the code-conflict rule. Any
 other overlap the graph misses meets the merge queue as a conflict; one between two of the batch's own PRs is
 resolved, and one with a change from outside the batch parks the issue (`SKILL.md` "Named exceptions").
 
@@ -40,7 +49,8 @@ batch too.
 
 One message, ending with the question banner, naming everything `/work-backlog`'s proposal names, plus:
 
-- the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece;
+- the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece,
+  in the order "Choosing the chunk" "Order" gives (by leverage, not bugs before features);
 - **the cap**: how many build, fix and merge agents run at once (default 4; each runs the full pre-push gate when it
   pushes);
 - **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
@@ -52,18 +62,18 @@ One message, ending with the question banner, naming everything `/work-backlog`'
   about the longer of the longest chain and the first ready PR plus one merge round per issue; merges and fixes take
   a free slot ahead of builds not yet started, so merging begins while later builds wait. Say plainly that a short
   batch of small bugs saves little over `/work-backlog`;
-- **the agent count**, worked out from `run.workflow.js`'s bounds: per issue, one build, up to two review/fix rounds,
-  and up to three merge calls with a resolution review between each; a dead agent's one retry and a resumed run's
-  live re-runs come on top, and most issues need far fewer than the bound. Name the session's workflow size
+- **the agent count**, from these bounds: per issue at most ten agents (one build, two reviews, two fixes, three
+  merge calls and two resolution reviews between them), each retried once if it dies, plus a resumed run's live
+  re-runs; most issues need three (build, review, merge). Name the session's workflow size
   guideline (the Workflow tool's description states it as "This session has the … workflow size guideline") and say
   whether the estimate exceeds it, adding: "This is a guideline for whoever writes the script, not a limit; nothing
   needs changing for the run to proceed." Name the hard limits (16 concurrent agents, 1000 per run) only when the
   batch would reach them.
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`; the
-permission request is left out when the session runs with permissions bypassed. Halt questions are fewer here:
-every per-issue halt parks the issue (`SKILL.md` "Named exceptions"), so ask only what would otherwise park an issue
-that a one-word answer now could keep going.
+permission request is left out when the session runs with permissions bypassed. Ask every likely halt question, as
+`/work-backlog` does: a halt parks the issue here instead of stopping the session, but a park still waits for a
+later session to ask the same question.
 
 ## Feature batches
 

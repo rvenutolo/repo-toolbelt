@@ -24,10 +24,10 @@ the controller does not.
 
 - **Before step 1:** `/work-backlog` `SKILL.md`.
 - **"The session" step 1:** the files `/work-backlog` steps 1–5 name as they come up (`leftovers.md`,
-  `findings-walkthrough.md`); leftover work finished with `/work-backlog`'s own flow reads what that flow reads.
+  `findings-walkthrough.md`, and `triage.md` when the stall check fires); leftover work finished with
+  `/work-backlog`'s own flow reads what that flow reads.
 - **The permission mode (step 1) and "The run" step 2:** `/work-backlog` `permissions.md`.
-- **"The session" step 2:** `planning.md`; `triage.md` when choosing; for a feature batch, `feature-flow.md` steps
-  1–5.
+- **"The session" step 2:** `planning.md`; for a feature batch, `feature-flow.md` steps 1–5.
 - **"Ending":** `leftovers.md` "A parallel run's files"; `findings-walkthrough.md`; `bug-flow.md` for a "fix it
   now".
 
@@ -35,7 +35,8 @@ the controller does not.
 what an agent did.
 
 **On invocation and after a context compaction**, read `.claude/backlog/current-session.md` first. After a
-compaction, also follow `/work-backlog` "After a compaction", with one change: the session stays in the main
+compaction, re-read this file first, then follow `/work-backlog` "After a compaction" (which re-reads its own
+`SKILL.md`), with one change: the session stays in the main
 checkout (it re-enters no worktree), and this paragraph says where to go. Take the first that matches:
 
 - **`workflow-done`:** the run is recorded: go to "Ending" and redo each step whose output is missing (findings not
@@ -44,9 +45,10 @@ checkout (it re-enters no worktree), and this paragraph says where to go. Take t
 - **`workflow-script`:** a run was started and not recorded as finished: go to "The run", step 4 before anything
   else, `/work-backlog` step 1 included. Step 4 alone decides whether steps 2 and 3 run again. `leftovers.md` must
   not take that run's issues over while the run can be resumed.
-- **`cap:` and `issue` lines but no `workflow-*` line:** the batch was planned and approved but never launched. Run
-  `/work-backlog` step 1, then go to "The run", step 1, under the approval the file records. (`leftovers.md`, run by
-  either skill, offers launching it, recommended, or a take-over that strips `cap:`.)
+- **`cap:` and `issue` lines but no `workflow-*` line:** the batch was planned and approved but never launched, so
+  no run needs protecting. Run `/work-backlog` steps 1–5 as any session does; step 3's `leftovers.md` offers
+  launching it, recommended, or a take-over that strips `cap:`. On launch, go to "The run", step 1, under the
+  approval the file records.
 - **None of these** (no file, or one a serial session left): start at "The session", step 1.
 
 ## How the session runs
@@ -72,11 +74,14 @@ session can resume it. A clean exit hands a running workflow to the session's ne
   the run, so a longer batch costs the user no extra visit; only the serial merges grow with it, and the proposal's
   estimate shows that.
 - **A batch may mix bugs and features and hold unrelated families.** Replaces the bugs-first exclusivity and the
-  "Features" relatedness rule in "Choosing the chunk"; bugs still come first in the order. Every brainstorm and the
+  "Features" relatedness rule in "Choosing the chunk". Bugs-first stays only as a rule about what the batch holds (a
+  backlog with doable bugs puts them in the batch); the order is "Order"'s, by leverage, not by kind. Every
+  brainstorm and the
   one question round happen before the run, so unrelated work no longer means a second sitting, and the dependency
   graph, not relatedness, keeps conflicting work apart. An issue's kind is decided as "Choosing the chunk" says.
 - **Feature batches** get one brainstorm and spec per family, then one combined question round and one permission
-  request (`planning.md`). A mixed batch asks its bug halt questions in that round.
+  request (`planning.md`). A mixed batch asks its bug halt questions in that round. Every likely halt question is
+  asked, as `/work-backlog` asks it: a park answers nothing, it only moves the question to a later session.
 - **An umbrella issue builds one piece per batch.** The script runs one build per issue number, so a batch holds at
   most one piece of an umbrella issue, named by its `piece`; its PR says `Part of #N` unless the piece is the
   spec's last. Replaces the run of every piece in one session that "PRs" describes.
@@ -88,11 +93,13 @@ session can resume it. A clean exit hands a running workflow to the session's ne
   the run.
 - **A refused pull of local `main` ends the run.** `merging.md` step 3 carries on from `origin/main`; here the next
   merges would all hit the same refusal, so the merge queue halts the batch.
-- **Rebase conflicts the batch itself causes are resolved**, not halted on (`merge-queue.md`): conflicts in the
-  shared registry, list and baseline files `planning.md` "The dependency graph" names, and conflicts between two of
-  the batch's own PRs. Concurrent builds touch those files by design, so halting on them would park most feature
-  batches. Any other conflict parks the issue, as `merging.md` step 2's blocked banner would halt it. Replaces the
-  conflict blocked banners in `merging.md` step 2 for the batch's own conflicts only.
+- **Some rebase conflicts are resolved**, not halted on (`merge-queue.md`): every conflict in the list and registry
+  lines, `.coverage-baseline.txt` and `CHANGELOG.md` that `merge-queue.md` "3. Conflicts" names, whatever commit it
+  meets, and a code conflict
+  whose conflicting hunks both come from the batch's own PRs. Concurrent builds touch those files by design, so
+  halting on them would park most feature batches. Any other conflict parks the issue, as `merging.md` step 2's
+  blocked banner would halt it. Replaces the conflict blocked banners in `merging.md` step 2 for those conflicts
+  only.
 - **Out-of-scope findings are never judged mid-run.** Agents return them unjudged and the controller judges and
   folds them at the end, so there is no "Same PR" fix and no known-gap comment for them. Replaces all of
   "Out-of-scope findings".
@@ -106,6 +113,14 @@ session can resume it. A clean exit hands a running workflow to the session's ne
   also replaces "Leaving to write" during the run (every write it would make is returned as `findings` or
   `rulings`, or made by the review stage) and the re-enter step of "After a compaction" (the controller follows
   this file's "On invocation" paragraph instead).
+- **No early push or early PR for a build agent.** A build pushes and opens its PR only when the build is finished
+  (`agents.md` "Build" step 4): a resumed run takes any open PR as a finished build and would merge a half-built
+  one. Replaces the early push and early PR of "PRs" for build agents.
+- **The plan's workspace is deleted after the PR exists**, not at the end of the plan's "Finish": a build that dies
+  before its push would otherwise leave a finished branch with no ledger to resume from (`agents.md` "Build"
+  step 3).
+- **Fix commits carry a `Review-round: <round>` trailer** (`agents.md` "Fix"), so a fix agent re-run after a death
+  sees which findings the dead one already covered; the serial controller remembers that itself.
 - **No nested subagents.** Workflow agents cannot dispatch subagents, so superpowers:subagent-driven-development is
   never chosen, superpowers:executing-plans' final review is skipped (its "With a subagent tool" and "Without a
   subagent tool" paragraphs both), and superpowers:requesting-code-review, wherever `/work-backlog` or `merging.md`
@@ -114,7 +129,9 @@ session can resume it. A clean exit hands a running workflow to the session's ne
 - **Nothing shared is written mid-run by a builder.** No build or fix agent edits the spec, `.claude/rules/`,
   `current-session.md` or `pending-findings.md` (Write, Edit and git are confined to their worktree, and `common.md`
   forbids shell writes outside it). A spec/code divergence (`feature-flow.md` step 6.3) is a `Ruling:` in the PR
-  body; the controller corrects the spec at the end. The plan is copied to the main checkout by the review stage.
+  body; the controller corrects the spec at the end. A change the issue makes to what `.claude/CLAUDE.md` says is a
+  `Ruling:` too, naming the edit; the controller applies it to the main checkout's copy at the end, as
+  "Leaving to write" would serially. The plan is copied to the main checkout by the review stage.
 - **`current-session.md` survives a run with parked issues**, trimmed to them ("Ending"). Replaces its deletion in
   step 9 while anything is parked.
 
@@ -136,6 +153,8 @@ session can resume it. A clean exit hands a running workflow to the session's ne
 - `.claude/backlog/parallel/<N>-findings.md`: the issue's out-of-scope findings, unjudged, in `pending-findings.md`'s
   entry format.
 - `.claude/backlog/parallel/run-args.json`: the workflow's `args` ("The run").
+- `.claude/backlog/parallel/summary.md`: "Ending" step 3's items, written before step 4 deletes their sources;
+  deleted by whoever gives the summary (this skill's "Ending" step 4, or `/work-backlog` step 9).
 
 ## The session
 
@@ -143,9 +162,11 @@ session can resume it. A clean exit hands a running workflow to the session's ne
    found here is finished with `/work-backlog`'s own flow, worktrees included, before planning starts; the session
    is back in the main checkout before step 2. From step 2 on it stays there: a session isolated in a worktree is
    refused `git -C` on the main checkout. Two checks come before planning, so the user's sitting is not wasted:
-   - **The Workflow tool is available** (its description states the session's workflow size guideline). If it is
-     not, stop with the blocked banner and recommend `/work-backlog`.
-   - **The permission mode.** Unless the session runs with permissions bypassed, recommend with the question banner
+   - **The Workflow tool is available**: listed among the session's tools, or among its deferred tools, in which
+     case load it with ToolSearch `select:Workflow` (its description states the session's workflow size
+     guideline). Only if it is in neither, stop with the blocked banner and recommend `/work-backlog`.
+   - **The permission mode.** Unless the session runs with permissions bypassed (`permissions.md`: a session
+     cannot reliably tell its mode, and one that cannot tell treats it as not bypassed), recommend with the question banner
      restarting in bypass mode now (`planning.md` "The permission request" says why), or going on and adding allow
      rules later. A restart after planning also works ("On invocation"), but costs the user a second visit.
 2. **Plan the batch** with the user (`planning.md`), then write `current-session.md`.
@@ -157,8 +178,9 @@ session can resume it. A clean exit hands a running workflow to the session's ne
 1. Write `.claude/backlog/parallel/run-args.json` with the workflow's `args`: `date` (the `session-date:` line of
    `current-session.md`, whatever today is), `main` (the main checkout's absolute path), `cap`, and `batch`: a list,
    in proposal order, of `{"n": <N>, "kind": "bug" | "feature", "after": [<M>, ...], "spec": "<path>",
-   "piece": "<name>", "haltAnswers": "<text>"}`. `n` and every `after` entry are integers and `after` is always
-   present (empty for none). `spec` is the spec's repo-relative path (`docs/superpowers/specs/…`), empty for a bug;
+   "piece": "<name>", "haltAnswers": "<text>"}`. `n` and every `after` entry are positive integers and `after` is
+   always present (empty for none). `spec` is the spec's repo-relative path (`docs/superpowers/specs/…`), required
+   for a feature and empty for a bug;
    confirm each named spec exists in the main checkout, since the script cannot. `piece` names an umbrella issue's
    piece, empty otherwise. `haltAnswers` holds the user's answers to the halt questions that bear on that issue, as
    `current-session.md` records them, empty when none do. The script rejects malformed args before any agent
@@ -177,8 +199,10 @@ session can resume it. A clean exit hands a running workflow to the session's ne
      merge queue's pull of `main` would refuse them: if the check fails, ask the user to move them off `main` first.
 3. Invoke the Workflow tool with `scriptPath` set to the script's absolute path and `args` set to the file's
    contents (as a JSON value, not a string). The moment the tool returns, record `workflow-run: <runId>`. Then wait
-   for the completion notification; do not poll. A run that fails with "run-args.json is invalid" started no agent:
-   write no result, correct the file, drop the `workflow-run` line and launch again. Any other result: first write it
+   for the completion notification; do not poll. Skipping a stuck agent from `/workflows` takes two skips: the
+   script cannot tell a skip from an API failure, so it retries the agent once, then parks the issue. A run that
+   fails with "run-args.json is invalid" started no agent: write no result, correct the file, drop the
+   `workflow-run` line and launch again. Any other result: first write it
    verbatim to `.claude/backlog/parallel/result.json` and record `workflow-result:` with that path, then go to step 5.
 4. **Resume.** A compaction does not stop a background workflow, and its completion notification still arrives:
    after one, keep waiting. A session restart is different, and what is possible depends on which session this is.
@@ -190,21 +214,27 @@ session can resume it. A clean exit hands a running workflow to the session's ne
      have resumed it. If the user reports it running, keep waiting. Otherwise relaunch with the same
      `scriptPath`, the same `args` and `resumeFromRunId` set to the recorded `workflow-run` (after stopping the old
      run with TaskStop if it still shows as running), and record the run id the relaunch returns in place of the old
-     one. Replay is per issue: every finished agent whose issue's earlier calls are unchanged returns its cached
-     result, and agents that were mid-run at the stop run again live, safely, because every agent starts by
-     reconciling against git and GitHub.
+     one. Replay is cached up to the first call whose order or inputs changed; the rest re-run live, which is safe
+     because every agent reconciles first against git and GitHub. Concurrent issues interleave by timing, so a
+     resume may re-run more agents live than had finished.
    - **A new session** (`/workflows` does not list the run), or a relaunch the tool rejects ("journal … is not on
      disk"): the run cannot be resumed. Tell the user that resuming the old session with `claude --resume` would
      have replayed it, then check for traces of the run: `gh pr list --state all --search "Backlog-Session: <date>
      in:body"`, with the `session-date:` line's date, and any `.claude/worktrees/wf_*`. None: nothing ran; launch
-     from step 2 with the same args. Any: end it as a batch-level halt, cause "run lost", go to step 5 with no
-     result, and sort every issue from its files and git as `leftovers.md` does.
+     from step 2 with the same args. Any: first check `git worktree list --porcelain` for a `wf_*` worktree whose
+     lock PID is alive (`kill -0`, `leftovers.md` "Locked worktrees"), and ask whether the run's own session is
+     still open. If either says the run may be going, leave everything as it is (no step 5, no "Ending", no change
+     to `current-session.md` or `session-log.md`), tell the user to resume that session, and stop. Otherwise end
+     it as a batch-level halt, cause "run lost", go to step 5 with no result, and sort every issue from its files
+     and git as `leftovers.md` does.
 
-   Never start a fresh run for a batch whose run left traces.
+   Never start a fresh run for a batch whose run left traces. This step is the one place that decides whether a
+   run can be resumed; `leftovers.md` cites it.
 5. **Record**, from `result.json` (or with no result, after a lost run). The result is
    `{merged, parked: [{n, note}], skipped, batchHalt, records}`, one record per issue with its `state`, `note`,
    `branch`, `pr`, `plan`, `worktrees`, `rulings`, `unrecorded` findings (those no review stage wrote down) and
-   `leftInPlace` (worktrees and branches the merge queue could not remove). This step may run twice (a compaction
+   `leftInPlace` (worktrees and branches the merge queue could not remove, or that an issue skipped after its
+   build left behind). This step may run twice (a compaction
    partway through), so it only adds what is missing. For each record, write its `<N>.md`: the record's state wins
    over the file's, except that a file saying `merged` wins (the merge queue writes it before cleanup), and a parked
    record with a `pr` whose `gh pr view <pr> --json state --jq .state` prints `MERGED` is `merged` (a merge agent
@@ -217,7 +247,8 @@ session can resume it. A clean exit hands a running workflow to the session's ne
 
 1. **Fold findings and correct the spec:** only the findings fold and the `merged` spec correction in `leftovers.md`
    "A parallel run's files", for every `<N>-findings.md` and for the divergence rulings of every merged `<N>.md`.
-   The worktree sort and the deletion of each `<N>.md` wait for step 4, since step 3 still reads them.
+   Apply every merged issue's `.claude/CLAUDE.md` ruling to the main checkout's copy the same way. The worktree
+   sort and the deletion of each `<N>.md` wait for step 4, since step 3 still reads them.
 2. Run `/work-backlog` step 8 (the walkthrough), skipped as "Merging" says when the batch halted on a failed `gh`
    call.
 3. **Summary:** everything `/work-backlog` step 9 names, led by the batch-level halt cause if there was one, then
@@ -225,7 +256,10 @@ session can resume it. A clean exit hands a running workflow to the session's ne
    `Summary:` (a CI rerun, an outdated superpowers phrase, a settled copied-rule conflict), then every
    `leftInPlace` entry and every path a merged issue's `worktrees:` line names that still exists (a merge agent that
    died after the merge). A note the script wrote itself (a dependency, a batch halt, a dead agent) carries no
-   question: give it one, normally "resume #N in the next session" once its cause is settled.
+   question: give it one, normally "resume #N in the next session" once its cause is settled. Write these items to
+   `.claude/backlog/parallel/summary.md` before giving them, so step 4's deletions cannot lose them: a serial
+   session that runs this ending through `leftovers.md` gives the summary only at its own step 9, which reads that
+   file and then deletes it.
 4. **Log, then trim or delete `current-session.md`.** First append `done` to the `session-log.md` line the
    `session-date:` line names, as `/work-backlog` step 9 says, while `current-session.md` still holds it. Then sort
    the run's worktrees as `leftovers.md` "A parallel run's files" says. Then, with parked issues, keep the
@@ -233,7 +267,8 @@ session can resume it. A clean exit hands a running workflow to the session's ne
    paths, plan paths (each parked `<N>.md`'s `plan:` line, copied in as `/work-backlog` records plans), allowed
    commands and park notes, without `workflow-*` or `cap:` lines; a later session of either skill resumes them
    through `leftovers.md`. With none, delete it. Delete every `<N>.md` of a merged issue, `result.json` and
-   `run-args.json`.
+   `run-args.json`, and `summary.md` once the summary that reads it has been given: here after step 3; when a `/work-backlog`
+   session runs this step through `leftovers.md`, leave it for that session's step 9.
 
 ## Never
 
@@ -250,7 +285,7 @@ session can resume it. A clean exit hands a running workflow to the session's ne
 | "The workflow died; I'll start it again" | Resume it from its own session; from any other, sort it as a lost run. |
 | "One issue failed, so stop everything" | Park it; only a batch-level failure ends the run. |
 | "This conflict is just code; keep both sides" | Keep-both is for list and registry lines; code is reviewed. |
-| "This conflict is not the batch's; resolve it anyway" | Only the batch's own conflicts are resolved; park it. |
+| "This code conflict is not the batch's; resolve it anyway" | A hunk from outside the batch parks the issue. |
 | "The baseline conflicts; merge the numbers" | Regenerate it; a rise needs a `Coverage-Drop:` commit. |
 | "I'll enter the worktree to check on it" | The session stays in the main checkout; `git -C` reads it. |
 | "The agent should run requesting-code-review" | It cannot dispatch; the review stage is the review. |

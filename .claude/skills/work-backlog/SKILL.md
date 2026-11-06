@@ -47,7 +47,9 @@ every "question banner, otherwise a `Ruling:`" elsewhere in this skill and its f
 - **Feature chunk:** the chunk OK, the brainstorm, one batched question round, then the findings walkthrough.
 - **Either:** a question-banner halt when a decision changes what gets built, and a blocked-banner halt when
   something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge,
-  commit signing that fails). Both are recorded as "Halting" says.
+  commit signing that fails, a long command that hangs past its 30 minutes ("Long commands"), Docker unreachable or
+  `sysctl net.ipv4.ip_forward` not 1 when a step needs a container, since the user's global Docker rule forbids
+  running one then). Both are recorded as "Halting" says.
 
 ## Terms
 
@@ -114,12 +116,12 @@ if any is missing.
   chunk is approved, or earlier when a "fix it now" in step 4 makes a worktree. It holds a `session-date:
   YYYY-MM-DD` line, the date of the `session-log.md` line this session's step 2 appended (a file carried over from an
   earlier session gets this line rewritten, step 6); the flow (bug or feature); the issues in order; the halt answers
-  from the chunk OK; the spec path once `feature-flow.md` step 2 writes it; `spec approved` plus the confirmed
-  commands after `feature-flow.md` step 5; each issue's plan path; every banner halt with its answer ("Halting"); and
-  one line per issue as it reaches a PR, as its PR merges, and as its worktree is removed. Step 2 reads a copy of any
-  date as the point to resume from, step 3 reconciles it against git and GitHub (`leftovers.md`), and step 9 deletes
-  it. Code is recovered from git and GitHub; approvals, halt answers and spec paths survive only in this file and
-  under `docs/superpowers/`.
+  and the commands the user allowed, from the chunk OK (bugs) or `feature-flow.md` step 5 (features); the spec path
+  once `feature-flow.md` step 2 writes it; `spec approved` after `feature-flow.md` step 5; each issue's plan path;
+  every banner halt with its answer ("Halting"); and one line per issue as it reaches a PR, as its PR merges, and as
+  its worktree is removed. Step 2 reads a copy of any date as the point to resume from, step 3 reconciles it against
+  git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
+  answers and spec paths survive only in this file and under `docs/superpowers/`.
 - `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State"). This
   skill writes them only when `leftovers.md` records a finished run's result, and folds any it finds.
 
@@ -141,7 +143,8 @@ from inside a worktree is fine.
    the resume record step 3 reconciles, and only step 9 deletes it. Append today's line to `session-log.md`, with
    the count from `gh issue list --state open --limit 1000 --json number --jq length`. If today's line already
    exists without `done`, this is the same session restarted: keep it and add none. If it ends in `done`, an earlier
-   session finished today and this one appends its own line.
+   session finished today and this one appends its own line. A line whose date is the `session-date:` of a
+   carried-over `current-session.md` holding `workflow-*` lines belongs to that run: append this session's own line.
 3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
    empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
    `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
@@ -155,7 +158,10 @@ from inside a worktree is fine.
 6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it. Then write
    `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or it holds
    parked issues of a parallel run left for later); never overwrite one. Either way its `session-date:` line names
-   the date of the line this session's step 2 appended.
+   the date of the line this session's step 2 appended, and the halt answers and allowed commands go in with the
+   chunk. The one exception is a file that still holds `workflow-*` lines: a parallel run the user left going in
+   step 3 owns it, and that run's "Ending" and lost-run check read its date. Then the session chooses no chunk, says
+   why, and goes to step 8.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** One message that names:
@@ -174,21 +180,41 @@ from inside a worktree is fine.
      (`sub-skill-overrides.md`);
    - every chunk issue that did not merge and why (a halt, a skipped piece, an issue the user closed);
    - every issue the user's decision opened or closed this session (the walkthrough, `bug-flow.md` step 3,
-     `triage.md`).
+     `triage.md`);
+   - every item in `.claude/backlog/parallel/summary.md`, which `leftovers.md` writes when step 3 finishes a parallel
+     run's "Ending"; delete the file once the summary is sent.
 
-   Then append `done` to the `session-log.md` line whose date is `current-session.md`'s `session-date:` (a long
-   unattended run crosses midnight, so today's date may name no line); with no `current-session.md`, to the line this
-   session's step 2 appended. Delete `current-session.md`, unless it still holds parked issues of a parallel run that
-   the user left for later: then trim it to them, as `/work-backlog-parallel`'s "Ending" says.
+   Then append `done` to the `session-log.md` line this session's step 2 appended or kept. A long unattended run
+   crosses midnight, so today's date may name no line: once step 6 has written this session's chunk, the line is
+   the one `current-session.md`'s `session-date:` names; before that (a halt in steps 3 to 5, or no chunk chosen), it
+   is the line this session's step 2 appended or kept, since a carried-over `current-session.md` still holds a dead
+   session's date. Delete `current-session.md`, unless it still holds `workflow-*` lines of a run the user left
+   going (leave it as it is), or parked issues of a parallel run that the user left for later (trim it to them, as
+   `/work-backlog-parallel`'s "Ending" says).
 
 ## Choosing the chunk
 
-Read every open issue with `gh issue list --state open --limit 1000 --json number,title,labels,body` (the default
-limit hides older issues). An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body
-reports something that is wrong now with a way to reproduce it; otherwise it is a feature, whatever other labels it
-carries. Few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a
-Fable review. The proposal names every issue whose kind came from something other than the label, so the user can
-correct it with the chunk OK. If any open issue is a bug, the chunk is bugs; otherwise it is features.
+Read every open issue into a file first:
+`gh issue list --state open --limit 1000 --json number,title,labels,body > .claude/tmp/issues.json` (after
+`mkdir --parents .claude/tmp`; the default limit hides older issues). The bodies run to well over what the Bash tool
+shows, and a classification read from a cut-off listing misses issues. Classify from one line per issue:
+
+```bash
+jq --raw-output '.[] | [.number, ([.labels[].name] | join(",")), .title,
+  (.body[0:160] | gsub("\\s+"; " "))] | @tsv' .claude/tmp/issues.json
+```
+
+and read a full body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only where
+the excerpt leaves the kind unclear, and for every issue the proposal takes.
+
+An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body reports something that is wrong
+now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. Few issues carry the
+label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable review. The proposal
+names every issue whose kind was a judgment call, so the user can correct it with the chunk OK: a bug found from its
+body alone, and an issue with neither the `bug` label nor a `fix:` or `feat:` title. An issue whose kind follows from
+its label or title is not named. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is
+features. A bug the session cannot do at all (below) does not count, or it would block every later chunk until the
+user acts.
 
 - **Bugs:** related bugs together (same code, same root cause). With none related, a batch of several small bugs.
 - **Features:** one feature, or several that are closely related: they share code, one is a direct prerequisite of
@@ -202,6 +228,8 @@ correct it with the chunk OK. If any open issue is a bug, the chunk is bugs; oth
   walkthrough still follows, so more than four rarely finishes in a session. When a family is bigger, propose the
   part that fits; the rest stays open for the next session, and the spec covers only the proposed part, with a
   shared helper designed so the rest can reuse it.
+- **Combined changes:** an issue body or comment that asks for its change to land together with another's still
+  gets one PR per issue ("PRs" below): order the two by the dependency between them, and say so in the proposal.
 - **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments`. A decision the
   user left in a comment changes the proposal, and the list query returns bodies only.
 - **Earlier pieces:** for each issue in the proposed chunk, also run
@@ -212,7 +240,8 @@ correct it with the chunk OK. If any open issue is a bug, the chunk is bugs; oth
 The proposal is one message, ending with the question banner, that names:
 
 - the issues, why they belong together, and why they come first by the three ordering factors;
-- the runner-up chunk and why it lost, so the user can swap with one word;
+- the runner-up chunk and why it lost, so the user can swap with one word, or "none" when no other chunk could be
+  formed (every doable issue of the chosen kind is already in this one);
 - the user's own work step 3 saw and left alone, or "none";
 - for a bug chunk, every likely halt question for the unattended part ("Terms") and the permission request
   (`permissions.md`). The OK on the chunk answers the questions; the permission request needs its own answer. A
@@ -261,16 +290,18 @@ those steps refer to.
   - Copy, right after entering and before any subagent is dispatched: `.claude/CLAUDE.md`, `.claude/rules/` and,
     for a feature chunk, the chunk's spec, at the same paths (`mkdir --parents docs/superpowers/specs
     docs/superpowers/plans` first). They are local files ("State") and so absent in a new worktree. The copies are
-    throwaway: a change to the spec, the plan, or a rule or rule override is made in the main checkout's file
-    ("Leaving to write") and copied again; a change made only in the worktree dies with it.
+    throwaway: a change to the spec, the plan, a rule or rule override, or `.claude/CLAUDE.md` is made in the main
+    checkout's file ("Leaving to write") and copied again; a change made only in the worktree dies with it. A change
+    that makes `.claude/CLAUDE.md` wrong (a lint, formatter, command or layout it describes) updates it this way, in
+    the same issue's work, as the global docs rule asks of every doc.
   - Then run the baseline tests, `./.ci/in-devshell ./run-tests` ("Long commands"), for bugs and features alike: a
     failure that was already on `main` would otherwise be blamed on the change. Judge a red baseline as the
     using-git-worktrees entry of `sub-skill-overrides.md` says.
   - Resume a leftover worktree or PR as `leftovers.md` says. Leave and remove in `merging.md` steps 3 and 4.
 - **Leaving to write:** a session that entered a worktree with `EnterWorktree` is isolated in it. Claude Code
   refuses the Write and Edit tools on a main-checkout path and `git -C` on the main checkout; reading is allowed.
-  So every write to a main-checkout file (the state files, a plan copy, a spec or rule correction) is made from the
-  main checkout:
+  So every write to a main-checkout file (the state files, a plan copy, a spec, rule or `.claude/CLAUDE.md`
+  correction) is made from the main checkout:
   1. Never while an Agent call is outstanding; a background Bash command keeps its own directory and may run on.
   2. `ExitWorktree` with `action: keep`.
   3. Make the write.
@@ -280,17 +311,21 @@ those steps refer to.
   Writes that fall together share one round trip. Never write a main-checkout file from inside a worktree with Bash
   (`cp`, a redirect): it gets through only because the guard checks the file tools and `git`, not Bash paths, and a
   stricter guard would stop an unattended run partway.
-- **Long commands:** the pre-push gate, the baseline tests, and the CI watch each run for minutes, past the Bash
-  tool's two-minute default and sometimes its ten-minute foreground maximum. Run them with `run_in_background` and
-  read the output when the command exits; a foreground timeout is not a failure of the command. A step that says to
-  wait a minute runs `sleep 60` with `run_in_background` and goes on when its completion notification arrives;
-  never a foreground `sleep`, which the harness blocks.
+- **Long commands:** the pre-push gate (`git push`), the baseline tests, the baseline regeneration and the CI watch
+  each run for minutes, past the Bash tool's two-minute default and sometimes its ten-minute foreground maximum. Run
+  them with `run_in_background` and read the output when the command exits; a foreground timeout is not a failure of
+  the command. Each runs as `timeout 30m <command>` (the global rule for commands that could hang; permission
+  matching strips the `timeout`, so the command's own allow rule still applies). Exit 124 means it hung: a
+  blocked-banner halt naming the command and its last output, never a silent rerun. A step that says to wait a
+  minute runs `sleep 60` with `run_in_background` and goes on when its completion notification arrives; never a
+  foreground `sleep`, which the harness blocks.
 - **Features:** follow `feature-flow.md`.
 - **Bugs:** follow `bug-flow.md`.
 - **Copied rules:** a conflict with a copied rule in `.claude/rules/` that only surfaces during the unattended part
   is settled by satisfying the rule, and named in the summary. `.claude/CLAUDE.md` asks the user about such a
   conflict, but nobody is there to answer, and satisfying the rule is the choice that never needs undoing. A conflict
-  known before the unattended part is asked in the question round instead (`feature-flow.md` step 5).
+  known before the unattended part is asked instead, with the chunk proposal (bugs) or in the question round
+  (features, `feature-flow.md` step 5).
 - **PRs:** one per issue, so each merges and reverts on its own; related bugs never share one, so dropping one bug
   never means rewriting a pushed branch another bug's PR needs. An umbrella issue gets one PR per piece, each from
   its own worktree and plan (`feature-flow.md` step 6 runs once per piece); the earlier PRs carry `Part of #N` and
@@ -415,7 +450,8 @@ worktree's ledger, which `leftovers.md` has the next session sweep before that P
 | "Checks exited 0, so CI is green" | A cancelled check exits 0 too; green is every bucket `pass` or `skipping`. |
 | "`gh` says to merge with `--admin`" | Bypassing a rule is the user's call. Blocked banner. |
 | "The reviewer found another hole in my fix; that's a new issue" | Fix it in the branch, known-gap it, or drop it. |
-| "The push timed out, so it failed" | The pre-push gate takes minutes; run it in the background and read the result. |
+| "The push timed out, so it failed" | The gate takes minutes; run it in the background and read the result. |
+| "`timeout 30m` killed it; I'll run it again" | Exit 124 means it hung. Blocked banner; "Long commands". |
 | "`gh pr checks` errored right after the PR opened" | "No checks reported" means none has started; wait, run again. |
 | "The leftover ledger has open tasks; sweep and merge" | Open tasks mean the plan resumes first, then the sweep. |
 | "The user said the commands are allowed, so no prompt" | Only an allow rule or bypass mode does; `permissions.md`. |

@@ -16,9 +16,11 @@ background.
      any comment or review means the user has touched the PR (this skill never comments or reviews on GitHub). Ask
      with the question banner whether to go on with it or leave it, quoting what they wrote, and do not touch it
      before the answer.
-1. **Wait for CI** with `gh pr checks <number> --watch --fail-fast`, then read the result from
+1. **Wait for CI** with `timeout 30m gh pr checks <number> --watch --fail-fast`, then read the result from
    `gh pr checks <number> --json bucket`, since the exit code alone does not tell the cases apart (a cancelled check
    exits 0). CI is green when every bucket is `pass` or `skipping`. Otherwise:
+   - Exit 124 is the `timeout`: CI has not finished in 30 minutes (a queued or hung job). Blocked banner naming the
+     checks still `pending`; "Long commands" in `SKILL.md`.
    - A non-zero exit saying `no checks reported on the '<branch>' branch` means no check has started yet, which
      happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
      run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
@@ -50,7 +52,8 @@ background.
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
      `git rebase origin/main`, regenerate the baseline when "Baseline after a rebase" below says so,
      confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
-     push with `git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full gate again;
+     push with `timeout 30m git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full
+     gate again, a long command;
      a fix for a gate failure here is a merge-time fix, step 1), and go back to step 1 for the new CI run. A rebase
      that conflicts is a change the user must see: `git rebase --abort`, blocked banner. Never
      `gh pr update-branch`; it rewrites the commits unsigned. The third `BEHIND` or `DIRTY` on one PR is a blocked
@@ -69,10 +72,10 @@ background.
    `git diff --quiet <base> <old-remote-sha> -- .coverage-baseline.txt` and
    `git diff --quiet <base> origin/main -- .coverage-baseline.txt` exit 1. Skip it when `HEAD` already has a
    commit after `origin/main` that changes the baseline and nothing has been rebased since (an earlier pass
-   regenerated it). To regenerate, run `./.ci/in-devshell ./run-tests` then
-   `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline`; a changed file is committed as a new signed
-   commit, never an amend, and a unit whose line rises carries the `Coverage-Drop:` trailer exactly as README
-   "Recording a rise" says.
+   regenerated it). To regenerate, run `timeout 30m ./.ci/in-devshell ./run-tests` then
+   `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline` ("Long commands" in `SKILL.md`); a changed
+   file is committed as a new signed commit, never an amend, and a unit whose line rises carries the
+   `Coverage-Drop:` trailer exactly as README "Recording a rise" says.
 3. **Leave, record and pull.** `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`).
    From the main checkout, record the merge in `current-session.md` if it is not there yet, so a compaction from
    here on does not lead to a second merge attempt. Then `git pull --ff-only`, so the merge is on local `main`. If

@@ -47,10 +47,12 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
 2. **Fresh start** (nothing found). Read the issue with `gh issue view <n> --json state,title,body,comments`:
    `CLOSED` returns `state: "skipped"`. The comments are part of the issue: a design or a requirement the user
    settled there binds you as the body does. `haltAnswers` binds you too: never re-decide a question it answers.
-   Rename the branch with `git branch -m <type>/<n>-<description>` (the "Branches" bullet). Copy
+   Rename the branch with `git branch --move <type>/<n>-<description>` (the "Branches" bullet). Copy
    `<main>/.claude/CLAUDE.md` and `<main>/.claude/rules/` to the same relative paths here, and for a feature
    `<main>/<spec>` as well (`mkdir --parents .claude docs/superpowers/specs docs/superpowers/plans` first); read the
-   copied rules that apply to the files you will change. Then run the baseline the "Worktrees" bullet names, before
+   copied rules that apply to the files you will change. These copies are thrown away with the worktree: a change
+   the issue makes to what `.claude/CLAUDE.md` says is a `Ruling:` naming the edit (`SKILL.md` "Named
+   exceptions"), never an edit here. Then run the baseline the "Worktrees" bullet names, before
    changing anything; red is never fixed as part of this issue.
 3. **Build.**
    - **Bug:** `bug-flow.md` steps 2–4. "Not a bug" (step 3) parks, with "close as completed" or "close as not
@@ -66,13 +68,15 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
      `findings`, every `Ruling:` goes in `rulings`), then "Finish" except its workspace deletion, which waits for
      step 4: a death before the push would otherwise leave a finished branch with no ledger to resume from. Where
      the merged code of an earlier piece contradicts the spec, the code wins and the divergence is a ruling.
-4. **Push and open the PR.** Only here: the "PRs" bullet's early push and early PR do not apply to a build agent,
-   because step 1 takes any open PR for a finished build, and a resumed run would merge a half-built one.
+4. **Push and open the PR.** Only here: the "PRs" bullet's early push and early PR do not apply to a build agent
+   (`SKILL.md` "Named exceptions"), because step 1 takes any open PR for a finished build, and a resumed run would
+   merge a half-built one.
    `git push --set-upstream origin <branch>` (or the detached form from step 1). A pre-push gate failure is fixed
    and pushed again, as a failing test would be. Then `gh pr create` per the "PRs" and "PR title" bullets:
    `Closes #<n>`, or `Part of #<n>` for an umbrella piece that is not the spec's last, the rulings (not the
    `Summary:` lines), ending with `Backlog-Session: <date>`. Once the PR exists, delete the plan's workspace
-   (`.superpowers/sdd/<plan-basename>/`).
+   (`.superpowers/sdd/<plan-basename>/`) with `rm --recursive --force` on the absolute path `sdd-workspace` printed,
+   written out (a named exception: the ledger must outlive a death before the push).
 5. **Return** `state: "ready"`, `branch`, `pr`, `plan` (repo-relative, or empty), `worktree`, `rulings`
    (`Summary:` lines included, below), `findings`, `changed: true`.
 
@@ -104,8 +108,9 @@ worktree path the issue's agents used so far), `build` (the latest build or fix 
    - `[HEAD_SHA]`: `origin/<branch>`, inspected with `git diff` and `git show` only. The pushed branch, not
      `headWorktree`, is what merges, and a writer's worktree may already be gone.
 
-   The PR body's `Ruling:` lines are settled: a finding one of them already rules on is not raised again unless the
-   code since contradicts the ruling. Edit no file in any issue worktree.
+   Raise every finding, including one a `Ruling:` line in the PR body already rules on: the "Subagents" clause's
+   reason holds here, and the fix agent answers a settled one by citing its ruling. Edit no file in any issue
+   worktree.
 3. **Sort** each finding: about the change itself (a hole in this PR's code or tests) goes in `changeFindings`;
    anything else is appended to `<n>-findings.md` and listed in `otherFindings`. Each "Declined to judge" line
    `code-reviewer.md` produces goes in `changeFindings` with its summary starting `Declined to judge:`, so the fix
@@ -132,14 +137,16 @@ A finding outside that change follows step 3 and is not this review's business b
 Inputs: `n`, `round`, `kind`, `branch`, `pr`, `spec` (repo-relative, empty for a bug), `plan` (repo-relative, or
 empty), `changeFindings`, `date`, `main`.
 
-1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits
-   carry a `Review-round: <round>` trailer; a commit on the branch with this round's trailer means a resumed fix:
-   continue from the findings it does not cover. Copy `<main>/.claude/CLAUDE.md` and `<main>/.claude/rules/` in,
-   and for a feature `<main>/<spec>`, as Build step 2 does. For a feature, `<main>/<plan>` says what the change is
-   for.
+1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits carry a
+   `Review-round: <round>` trailer (`SKILL.md` "Named exceptions"); a commit on the branch with this round's trailer
+   means a resumed fix: continue from the findings it does not cover. Copy `<main>/.claude/CLAUDE.md` and
+   `<main>/.claude/rules/` in, and for a feature `<main>/<spec>`, as Build step 2 does. For a feature, `<main>/<plan>`
+   says what the change is for.
 2. **Handle each finding** as the "Findings about the change itself" bullet says: fixed (test first, then fix, as
    separate commits where a test applies), given a known-gap comment, or dropped with a ruling. A
    `Declined to judge:` entry always gets a ruling: the behavior stands, or it is now a finding and handled as one.
+   A finding a `Ruling:` line in the PR body already settles is dropped with a ruling that cites it, unless the code
+   since contradicts that ruling.
    Three failed attempts at one finding park the issue (`sub-skill-overrides.md`, the systematic-debugging entry).
 3. **Push**, when you made commits: first add any new rulings, not the `Summary:` lines, to the PR body (`common.md` "PR
    bodies"), then `git push origin HEAD:refs/heads/<branch>` (the pre-push gate runs). With no commits, only the body
