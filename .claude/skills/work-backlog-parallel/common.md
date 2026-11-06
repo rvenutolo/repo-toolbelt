@@ -61,11 +61,16 @@ minute", this file's "Long commands" rule applies instead: a background notifica
 - **After a context compaction**, re-read this file and your section, and the inputs in your prompt, before
   anything else. Rules such as "never ask", "never fetch `main`" and "never end your turn mid-command" do not
   survive a compaction otherwise.
-- **Summary items:** a CI rerun, a superpowers phrase the installed version no longer has, and a copied-rule
-  conflict settled by "Copied rules" each go in `rulings` as a line starting `Summary:`, so the controller's
-  summary names them. They are not rulings on the change: never put one in the PR body.
-- **PR bodies** follow the "PRs" bullet. To edit one, read it (`gh pr view <pr> --json body`) and add new `Ruling:`
-  lines above the `Backlog-Session:` marker; never write the body anew.
+- **Summary items:** a CI rerun, a superpowers phrase the installed version no longer has, a copied-rule conflict
+  settled by "Copied rules", and a change that alters an existing lint's or formatter's behavior (naming the
+  consumers it would fail, as `halt-questions.md`'s default for that case asks) each go in `rulings` as a line
+  starting `Summary:`, so the controller's summary names them; the controller never sees the code, so it cannot
+  notice these itself. They are not rulings on the change: never put one in the PR body.
+- **PR bodies** follow the "PRs" bullet, its 100-character line limit and its body-edit procedure included (read the
+  body, add the new `Ruling:` lines above the marker, never write the body anew).
+- **The superpowers plugin directory** is what `<main>/.claude/skills/work-backlog/permission-diff --superpowers-dir`
+  prints: `code-reviewer.md` is `<it>/skills/requesting-code-review/code-reviewer.md`, and the plan scripts are under
+  `<it>/skills/<skill>/scripts/`. The config directory is not `~/.claude`, so a guessed path misses.
 - **Long commands** (`git push`, whose pre-push hook runs the full gate, `./.ci/in-devshell ./run-tests`,
   `gh pr checks --watch`, and superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash
   tool's limits. Each one writes its exit status to a file in the worktree it runs in, by absolute path:
@@ -77,21 +82,26 @@ minute", this file's "Long commands" rule applies instead: a background notifica
   1. `mkdir --parents <wt>/.claude/tmp`, then run the command with `run_in_background`, as
      `timeout 30m <command>; echo $? > <status path>`, devshell commands as `cd <wt> && timeout 30m ./.ci/in-devshell
      …; echo $? > <status path>`. The absolute path is what makes the write and the wait name the same file
-     whatever directory each call runs in.
+     whatever directory each call runs in. The status is the whole list's exit: a `1` with no output from the
+     command means the `cd` failed, not the command.
   2. Wait with foreground calls of `<main>/.claude/skills/work-backlog-parallel/wait-for <status path> 580`, each
      passing the Bash tool `timeout: 600000`: the tool's default limit is shorter, and a call past it moves to the
      background, where its end never reaches you. A call the tool still cuts off counts as exit 124 (not written
      yet). Repeat on 124, four calls at most: `timeout 30m` writes a status within 30 minutes, so a fourth 124, or a
-     status of 124, means the command hung. That is a park, or a batch-level failure when its cause is one (below),
-     with the command and its last output in the note.
+     status of 124, means the command hung. That is a park, or a batch-level failure when its cause is one (the
+     "Batch-level failures" rule above), with the command and its last output in the note.
   3. Read the output and the exit status.
 
   Use that helper, by that path, for every wait: the allow rule that pre-approves waits names it, and a
   `timeout … bash -c` loop or a write under `/tmp` would stop at a permission prompt nobody answers. Neither the
-  Monitor tool nor a background notification waits for you: both reach you only while you keep working, and ending
-  your turn kills your background shells. Never end your turn while a command runs: your final message is your
-  result, and a result sent early is a wrong one. "Wait a minute" is `wait-for` on a status path nothing writes,
-  with `60`.
+  Monitor tool nor a background notification waits for you: both reach you only while you keep working. Your final
+  message is your result and nothing that arrives after it can change it; a background shell still running when you
+  finish is stopped a few minutes later, its exit unseen. Never end your turn while a command runs. "Wait a minute"
+  is `wait-for` on a status path nothing writes, with `60`.
+
+  `git commit` is a long command of another kind: the commit-msg hook runs commitlint through the devShell, which
+  can take minutes the first time. Run it in the foreground with the Bash tool `timeout: 600000`; it needs no status
+  file.
 - **A git ref-lock error** (`cannot lock ref`, `index.lock` exists) comes from another agent's command on the shared
   git directory: wait a minute and retry once.
 - **Your worktree is the worktree.** superpowers:using-git-worktrees, loaded by executing-plans, finds this one

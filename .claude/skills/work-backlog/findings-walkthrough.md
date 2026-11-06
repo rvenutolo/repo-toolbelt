@@ -22,7 +22,8 @@ For each finding:
    `SKILL.md`, after the permission request (`permissions.md`) if this session has not made it yet. A fix made now
    has no issue: its branch is `fix/finding-<slug>` ("Branches" in `SKILL.md`), its PR body describes the finding
    instead of using a closing keyword, and still ends with the marker. Write `current-session.md` as soon as the
-   worktree is created and before entering it ("State" in `SKILL.md`), with its `session-date:` line. When this
+   worktree is created and before entering it ("State" in `SKILL.md`), with its `session-date:` line and, if the
+   file has none yet, a `started:` line ("Budgets" in `SKILL.md`), since the fix is unattended work. When this
    runs at session step 4, session step 6 later adds the chunk to this file. A known-gap comment also goes through
    a PR of its own, since `main` is protected and nothing lands on it without one.
 7. **Remove the entry** from `pending-findings.md` only after the decision is carried out.

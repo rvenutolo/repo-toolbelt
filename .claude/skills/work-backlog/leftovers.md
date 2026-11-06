@@ -32,8 +32,9 @@ either skill may be the one that finds them.
 - `workflow-result` with no `workflow-done`: the run finished, and its result waits in
   `.claude/backlog/parallel/result.json`. Record from it as the parallel skill's "The run" step 5 does, delete the
   file, and treat the run as `workflow-done`.
-- `workflow-script` or `workflow-run` and neither of those: ask with the question banner, before touching anything the
-  run names, whether to resume it, take its issues over here, or leave them because the run is still going. Recommend
+- `workflow-run` (written with `workflow-script` and `workflow-args` at launch) and neither of those: ask with the
+  question banner, before touching anything the run names, whether to resume it, take its issues over here, or leave
+  them because the run is still going. Recommend
   "leave" when a `wf_*` worktree holds a rebase in progress or is locked by a live process ("Locked worktrees"
   below). Taking over strips the `workflow-*` and `cap:` lines from `current-session.md` first, so the parallel skill
   never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
@@ -63,11 +64,9 @@ Then fold the files, before sorting anything:
     prerequisite waiting for its merge OK), its issue is still open and no worktree or PR was made. There is nothing
     to confirm or sort: delete the file, and the issue stays in the backlog for the next chunk.
   - `ready-to-merge`: an open PR the run built and reviewed, waiting for the shakedown's merge OK
-    (`/work-backlog-parallel` "Shakedown and budgets"). Ask with the question banner whether to merge it, naming the
-    PR. On yes, merge it with `merging.md` from step 0, in the issue's worktree (sorted below); this answer is
-    `merging.md` step 2's shakedown question, so it is not asked again unless a `BEHIND` rebase changes the head. The
-    run's review stage was its review, so it gets no requesting-code-review pass. Then handle it as `merged`. On no,
-    keep the file and leave the PR open for the user.
+    (`/work-backlog-parallel` "Shakedown and budgets"). Ask and merge as `/work-backlog-parallel` "Ending" step 1
+    says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On no, keep the
+    file and leave the PR open for the user.
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it with the question banner before resuming that issue, recommending the
     note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
@@ -82,8 +81,9 @@ Then fold the files, before sorting anything:
 - `summary.md`: a dead session's undelivered summary; keep it, and step 9 gives its items and deletes it.
 
 Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on the issue branch) and
-`.claude/worktrees/wf_<runId>-<k>`, whose branch is an issue branch, or its own `worktree-wf_<runId>-<k>`, or none
-(detached). A `<N>.md` lists every one an issue used under `worktrees:`. Before sorting one: a locked one whose
+`.claude/worktrees/<runId>-<k>` (the run id itself begins `wf_`), whose branch is an issue branch, or its own
+`worktree-<runId>-<k>`, or none (detached). A `<N>.md` lists every one an issue used under `worktrees:`. Before
+sorting one: a locked one whose
 lock PID is dead ("Locked worktrees" below) is unlocked with `git worktree unlock <path>` (once the user has said no
 run is going), and one with a rebase in progress gets `git -C <path> rebase --abort`, which puts it back on its
 branch. Nothing else removes them for this skill: Claude Code's own retention sweep removes only clean `wf_*`
@@ -99,7 +99,7 @@ worktrees whose commits are all pushed, and only after the `cleanupPeriodDays` s
   only when the note says a resolution review passed it. When its PR merges, `merging.md` step 4 removes it by its
   own path, not the `<N-description>` one.
 - A detached or `worktree-wf_*` one with no commits that are not on its issue's `origin/<branch>` or on
-  `origin/main` holds nothing: remove it and delete its `worktree-wf_*` branch, naming each in the summary.
+  `origin/main` holds nothing: remove it and delete its `worktree-<runId>-<k>` branch, naming each in the summary.
 - One that holds such commits, or that no `<N>.md` names: ask with the question banner whether to keep it for its
   issue or remove it.
 - A `worktree-wf_*` branch is this skill's even with no worktree left and even when it looks like a merged branch
@@ -168,7 +168,7 @@ To resume:
 A branch other than `main` that the `--merged` listing shows with upstream `[gone]`, or a leftover PR's branch once
 `gh pr view` prints `MERGED`. If a worktree under `.claude/worktrees/` still holds it (a session that died between
 the merge and the cleanup), remove that worktree first (the path `git worktree list` shows holding the branch:
-`<N-description>`, or a parallel run's `wf_<runId>-<k>` or `merge-<N>`), since the delete fails while the branch is
+`<N-description>`, or a parallel run's `<runId>-<k>` or `merge-<N>`), since the delete fails while the branch is
 checked out; then `git branch --delete <name>`, naming each, and list the deleted names in the session summary. A
 delete refused because local `main` lacks the merge waits for a later session, as `merging.md` step 4 says.
 

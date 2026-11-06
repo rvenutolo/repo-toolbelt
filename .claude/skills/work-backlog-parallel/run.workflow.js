@@ -43,11 +43,26 @@ function checkArgs() {
     if (typeof item.piece !== 'string') bad(`#${item.n} needs a piece string (empty unless it is an umbrella piece)`)
     if (typeof item.haltAnswers !== 'string') bad(`#${item.n} needs a haltAnswers string (empty when none)`)
   }
+  const afterOf = {}
   for (const item of A.batch) {
     for (const m of item.after) {
       if (!Number.isInteger(m)) bad(`#${item.n} lists ${JSON.stringify(m)} in "after", not an integer`)
       // planning.md keeps a dependent out of the batch when its prerequisite is outside it and unmerged.
       if (!seen.has(m)) bad(`#${item.n} depends on #${m}, which is not in the batch`)
+    }
+    afterOf[item.n] = item.after
+  }
+  // An issue whose `after` chain leads back to itself would wait forever. Rejected here, not parked at run time: a
+  // planning typo must not spend the parked budget while the rest of the batch runs.
+  for (const item of A.batch) {
+    const visited = new Set()
+    const stack = [...item.after]
+    while (stack.length) {
+      const m = stack.pop()
+      if (m === item.n) bad(`#${item.n} is in a dependency cycle through its "after" list`)
+      if (visited.has(m)) continue
+      visited.add(m)
+      stack.push(...afterOf[m])
     }
   }
 }
@@ -92,8 +107,10 @@ const MERGE = {
     state: { type: 'string', enum: ['merged', 'parked', 'skipped', 'needs-review'] },
     parkNote: str, batchHalt: str, mergeWorktree: str, conflictedFiles: strs, leftInPlace: strs,
     rulings: strs, findings,
-    // For needs-review: what the change under review is for, the failure it answers, and the commit it was made on,
-    // so the reviewer judges that change and not the whole branch.
+    // For needs-review: what the change under review is for, the failure it answers, and the commit the reviewer
+    // diffs from, so it judges that change and not the whole branch: for a gate or CI fix the commit the fix was
+    // made on; for a conflict resolution the pre-rebase head (the old remote SHA), since a diff from origin/main
+    // would show the branch's whole change to the file and hide a dropped main-side line.
     reason: { type: 'string', enum: ['', 'conflict', 'gate', 'ci'] }, failure: str, fixBase: str,
   },
   required: ['state', 'parkNote', 'batchHalt', 'mergeWorktree', 'conflictedFiles', 'leftInPlace', 'rulings',
@@ -104,8 +121,10 @@ const prompt = (file, section, inputs) =>
   `You are a /work-backlog-parallel workflow agent with no human watching. Read ${SKILL}/common.md, then follow ` +
   `the section "${section}" of ${SKILL}/${file}. Inputs (JSON): ${JSON.stringify(inputs)}`
 
-// The cap bounds build, fix and merge agents together: each runs the full pre-push gate when it pushes. Merge and
-// fix agents go ahead of builds still waiting, so ready work is not held behind issues that have not started.
+// The cap bounds build and fix agents together: each runs the full pre-push gate when it pushes. Fix agents go
+// ahead of builds still waiting, so ready work is not held behind issues that have not started. The merge agent
+// takes no slot: serial() already bounds it to one, so at most cap + 1 gates run, and a merge never waits for a
+// build to finish (a slot freed by a build goes to the next queued build before the unslotted review can ask).
 let free = A.cap
 const urgent = []
 const waiting = []
@@ -143,15 +162,17 @@ const unlessHalted = (start) => {
 }
 const haltNote = () => `Batch halted: ${batchHalt}`
 // The agent that hit a batch-level failure reports it in batchHalt and may leave parkNote empty. A park with no note
-// at all still needs one: the summary and leftovers.md ask the user the note's question.
+// at all still needs one: the summary and leftovers.md ask the user the note's question. A skip with no note is the
+// user closing the issue or its PR (the only skip an agent makes without a note), and the summary must say so.
 const writerNote = (result) => result.parkNote || (result.batchHalt ? `Batch halted: ${result.batchHalt}` : '') ||
-  (result.state === 'parked' ? 'The agent parked the issue without saying why; read its PR and branch.' : '')
+  (result.state === 'parked' ? 'The agent parked the issue without saying why; read its PR and branch.' : '') ||
+  (result.state === 'skipped' ? 'Skipped: the agent found the issue or its PR closed.' : '')
 
 // An agent returns null on terminal API errors and when the user skips it from /workflows; the script cannot tell
 // the two apart. One that stalls on every attempt or exceeds the StructuredOutput retry cap throws. Either way one
 // retry is safe because every agent starts by reconciling against
-// git and GitHub, and parking at once would also park every dependent. A second throw reaches runIssue's catch. Once
-// a batch halt is set there is no retry, and the caller reports the halt, not a death (dead()).
+// git and GitHub, and parking at once would also park every dependent. A second throw propagates; ask() below turns
+// it into a result. Once a batch halt is set there is no retry, and the caller reports the halt, not a death (dead()).
 async function call(text, opts) {
   try {
     const result = await agent(text, opts)
@@ -164,28 +185,15 @@ async function call(text, opts) {
 }
 const dead = (who) =>
   (batchHalt ? haltNote() : `The ${who} returned no result twice (an API failure, or skipped from /workflows).`)
+// A second throw must name the agent, not read as a script defect: runIssue's catch would write "The script failed".
+const ask = (text, opts) => call(text, opts).catch((error) => ({ thrown: String(error) }))
+const failed = (who, result) => `The ${who} failed twice: ${result.thrown}`
 
 const records = {}
 const settle = {}
 const finished = {}
 for (const item of A.batch) {
   finished[item.n] = new Promise((resolve) => { settle[item.n] = resolve })
-}
-
-// An issue whose `after` chain leads back to itself would wait forever and hang the whole run.
-const afterOf = {}
-for (const item of A.batch) afterOf[item.n] = item.after
-function inCycle(start) {
-  const seen = new Set()
-  const stack = [...afterOf[start]]
-  while (stack.length) {
-    const m = stack.pop()
-    if (m === start) return true
-    if (seen.has(m)) continue
-    seen.add(m)
-    stack.push(...afterOf[m])
-  }
-  return false
 }
 
 const TERMINAL = ['merged', 'parked', 'skipped', 'ready-to-merge']
@@ -195,10 +203,12 @@ let parkedCount = 0
 // Kept off the records, which the result returns as SKILL.md "The run" step 5 lists them.
 const parkCounted = new Set()
 const budgetStopped = new Set()
-// A park is counted while its agent still holds the slot, so the build that takes the slot next already sees it.
-// end() counts the rest (a dead agent, a contradictory output) and skips a park counted here.
+// A park is counted while its agent still holds the slot, so the build that takes the slot next already sees it. A
+// dead agent (null, or a second throw) parks its issue too, so it counts here for the same reason; end() counts the
+// rest (a contradictory output) and skips a park counted here.
 function countPark(rec, result) {
-  if (result && result.state === 'parked' && !result.batchHalt && !batchHalt && !parkCounted.has(rec.n)) {
+  const parks = !result || result.thrown || (result.state === 'parked' && !result.batchHalt)
+  if (parks && !batchHalt && !parkCounted.has(rec.n)) {
     parkCounted.add(rec.n)
     parkedCount++
   }
@@ -241,20 +251,17 @@ async function mergeIssue(rec) {
         `origin/${rec.branch}.`
       : note,
   })
-  // A second failure must still park through park(), which keeps the divergence sentence leftovers.md relies on;
-  // runIssue's catch would write a generic note.
-  const ask = (text, opts) => call(text, opts).catch((error) => ({ thrown: String(error) }))
   // A conflict resolution, or a fix for the gate or CI, goes to review and back; main can move during CI and force
-  // another, so three at most.
+  // another, so three at most. No slot (see slot()): a second failure parks through park(), which keeps the
+  // divergence sentence leftovers.md relies on.
   for (const attempt of [1, 2, 3]) {
-    const merge = await slot(() => unlessHalted(() => ask(
+    const merge = await unlessHalted(() => ask(
       prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings }),
       { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })
-      .then((r) => countPark(rec, r))),
-    { priority: true })
+      .then((r) => countPark(rec, r)))
     if (merge === HALTED) return park(haltNote())
     if (!merge) return park(dead('merge agent'))
-    if (merge.thrown) return park(`The merge agent failed twice: ${merge.thrown}`)
+    if (merge.thrown) return park(failed('merge agent', merge))
     // The merge agent may have made merge-<n>; the record must name every worktree it can leave behind.
     if (merge.mergeWorktree && !rec.worktrees.includes(merge.mergeWorktree)) rec.worktrees.push(merge.mergeWorktree)
     rec.rulings.push(...(merge.rulings || []))
@@ -279,7 +286,7 @@ async function mergeIssue(rec) {
       }),
       { label: `review #${rec.n} resolution a${attempt}`, phase: 'Review', schema: REVIEW })
     if (!review) return park(dead('resolution review agent'))
-    if (review.thrown) return park(`The resolution review agent failed twice: ${review.thrown}`)
+    if (review.thrown) return park(failed('resolution review agent', review))
     if (review.batchHalt) {
       halt(review.batchHalt)
       rec.unrecorded.push(...review.otherFindings)
@@ -298,7 +305,6 @@ async function runIssue(item) {
   }
   records[n] = rec
 
-  if (inCycle(n)) return end(rec, 'parked', `Its "after" list forms a dependency cycle: ${item.after.join(', ')}.`)
   for (const m of item.after) {
     const state = await finished[m]
     if (budgetStopped.has(m)) {
@@ -306,12 +312,16 @@ async function runIssue(item) {
       return end(rec, 'skipped', records[m].note)
     }
     if (UNSTARTED[state]) return end(rec, 'skipped', UNSTARTED[state](m))
-    if (state !== 'merged') return end(rec, 'parked', `Depends on #${m}, which ended ${state}.`, { counts: false })
+    // After a batch halt every note leads with the halt, so the summary's first line explains them all.
+    if (state !== 'merged') {
+      const why = `Depends on #${m}, which ended ${state}.`
+      return end(rec, 'parked', batchHalt ? `${haltNote()} (${why})` : why, { counts: false })
+    }
   }
 
   // The budget is checked once a slot is free, so a build queued behind the cap does not start after it is spent.
   const BUDGET = { budget: true }
-  const build = await slot(() => (parkedCount >= A.maxParked ? BUDGET : unlessHalted(() => call(
+  const build = await slot(() => (parkedCount >= A.maxParked ? BUDGET : unlessHalted(() => ask(
     prompt('agents.md', 'Build', {
       n, kind: item.kind, spec: item.spec, piece: item.piece, after: item.after, haltAnswers: item.haltAnswers,
       date: A.date, main: A.main, deadline: A.deadline,
@@ -323,6 +333,7 @@ async function runIssue(item) {
   }
   if (build === HALTED) return end(rec, 'parked', haltNote())
   if (!build) return end(rec, 'parked', dead('build agent'))
+  if (build.thrown) return end(rec, 'parked', failed('build agent', build))
   rec.branch = build.branch
   rec.pr = build.pr
   rec.plan = build.plan
@@ -341,13 +352,14 @@ async function runIssue(item) {
   let head = build.worktree
   for (const round of [1, 2]) {
     if (batchHalt) return end(rec, 'parked', haltNote())
-    const review = await call(
+    const review = await ask(
       prompt('agents.md', 'Review', {
         n, round, kind: item.kind, spec: item.spec, branch: rec.branch, pr: rec.pr, headWorktree: head,
         plan: rec.plan, worktrees: rec.worktrees, build: last, main: A.main,
       }),
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
     if (!review) return end(rec, 'parked', dead(`round ${round} review agent`))
+    if (review.thrown) return end(rec, 'parked', failed(`round ${round} review agent`, review))
     // A review stopped by a batch halt may not have recorded the writer's findings; keep them for the controller
     // unless it says it did.
     if (review.batchHalt) {
@@ -358,7 +370,7 @@ async function runIssue(item) {
     }
     if (review.recordedWriterFindings) rec.unrecorded = []
     if (!review.changeFindings.length) break
-    const fix = await slot(() => unlessHalted(() => call(
+    const fix = await slot(() => unlessHalted(() => ask(
       prompt('agents.md', 'Fix', {
         n, round, kind: item.kind, branch: rec.branch, pr: rec.pr, spec: item.spec, plan: rec.plan,
         changeFindings: review.changeFindings, date: A.date, main: A.main,
@@ -367,9 +379,11 @@ async function runIssue(item) {
       .then((r) => countPark(rec, r))), { priority: true })
     if (fix === HALTED) return end(rec, 'parked', haltNote())
     if (!fix) return end(rec, 'parked', dead(`round ${round} fix agent`))
+    if (fix.thrown) return end(rec, 'parked', failed(`round ${round} fix agent`, fix))
     if (fix.worktree) rec.worktrees.push(fix.worktree)
     rec.rulings.push(...fix.rulings)
-    rec.unrecorded = fix.findings
+    // The review emptied unrecorded when it wrote the writer's findings down; what it did not write stays.
+    rec.unrecorded.push(...fix.findings)
     halt(fix.batchHalt)
     // A fix skipped after the build pushed leaves the build's worktree behind.
     if (fix.state === 'skipped') rec.leftInPlace = [...rec.worktrees]

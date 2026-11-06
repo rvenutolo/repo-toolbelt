@@ -27,7 +27,8 @@ remote SHA, the rebase worktree) it reads again from git.
 ## 1. Reconcile
 
 `merging.md` step 0, with two differences: the issue or PR closed by the user returns `state: "skipped"`, leaving
-the PR open; a PR the user touched parks, quoting what they wrote, with "resume the merge" or "leave it" as the
+the PR open, with a `parkNote` saying which was closed (so the record can be told from a skip whose note was
+forgotten); a PR the user touched parks, quoting what they wrote, with "resume the merge" or "leave it" as the
 question (no agent of this run comments or reviews on GitHub).
 
 A PR already `MERGED` is a resumed merge whose agent died after the merge: write `state: merged` to
@@ -58,8 +59,9 @@ The rebase happens on the issue branch itself, so that after the merge the local
    `git -C <rebase worktree> merge --ff-only origin/<branch>` must succeed. When either fails but the worktree's
    `HEAD` is an ancestor of `origin/<branch>` (a dead builder left files behind; everything it committed was
    pushed), free the branch with `git -C <that worktree> switch --detach`, which keeps its files, and add a clean
-   one: `git worktree add .claude/worktrees/merge-<n> <branch>` (the path written out), then the `--ff-only` there.
-   When no worktree holds `<branch>`, add `merge-<n>` the same way. When the worktree holds commits
+   one: `git worktree add <main>/.claude/worktrees/merge-<n> <branch>` (the absolute path written out: the shell's
+   directory does not carry between your calls, and `mergeWorktree` must be absolute for the record), then the
+   `--ff-only` there. When no worktree holds `<branch>`, add `merge-<n>` the same way. When the worktree holds commits
    `origin/<branch>` lacks, park: work exists only locally.
 5. If `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
    section 3, step 1. Otherwise `git -C <rebase worktree> -c core.editor=true rebase origin/main`.
@@ -99,9 +101,10 @@ Then:
    commit signing failing, a batch-level failure (`common.md`).
 2. **Baseline:** `merging.md` step 2, "Baseline after a rebase", in the rebase worktree.
 3. **Code resolution:** when a rebase in this call made one, return `state: "needs-review"`, `reason: "conflict"`,
-   `fixBase` (the `origin/main` commit the rebase went onto), `mergeWorktree` (the rebase worktree) and
-   `conflictedFiles`. Do not push. The script runs the review stage on
-   it and calls this agent again (section 2, step 3).
+   `fixBase` (the branch's pre-rebase head, the old remote SHA from section 2 step 1: the reviewer compares the
+   branch before and after the rebase, which a diff against `origin/main` cannot show), `mergeWorktree` (the rebase
+   worktree) and `conflictedFiles`. Do not push. The script runs the review stage on it and calls this agent again
+   (section 2, step 3).
 4. **Push** if the branch changed: first the PR body's new rulings ("Rulings and findings"), `pendingRulings`
    included, then
    `git -C <rebase worktree> push --force-with-lease=<branch>:<old remote SHA> origin <branch>`. The pre-push hook
@@ -150,8 +153,8 @@ any cleanup.
 
 Every ruling this agent makes (a resolution finding dropped, a conflict resolved one way) goes in `rulings` and,
 before the push in section 3, step 4, into the PR body (`common.md` "PR bodies"), with each of `pendingRulings` the
-body does not have yet. A CI rerun, an outdated superpowers phrase or a settled copied-rule conflict goes in
-`rulings` as a `Summary:` line (`common.md` "Summary items"), never in the PR body. Every out-of-scope finding
+body does not have yet. Each `Summary:` kind `common.md` "Summary items" lists (a CI rerun among them) goes in
+`rulings` as a `Summary:` line, never in the PR body. Every out-of-scope finding
 goes in `findings`, unjudged; the script hands both to the controller.
 
 ## Parking

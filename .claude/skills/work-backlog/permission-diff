@@ -5,14 +5,19 @@
 #              rule strings. A rule counts as present only when some settings
 #              file lists it verbatim: wildcard coverage between rules is
 #              Claude Code's to judge, and a false "missing" costs one line in
-#              the request where a false "present" costs a prompt mid-run.
+#              the request where a false "present" costs a prompt mid-run. A
+#              missing `Bash(...)` rule that a wider `Bash(<prefix> *)` rule in
+#              some file covers by prefix is followed by a `covered by:` line
+#              naming the most specific such rule, a hint for the reader that
+#              changes no verdict.
 #              Reads permissions.allow from $CLAUDE_CONFIG_DIR/settings.json,
 #              $CLAUDE_CONFIG_DIR/settings.local.json and the repo's
 #              .claude/settings.json and .claude/settings.local.json; a missing
 #              file is skipped.
 # @option --superpowers-dir print the installed superpowers plugin's directory instead
 # @arg $@ the rule strings, or `-` to read them one per line from stdin
-# @stdout each requested rule no settings file allows, one per line
+# @stdout each requested rule no settings file allows, one per line, each
+#         followed by `  covered by: <rule>` when a wider Bash rule covers it
 # @stderr `defaultMode: <mode>` from the most specific file that sets it, or `unset`
 # @exitcode 0 success, whether or not a rule is missing
 # @exitcode 1 --superpowers-dir found no installed superpowers plugin
@@ -22,6 +27,19 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# For a missing `Bash(<command>)` rule, the allowed `Bash(<prefix> *)` rule whose
+# prefix is a whole-word prefix of the command, the longest one when several
+# are; empty when none. Claude Code matches a rule by that prefix, so this is
+# what makes a verbatim-missing rule still allowed.
+# shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
+readonly COVERED_BY_JQ='
+  ($rule | capture("^Bash\\((?<command>.*)\\)$").command) as $command
+  | [.allow[]
+     | select(test("^Bash\\(.* \\*\\)$"))
+     | . as $wider
+     | select($command | startswith(($wider | capture("^Bash\\((?<prefix>.*) \\*\\)$").prefix) + " "))]
+  | max_by(length) // empty'
 
 # @description Print the usage line to stderr and exit 2.
 # @noargs
@@ -115,9 +133,14 @@ function main() {
   done
   printf 'defaultMode: %s\n' "$(jq --raw-output '.mode' <<< "${merged}")" >&2
   local rule
+  local covered_by
   for rule in "${rules[@]}"; do
     if ! jq --exit-status --arg rule "${rule}" '.allow | index($rule) != null' <<< "${merged}" > /dev/null; then
       printf '%s\n' "${rule}"
+      covered_by="$(jq --raw-output --arg rule "${rule}" "${COVERED_BY_JQ}" <<< "${merged}")"
+      if [[ -n "${covered_by}" ]]; then
+        printf '  covered by: %s\n' "${covered_by}"
+      fi
     fi
   done
 }
