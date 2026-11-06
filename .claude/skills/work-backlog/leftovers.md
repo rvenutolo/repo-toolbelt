@@ -22,9 +22,11 @@ either skill may be the one that finds them.
 `current-session.md`'s `workflow-*` lines first:
 
 - `workflow-done`: the run finished and its result is recorded; only its "Ending" is left. Run
-  `/work-backlog-parallel`'s "Ending" steps 1 and 4 instead of asking (redo step 1 if its output is missing), then
-  carry on with this session. Its walkthrough is this session's step 4, which comes after every leftover is
-  finished, and the items its summary would name go into this session's step 9, so the user gets one summary.
+  `/work-backlog-parallel`'s "Ending" step 1 instead of asking (redo it if its output is missing), then write the
+  items its "Ending" step 3 would name into `.claude/backlog/parallel/summary.md` before its step 4 deletes the
+  files they come from, then run its step 4 and carry on with this session. Its walkthrough is this session's step
+  4, which comes after every leftover is finished, and this session's step 9 reads `summary.md` into its own summary
+  and then deletes it, so the user gets one summary.
 - `workflow-result` with no `workflow-done`: the run finished, and its result waits in
   `.claude/backlog/parallel/result.json`. Record from it as the parallel skill's "The run" step 5 does, delete the
   file, and treat the run as `workflow-done`.
@@ -32,11 +34,10 @@ either skill may be the one that finds them.
   run names, whether to resume it, take its issues over here, or leave them because the run is still going. Recommend
   "leave" when a `wf_*` worktree holds a rebase in progress or is locked by a live process ("Locked worktrees"
   below). Taking over strips the `workflow-*` and `cap:` lines from `current-session.md` first, so the parallel skill
-  never resumes a run whose issues moved on. A run can be resumed only from the session that started it, whose
-  directory under `$CLAUDE_CONFIG_DIR/projects/` holds `subagents/workflows/<runId>`: resuming means
-  `claude --resume <that session>` (which also recovers findings only the run's cached results hold). From any other
-  session, this one included unless it is that session, `/work-backlog-parallel` can only sort the run as lost, so
-  recommend the resume when that session still exists.
+  never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
+  `/work-backlog-parallel`'s "The run" step 4 says; recommend the resume when that step finds it possible. Leaving
+  keeps `current-session.md` as the run's file: this session never adds its own chunk to a file that still holds
+  `workflow-*` lines (`SKILL.md` step 6).
 - `cap:` and `issue` lines but no `workflow-*` line: a parallel batch that was approved and never launched. Ask with
   the question banner whether to launch it with `/work-backlog-parallel` (recommended: the approval was given for a
   parallel run) or take its issues over here; taking over strips the `cap:` line first, so a later parallel session
@@ -48,24 +49,26 @@ Then fold the files, before sorting anything:
   ones that pass to `pending-findings.md`, drop the rest, and delete the file by its literal path.
 - Each `<N>.md` says how far issue N got, with its `branch:`, `pr:`, `plan:` and `worktrees:` telling where it is.
   `plan:` is repo-relative: the plan is at that path in the main checkout.
-  - `merged`: correct the spec for each divergence `ruling:` in it (the code that merged wins), sort the worktrees
-    it lists (below), then delete the file. The parallel skill's "Ending" step 1 does only the findings fold above
-    and this spec correction; the worktree sort and the delete wait for its step 4, because its summary reads the
-    file's `worktrees:` line.
+  - `merged`: correct the spec for each divergence `ruling:` in it (the code that merged wins) and apply each
+    `ruling:` that names a `.claude/CLAUDE.md` edit to the main checkout's copy, sort the worktrees it lists
+    (below), then delete the file. The parallel skill's "Ending" step 1 does only the findings fold above, this spec
+    correction and the `.claude/CLAUDE.md` edits; the worktree sort and the delete wait for its step 4, because
+    its summary reads the file's `worktrees:` line.
   - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
     deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
     were for. Ask with the question banner whether to remove each worktree and its branch, recommending removal.
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it with the question banner before resuming that issue, recommending the
     note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
-    whether to resume the issue now that its cause is settled. Delete the file once the issue merges or the user
-    drops it.
+    whether to resume the issue now that its cause is settled. Once the issue merges, apply its `.claude/CLAUDE.md`
+    rulings as for `merged`, then delete the file; delete it too if the user drops the issue.
 - An `issue <N>` line in `current-session.md` with no `<N>.md`, no PR and no branch was approved but never built: it
   is unfinished work, resumed from the start of its flow under the approval the file records, after every issue its
   `after` list names. A `piece <name>` line after it limits the resume to that piece of an umbrella issue, whose PR
   says `Part of #N` unless the piece is the spec's last.
 - `run-args.json` and `result.json`: delete `result.json` once it is recorded (above), and `run-args.json` once
   `current-session.md` holds no `workflow-*` line.
+- `summary.md`: a dead session's undelivered summary; keep it, and step 9 gives its items and deletes it.
 
 Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on the issue branch) and
 `.claude/worktrees/wf_<runId>-<k>`, whose branch is an issue branch, or its own `worktree-wf_<runId>-<k>`, or none
@@ -117,19 +120,20 @@ agent or a session that died. `git worktree list --porcelain` shows the lock rea
 - An approved spec recorded in `current-session.md` (`spec approved: <path>`) with issues that have no worktree, no
   PR and no merged PR, even when git and GitHub show nothing: the brainstorm and question round are done, so the
   unbuilt issues resume at `feature-flow.md` step 6 under that approval.
- Unfinished work is finished (the rest of its flow, then review, CI, merge) before anything new is chosen, under the
-approval it already has: the halt answers and the allowed commands are in `current-session.md`, and the spec and plans
-it names are under `docs/superpowers/` in the main checkout. This comes before the bugs-first rule. The one exception is
-a parked issue the user chose to leave for later (the answer to its `park-note:` question): it stays recorded and
-parked, and a new chunk may be chosen around it. If `current-session.md` is missing (a death before it was written) the
-approval is gone with it: an unfinished PR or worktree is still this skill's, but its remaining halt questions and the
-permission request are asked again before
-work on it resumes.
+
+Unfinished work is finished (the rest of its flow, then review, CI, merge) before anything new is chosen, under the
+approval it already has: the halt answers and the allowed commands are in `current-session.md`, and the spec and
+plans it names are under `docs/superpowers/` in the main checkout. This comes before the bugs-first rule. The one
+exception is a parked issue the user chose to leave for later (the answer to its `park-note:` question): it stays
+recorded and parked, and a new chunk may be chosen around it. If `current-session.md` is missing (a death before it
+was written) the approval is gone with it: an unfinished PR or worktree is still this skill's, but its remaining halt
+questions and the permission request are asked again before work on it resumes.
 
 Before resuming a leftover PR, run `merging.md` step 0's checks on it from the main checkout, before any work on
 it. Their outcomes are step 0's, with two differences, because no worktree has been entered yet and step 3 starts by
 leaving one: a `MERGED` PR is recorded in `current-session.md` and its branch and worktree are handled under "Done"
-below; a `CLOSED` PR is left with its issue and worktree and named in the session summary.
+below; a `CLOSED` PR is handled as the second bullet of "This skill's unfinished work" says for a closed PR (ask
+whether to remove its worktree and branch, recommending removal).
 
 To resume:
 

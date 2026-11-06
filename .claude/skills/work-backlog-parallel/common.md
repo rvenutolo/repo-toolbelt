@@ -27,7 +27,9 @@ would otherwise call). Then:
 Apart from that one use, do not read "The filing bar": you never judge an out-of-scope finding (below). A name
 called a bullet, or "Leaving to write", is in `/work-backlog` `SKILL.md` "Doing the work", except the rules of this
 file's own "Rules" list ("Long commands", "PR bodies" and the rest), which are here; a cross-reference to a
-section of another file names that file; any other unqualified name is a section of the file it appears in.
+section of another file names that file; any other unqualified name is a section of the file it appears in. Wherever
+a `/work-backlog` file says to run something as "Long commands" says, to run it in the background, or to "wait a
+minute", this file's "Long commands" rule applies instead: a background notification never reaches you.
 
 ## Rules
 
@@ -36,12 +38,13 @@ section of another file names that file; any other unqualified name is a section
   saying what happened, what was tried, the question the user would have been asked and the recommended answer.
   Decisions that do not change what gets built are `Ruling:` lines, returned in `rulings`. A conflict with a copied
   rule is not a park: the "Copied rules" bullet settles it.
-- **Batch-level failures** are not yours to park. They are the blocked banners `/work-backlog` names for a failed
-  `gh` call (after its one retry a minute later), commit signing failing (`permissions.md` "Signing"), and a red
-  baseline that is `main`'s own (the using-git-worktrees entry of `sub-skill-overrides.md`; a flaky one is a finding
-  there, and parks the issue only if it keeps the work from going on), plus Docker unreachable or
-  `sysctl net.ipv4.ip_forward` not 1 when a step needs a container (the user's global Docker rule forbids running
-  one then). Return `state: "parked"` with `batchHalt` set to the cause and a `parkNote` naming it.
+- **Batch-level failures** are not yours to park. They are these of the blocked banners `/work-backlog` `SKILL.md`
+  "How the session runs" lists: a failed `gh` call (after its one retry a minute later), commit signing failing
+  (`permissions.md` "Signing"), Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 when a step needs a
+  container; plus a red baseline that is `main`'s own (the using-git-worktrees entry of `sub-skill-overrides.md`; a
+  flaky one is a finding there, and parks the issue only if it keeps the work from going on). Each would stop every
+  other agent too: the red baseline because every isolated worktree starts from the same `origin/main`. Return
+  `state: "parked"` with `batchHalt` set to the cause and a `parkNote` naming it.
 - **Findings:** the "Subagents" bullet governs, and findings about the change itself are handled as their bullet
   says. Every other finding goes in `findings`, in `pending-findings.md`'s entry
   format, unjudged: `whyReal` argues why it is real and fills the entry's "Passes the bar:" line, which in a
@@ -65,16 +68,30 @@ section of another file names that file; any other unqualified name is a section
   lines above the `Backlog-Session:` marker; never write the body anew.
 - **Long commands** (`git push`, whose pre-push hook runs the full gate, `./.ci/in-devshell ./run-tests`,
   `gh pr checks --watch`, and superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash
-  tool's ten-minute limit. Run `mkdir --parents .claude/tmp` once, then run such a command with
-  `run_in_background`, appending `; echo $? > .claude/tmp/<name>.status` with a `<name>` not used before in this
-  worktree (`.claude/tmp/` is inside your worktree and ignored by git). Then wait with foreground calls of
-  `<main>/.claude/skills/work-backlog-parallel/wait-for .claude/tmp/<name>.status 590`, repeated while it exits 124
-  (not written yet); then read the output and the exit status. Use that helper, by that path, for every wait: the
-  allow rule that pre-approves waits names it, and a `timeout … bash -c` loop or a write under `/tmp` would stop at
-  a permission prompt nobody answers. Neither the Monitor tool nor a background notification waits for you: both
-  reach you only while you keep working, and ending your turn kills your background shells. Never end your turn
-  while a command runs: your final message is your result, and a result sent early is a wrong one. "Wait a minute"
-  is `wait-for` on a file that never appears, with `60`.
+  tool's limits. Each one writes its exit status to a file in the worktree it runs in, by absolute path:
+  `<wt>/.claude/tmp/<n>-<role>-<step>-<k>.status`, where `<wt>` is that worktree (your `pwd`; for the merge agent,
+  its rebase worktree), `<role>` is `build`, `fix` or `merge`, `<step>` names the command (`push`, `tests`, `ci`),
+  and `<k>` is the lowest number with no such file in `ls <wt>/.claude/tmp/`. A worktree outlives one agent (a
+  resumed build, three merge calls), so a name an earlier agent used would return its old status at once.
+  `.claude/tmp/` is ignored by git.
+  1. `mkdir --parents <wt>/.claude/tmp`, then run the command with `run_in_background`, as
+     `timeout 30m <command>; echo $? > <status path>`, devshell commands as `cd <wt> && timeout 30m ./.ci/in-devshell
+     …; echo $? > <status path>`. The absolute path is what makes the write and the wait name the same file
+     whatever directory each call runs in.
+  2. Wait with foreground calls of `<main>/.claude/skills/work-backlog-parallel/wait-for <status path> 580`, each
+     passing the Bash tool `timeout: 600000`: the tool's default limit is shorter, and a call past it moves to the
+     background, where its end never reaches you. A call the tool still cuts off counts as exit 124 (not written
+     yet). Repeat on 124, four calls at most: `timeout 30m` writes a status within 30 minutes, so a fourth 124, or a
+     status of 124, means the command hung. That is a park, or a batch-level failure when its cause is one (below),
+     with the command and its last output in the note.
+  3. Read the output and the exit status.
+
+  Use that helper, by that path, for every wait: the allow rule that pre-approves waits names it, and a
+  `timeout … bash -c` loop or a write under `/tmp` would stop at a permission prompt nobody answers. Neither the
+  Monitor tool nor a background notification waits for you: both reach you only while you keep working, and ending
+  your turn kills your background shells. Never end your turn while a command runs: your final message is your
+  result, and a result sent early is a wrong one. "Wait a minute" is `wait-for` on a status path nothing writes,
+  with `60`.
 - **A git ref-lock error** (`cannot lock ref`, `index.lock` exists) comes from another agent's command on the shared
   git directory: wait a minute and retry once.
 - **Your worktree is the worktree.** superpowers:using-git-worktrees, loaded by executing-plans, finds this one

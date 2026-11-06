@@ -76,7 +76,17 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 - **superpowers:subagent-driven-development**, "delete this plan's workspace (`rm -rf <workspace>`)", and
   **superpowers:executing-plans**, "delete this plan's workspace directory", at their finish: the ledger sweep runs
   first, because the skills collect only `Ruling:` lines before the delete and the sweep needs the deferred, parked
-  and out-of-scope lines too. Delete the workspace after the sweep, before the PR merges.
+  and out-of-scope lines too. Delete the workspace after the sweep, before the PR merges, as
+  `rm --recursive --force <workspace>` with the absolute path `sdd-workspace` printed written out: the long options
+  are the user's rule, and the literal path is what the user's destructive-command rule and the allow rule
+  (`permissions.md`) both match.
+- **superpowers:subagent-driven-development**, `bash scripts/sdd-workspace PLAN_FILE`,
+  `bash scripts/task-brief PLAN_FILE N` and `bash scripts/review-package PLAN_FILE BASE HEAD`, and
+  **superpowers:executing-plans**, "Run this skill's `scripts/task-start PLAN_FILE N`", `scripts/task-done` and
+  `../subagent-driven-development/scripts/review-package`: run each script by its absolute path under the installed
+  plugin (`<plugin dir>/skills/<skill>/scripts/<name> …`), without `bash` in front. The scripts are executable, the
+  relative paths resolve only from the skill's own directory, and only the absolute form matches the one allow rule
+  per script that `permissions.md` lists.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, rulings reported to the user in
   the final message, and **superpowers:requesting-code-review**, "Declined to judge … The executor rules on each
   line": every ruling goes in the PR body instead, as "PRs" in `SKILL.md` says.
