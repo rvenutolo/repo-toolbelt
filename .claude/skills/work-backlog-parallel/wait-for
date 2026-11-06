@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+# @description Wait for a file to exist with content, for at most a given number of seconds.
+#              Workflow agents use it to wait on a background command that
+#              writes its exit status to a file. It is its own script, not a
+#              `timeout … bash -c` loop, so one allow rule naming its path
+#              pre-approves every wait: permission matching strips a `timeout`
+#              prefix and then sees only `bash -c`, which no rule can name
+#              safely.
+# @arg $1 file path of the file to wait for
+# @arg $2 seconds how long to wait, a positive whole number
+# @exitcode 0 the file exists and is not empty
+# @exitcode 2 wrong arguments
+# @exitcode 124 the file did not appear in time, the code `timeout` uses
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+readonly POLL_SECONDS=5
+
+# @description Print the usage line to stderr and exit 2.
+# @noargs
+function usage() {
+  printf 'usage: %s <file> <seconds>\n' "${0##*/}" >&2
+  exit 2
+}
+
+# @description Poll for the file until it exists with content or the time runs out.
+# @arg $1 file path of the file to wait for
+# @arg $2 seconds how long to wait
+function main() {
+  if (($# != 2)); then
+    usage
+  fi
+  local -r file="$1"
+  local -r seconds="$2"
+  if [[ -z "${file}" || ! "${seconds}" =~ ^[0-9]+$ ]] || ((10#${seconds} == 0)); then
+    usage
+  fi
+  local -r deadline="$((SECONDS + 10#${seconds}))"
+  while [[ ! -s "${file}" ]]; do
+    if ((SECONDS >= deadline)); then
+      exit 124
+    fi
+    sleep "${POLL_SECONDS}"
+  done
+}
+
+main "$@"

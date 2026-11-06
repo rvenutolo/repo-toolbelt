@@ -12,18 +12,19 @@ export const meta = {
 // args: {date, main, cap, batch: [{n, kind, after: [m], spec, piece, haltAnswers}]}; see SKILL.md "The run".
 // Dates come from args because Date and Math.random throw in a workflow script (they would break resume).
 const A = args
-const SKILL = `${A.main}/.claude/skills/work-backlog-parallel`
 
 // A malformed args file must fail before any agent starts: a missing cap would leave every slot waiting forever, a
 // string issue number would slip past the cycle check, and a duplicate would build and merge one issue twice.
 function checkArgs() {
   const bad = (why) => { throw new Error(`run-args.json is invalid: ${why}`) }
+  if (!A || typeof A !== 'object' || Array.isArray(A)) bad('args must be an object')
   if (typeof A.date !== 'string' || !A.date) bad('date must be a non-empty string')
   if (typeof A.main !== 'string' || !A.main) bad('main must be a non-empty string')
   if (!Number.isInteger(A.cap) || A.cap < 1) bad('cap must be an integer of at least 1')
   if (!Array.isArray(A.batch) || !A.batch.length) bad('batch must be a non-empty list')
   const seen = new Set()
   for (const item of A.batch) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) bad('every batch entry must be an object')
     if (!Number.isInteger(item.n)) bad(`issue number ${JSON.stringify(item.n)} is not an integer`)
     if (seen.has(item.n)) bad(`issue #${item.n} appears twice`)
     seen.add(item.n)
@@ -42,6 +43,7 @@ function checkArgs() {
   }
 }
 checkArgs()
+const SKILL = `${A.main}/.claude/skills/work-backlog-parallel`
 
 const str = { type: 'string' }
 const strs = { type: 'array', items: str }
@@ -78,11 +80,12 @@ const MERGE = {
     state: { type: 'string', enum: ['merged', 'parked', 'skipped', 'needs-review'] },
     parkNote: str, batchHalt: str, mergeWorktree: str, conflictedFiles: strs, leftInPlace: strs,
     rulings: strs, findings,
-    // For needs-review: what the change under review is for, and the failure it answers, so the reviewer can judge it.
-    reason: { type: 'string', enum: ['', 'conflict', 'gate', 'ci'] }, failure: str,
+    // For needs-review: what the change under review is for, the failure it answers, and the commit it was made on,
+    // so the reviewer judges that change and not the whole branch.
+    reason: { type: 'string', enum: ['', 'conflict', 'gate', 'ci'] }, failure: str, fixBase: str,
   },
   required: ['state', 'parkNote', 'batchHalt', 'mergeWorktree', 'conflictedFiles', 'leftInPlace', 'rulings',
-    'findings', 'reason', 'failure'],
+    'findings', 'reason', 'failure', 'fixBase'],
 }
 
 const prompt = (file, section, inputs) =>
@@ -90,8 +93,7 @@ const prompt = (file, section, inputs) =>
   `the section "${section}" of ${SKILL}/${file}. Inputs (JSON): ${JSON.stringify(inputs)}`
 
 // The cap bounds build, fix and merge agents together: each runs the full pre-push gate when it pushes. Merge and
-// fix agents go ahead of builds still waiting, so ready work is not held behind issues that have not started and a
-// merge waiting on a slot does not let main move under a reviewed resolution.
+// fix agents go ahead of builds still waiting, so ready work is not held behind issues that have not started.
 let free = A.cap
 const urgent = []
 const waiting = []
@@ -190,6 +192,9 @@ async function mergeIssue(rec) {
   let resolutionReviewed = false
   let resolutionFindings = []
   let mergeWorktree = ''
+  // A call that returns needs-review has not pushed, so its rulings are not in the PR body yet; the next call writes
+  // them before its push.
+  const pendingRulings = []
   // Parking here, between merge calls, leaves a rebased branch no agent pushed; the note must say where it is.
   const park = (note, cause = '') => ({
     state: 'parked', batchHalt: cause,
@@ -198,20 +203,25 @@ async function mergeIssue(rec) {
         `origin/${rec.branch}.`
       : note,
   })
+  // A second failure must still park through park(), which keeps the divergence sentence leftovers.md relies on;
+  // runIssue's catch would write a generic note.
+  const ask = (text, opts) => call(text, opts).catch((error) => ({ thrown: String(error) }))
   // A conflict resolution, or a fix for the gate or CI, goes to review and back; main can move during CI and force
   // another, so three at most.
   for (const attempt of [1, 2, 3]) {
-    const merge = await slot(() => unlessHalted(() => call(
-      prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings }),
+    const merge = await slot(() => unlessHalted(() => ask(
+      prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings }),
       { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })),
     { priority: true })
     if (merge === HALTED) return park(haltNote())
     if (!merge) return park(dead('merge agent'))
+    if (merge.thrown) return park(`The merge agent failed twice: ${merge.thrown}`)
     // The merge agent may have made merge-<n>; the record must name every worktree it can leave behind.
     if (merge.mergeWorktree && !rec.worktrees.includes(merge.mergeWorktree)) rec.worktrees.push(merge.mergeWorktree)
     rec.rulings.push(...(merge.rulings || []))
     rec.unrecorded.push(...(merge.findings || []))
     if (merge.state !== 'needs-review') return merge
+    pendingRulings.push(...(merge.rulings || []).filter((r) => !r.startsWith('Summary:')))
     mergeWorktree = merge.mergeWorktree
     if (attempt === 3) {
       return park('Three changes needing review in a row (conflict resolutions, gate or CI fixes); the third was ' +
@@ -219,13 +229,14 @@ async function mergeIssue(rec) {
     }
     if (batchHalt) return park(haltNote())
     // The review appends its out-of-scope findings to <n>-findings.md itself, so they are not unrecorded.
-    const review = await call(
+    const review = await ask(
       prompt('agents.md', 'Review', {
-        n: rec.n, resolution: true, reason: merge.reason, failure: merge.failure, mergeWorktree,
-        conflictedFiles: merge.conflictedFiles, branch: rec.branch, pr: rec.pr, main: A.main,
+        n: rec.n, resolution: true, reason: merge.reason, failure: merge.failure, fixBase: merge.fixBase,
+        mergeWorktree, conflictedFiles: merge.conflictedFiles, branch: rec.branch, pr: rec.pr, main: A.main,
       }),
       { label: `review #${rec.n} resolution a${attempt}`, phase: 'Review', schema: REVIEW })
     if (!review) return park(dead('resolution review agent'))
+    if (review.thrown) return park(`The resolution review agent failed twice: ${review.thrown}`)
     if (review.batchHalt) {
       halt(review.batchHalt)
       rec.unrecorded.push(...review.otherFindings)
@@ -238,7 +249,10 @@ async function mergeIssue(rec) {
 
 async function runIssue(item) {
   const n = item.n
-  const rec = { n, state: 'building', note: '', branch: '', pr: '', worktrees: [], rulings: [], unrecorded: [] }
+  const rec = {
+    n, state: 'building', note: '', branch: '', pr: '', plan: '', worktrees: [], rulings: [], unrecorded: [],
+    leftInPlace: [],
+  }
   records[n] = rec
 
   if (inCycle(n)) return end(rec, 'parked', `Its "after" list forms a dependency cycle: ${item.after.join(', ')}.`)
@@ -305,7 +319,6 @@ async function runIssue(item) {
   }
 
   const merged = await serial(() => mergeIssue(rec))
-  if (!merged) return end(rec, 'parked', 'The merge agent died without a result.')
   halt(merged.batchHalt)
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace
   return end(rec, merged.state, writerNote(merged))
@@ -314,7 +327,9 @@ async function runIssue(item) {
 phase('Build')
 log(`Batch of ${A.batch.length}, cap ${A.cap}`)
 await parallel(A.batch.map((item) => () => runIssue(item).catch((error) => {
-  const rec = records[item.n] || { n: item.n, worktrees: [], rulings: [], unrecorded: [] }
+  const rec = records[item.n] || {
+    n: item.n, note: '', branch: '', pr: '', plan: '', worktrees: [], rulings: [], unrecorded: [], leftInPlace: [],
+  }
   records[item.n] = rec
   return end(rec, 'parked', `The script failed on this issue: ${error}`)
 })))

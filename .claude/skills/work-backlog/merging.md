@@ -25,11 +25,12 @@ background.
      not a failed `gh` call, which is a `gh` command that errors.
    - A `fail` bucket is a check to fix: fix the cause and push again. A coverage-ratchet failure is fixed by a test
      where one is possible, otherwise by a new signed commit (never an amend) that raises the baseline and carries the
-     `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it. A fix made
-     here, after the PR's review (and a fix to a pre-push gate failure after a rebase in step 2), gets one
-     superpowers:requesting-code-review pass scoped to the fix, with the base at the head that was pushed before it,
-     before it is pushed; the fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews it. The
-     third such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
+     `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it.
+   - **A merge-time fix** (one made here, after the PR's review, or for a pre-push gate failure after a rebase in
+     step 2) gets one superpowers:requesting-code-review pass scoped to the fix, with the base at the commit the fix
+     was made on, before it is pushed: a base at the last pushed head would, after a rebase, also show every commit
+     `main` gained. The fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews it. The third
+     such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
    - A `cancel` bucket, or a failure that is plainly infrastructure (such as a Nix setup step failing before any
      check runs, or a job that hangs until its timeout), gets one `gh run rerun <run-id> --failed`, with the id from
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
@@ -49,11 +50,11 @@ background.
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
      `git rebase origin/main`, regenerate the baseline when "Baseline after a rebase" below says so,
      confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
-     push with `git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full gate again),
-     and go back to step 1 for the new CI run. A rebase that conflicts is a change the user must see:
-     `git rebase --abort`, blocked banner. Never `gh pr update-branch`; it rewrites the commits unsigned. The third
-     `BEHIND` or `DIRTY` on one PR is a blocked banner: `main` is moving faster than CI, and the user decides when to
-     try again.
+     push with `git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full gate again;
+     a fix for a gate failure here is a merge-time fix, step 1), and go back to step 1 for the new CI run. A rebase
+     that conflicts is a change the user must see: `git rebase --abort`, blocked banner. Never
+     `gh pr update-branch`; it rewrites the commits unsigned. The third `BEHIND` or `DIRTY` on one PR is a blocked
+     banner: `main` is moving faster than CI, and the user decides when to try again.
    - `DIRTY`: the branch conflicts with `main` (a Renovate merge touched the same file). Take the `BEHIND` path; the
      rebase conflicts and ends in its blocked banner, or resolves cleanly and runs CI again.
    - `UNSTABLE`, or any status not named here: blocked banner naming the status.

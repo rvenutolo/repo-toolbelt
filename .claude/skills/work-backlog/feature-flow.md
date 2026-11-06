@@ -1,10 +1,8 @@
 # Feature flow
 
 The user takes part in the brainstorm and approves the design there, then answers one batched round of questions.
-Everything after that runs unattended under the principle in "How the session runs" (`SKILL.md`): a decision needs
-the user only when it changes what gets built; Claude settles everything else. A call made before approval (steps 3
-and 4) is recorded in the spec; a call made during the unattended part is a `Ruling:` in the PR body ("Terms" in
-`SKILL.md`).
+Everything after that runs unattended under "How the session runs" in `SKILL.md`. A call made before approval (steps
+3 and 4) is recorded in the spec; a call made during the unattended part is a `Ruling:` ("Terms" in `SKILL.md`).
 
 Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The worktree is made per issue in step 6.
 
@@ -16,9 +14,8 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    ends when the user approves the design in the conversation; if the user opts out of its questions, the design is
    what the conversation already holds. If the brainstorm drops an issue from the chunk or adds one (an open issue
    that is not the user's own work), the spec's issue list is the chunk from then on; name the change in the summary.
-   Either way a spec is written: steps 2–5 replace the brainstorming skill's hand-over to the user and its hard gate
-   on building (the builder check itself still runs, in step 3, with its questions held for step 5), and the user
-   has authorized building once those steps pass.
+   Either way a spec is written, and the builder check's questions wait for step 5 (`sub-skill-overrides.md` names
+   the brainstorming pauses these steps replace).
 2. **Spec.** Write it to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, a local path ("State" in
    `SKILL.md`), and record the path in `current-session.md`. For a family, one spec covers every issue and says
    which issue owns which part.
@@ -30,35 +27,32 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    speculative work, such as a check, guard or test for an input nobody writes. This is the one check on the design
    before hours of unattended building, so it gets the most capable model: a wrong call it misses is built, merged
    and found by the user. The reviewer returns every finding and filters none, as "Subagents" in `SKILL.md` says;
-   the filing bar does not apply to design findings, which are judged on soundness, not on whether code is wrong
-   now. Apply what does not change what gets built; hold the rest for step 5.
+   design findings are judged on soundness ("Findings about the change itself" in `SKILL.md`). Apply what does not
+   change what gets built; hold the rest for step 5.
 5. **One question round.** A single message, ending with the question banner, that asks:
    - everything held from steps 3 and 4;
    - every likely halt question for the unattended part ("Terms" in `SKILL.md`), each with a recommended answer and
      a one-line reason;
    - any copied rule in `.claude/rules/` the planned code could not satisfy (the repo's `CLAUDE.md` asks the user
      about those);
-   - the permission request ("Permissions" in `SKILL.md`), with the tools the plan needs beyond the devShell's added
-     to its list.
+   - the permission request (`permissions.md`), with any tool the spec's work needs beyond the devShell's added to
+     its list.
 
    The message ends with a one-line list of the calls made in steps 3 and 4, which the user may scan but need not
    answer. Write the answers into the spec. If the user defers ("do whatever you think"), every recommended answer
-   is the answer; write each into the spec as a call. A deferral answers no permission request: it still needs its
-   own answer, and a follow-up message carrying only it is allowed and is not a second round. A spec that has passed
-   steps 3–5 counts as approved; the user does not review the written document. Then append to
-   `current-session.md`: `spec approved: <path>`, the commands the user allowed, and the halt answers, so a session
-   resumed from that file knows the brainstorm and this round are done.
+   is the answer; write each into the spec as a call. A deferral answers no permission request (`permissions.md`
+   "When to ask"). A spec that has passed steps 3–5 counts as approved; the user does not review the written
+   document. Then append to `current-session.md`: `spec approved: <path>`, the commands the user allowed, and the
+   halt answers, so a session resumed from that file knows the brainstorm and this round are done.
 
-   Two consequences for later:
-   - A rule conflict that only surfaces during the unattended part is settled by satisfying the rule, and reported in
-     the session summary (this is the one place the skill overrides `.claude/CLAUDE.md`'s stop-and-ask, named in the
-     `SKILL.md` intro).
-   - A rule fix or override the user chose in this round is written in the main checkout's `.claude/rules/` and
-     copied into every worktree the flow creates afterwards.
+   A rule fix or override the user chose in this round is written in the main checkout's `.claude/rules/` and copied
+   into every worktree the flow creates afterwards. A rule conflict that only surfaces later is settled as "Copied
+   rules" in `SKILL.md` says.
 6. **Per issue, in dependency order** (for an umbrella issue, per piece, each piece with its own worktree, plan and
    PR):
-   1. Check the issue is still open, as the normal sequence in "Doing the work" in `SKILL.md` says.
-   2. Create and enter a worktree, and copy the instruction files and the spec into it ("Worktrees" in `SKILL.md`).
+   1. Check the issue is still open, as the loop in "Doing the work" in `SKILL.md` says.
+   2. Create and enter a worktree, copy the instruction files and the spec into it, and run the baseline tests
+      ("Worktrees" in `SKILL.md`).
    3. **Plan.** **REQUIRED SUB-SKILL:** superpowers:writing-plans, for this issue's part of the spec. From the second
       piece on, read the merged code of the earlier pieces first: the spec was written before any of it existed, and
       where it describes a helper or interface differently from what landed, the code wins and the spec is corrected
