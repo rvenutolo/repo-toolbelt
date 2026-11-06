@@ -57,9 +57,7 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
      copied into every worktree the flow creates afterwards.
 6. **Per issue, in dependency order** (for an umbrella issue, per piece, each piece with its own worktree, plan and
    PR):
-   1. Check the issue is still open: `gh issue view <number> --json state --jq .state`. `CLOSED` means the user
-      decided against it since the chunk was approved: skip the issue, leave its part of the spec unbuilt, name it in
-      the summary, and go on to the next.
+   1. Check the issue is still open, as the normal sequence in "Doing the work" in `SKILL.md` says.
    2. Create and enter a worktree, and copy the instruction files and the spec into it ("Worktrees" in `SKILL.md`).
    3. **Plan.** **REQUIRED SUB-SKILL:** superpowers:writing-plans, for this issue's part of the spec. From the second
       piece on, read the merged code of the earlier pieces first: the spec was written before any of it existed, and

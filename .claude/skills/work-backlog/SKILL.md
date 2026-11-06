@@ -35,7 +35,8 @@ what gets built; everything else the session settles itself and records as a `Ru
   then the findings walkthrough at the end.
 - **Feature chunk:** the chunk OK, the brainstorm, one batched question round, then the findings walkthrough.
 - **Either:** a question-banner halt when a decision changes what gets built, and a blocked-banner halt when
-  something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge).
+  something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge,
+  commit signing that fails).
 
 ## Terms
 
@@ -149,8 +150,10 @@ from inside a worktree is fine.
    pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`); every chunk
    issue that did not merge and why (a halt, a skipped piece, an issue the user closed); and every issue the user's
    decision opened or closed this session (the walkthrough, `bug-flow.md` step 3, `triage.md`). Then append `done`
-   to today's line in `session-log.md` and delete `current-session.md`, unless it still holds parked issues of a
-   parallel run that the user left for later: then trim it to them, as `/work-backlog-parallel`'s "Ending" says.
+   to the `session-log.md` line whose date is `current-session.md`'s date line (a long unattended run crosses
+   midnight, so today's date may name no line), and delete `current-session.md`, unless it still holds parked
+   issues of a parallel run that the user left for later: then trim it to them, as `/work-backlog-parallel`'s
+   "Ending" says.
 
 ## Choosing the chunk
 
@@ -191,12 +194,17 @@ The proposal is one message, ending with the question banner, that names:
 - an issue whose own text asks the session to do something this skill forbids (open further issues, change another
   repo, cut a release), with the question it raises, so the user settles it with the chunk. An issue that describes
   a product which does such things, such as a workflow that opens issues, raises no question;
+- an issue the session cannot do at all, such as one that needs a setting only the user can change in a GitHub App's
+  settings or in another repo: leave it out of the chunk and name it, with what the user would have to do;
 - an umbrella issue in the chunk, one that asks for sub-issues to be filed and then worked: it is worked as one PR
   per piece ("PRs" below) unless the user opts in the proposal to have the sub-issues opened instead.
 
 ## Doing the work
 
-The normal sequence per issue: create a worktree and enter it, copy the instruction files in, build the change
+The normal sequence per issue: check the issue is still open (`gh issue view <number> --json state --jq .state`;
+`CLOSED` means the user decided against it since the chunk was approved: skip it, leave its part of any spec
+unbuilt, name it in the summary, and go on to the next), create a worktree and enter it, copy the instruction files
+in, build the change
 (`feature-flow.md` or `bug-flow.md`), push as soon as the local gate passes and open the PR, review, merge on green
 CI, leave the worktree, pull `main`, remove the worktree. Strictly one issue at a time: the next worktree is
 created only after the previous PR has merged, because it starts from the merged `origin/main` and, in a family,
@@ -204,9 +212,9 @@ builds on the earlier
 piece's code.
 
 - **Branches:** `<type>/<N>-<description>`, where N is the issue number, so a branch or worktree can be tied to its
-  issue without a PR. Related bugs sharing one PR use the first issue in chunk order. An umbrella's pieces use the
-  umbrella's number with their own descriptions. The worktree directory is `.claude/worktrees/<N-description>`. A
-  fix with no issue (a "fix it now" from `findings-walkthrough.md`) has no N: its branch is `fix/finding-<slug>` and
+  issue without a PR. An umbrella's pieces use the umbrella's number with their own descriptions. The worktree
+  directory is `.claude/worktrees/<N-description>`. A fix with no issue (a "fix it now" from
+  `findings-walkthrough.md`) has no N: its branch is `fix/finding-<slug>` and
   its worktree `.claude/worktrees/finding-<slug>`, with the slug taken from the finding's symptom line, so
   `leftovers.md` can tell it apart from the user's branches.
 - **Permissions:** the unattended part runs commands outside the user's permission allowlist, and a prompt mid-run
@@ -215,13 +223,23 @@ piece's code.
   permission request ("Terms") lists the commands the flow will run that the allowlists in
   `$CLAUDE_CONFIG_DIR/settings.json` and the main checkout's `.claude/settings*.json` do not cover, and asks the
   user to add them to `.claude/settings.local.json` (a local file, ignored like the rest of "State") or to restart
-  with permissions bypassed before the unattended part starts. Check the allowlists rather than assuming; the
+  with permissions bypassed before the unattended part starts. Check the allowlists rather than assuming, and name
+  rule strings, not commands: a rule matches a command by its literal prefix, so `Bash(git rebase *)` does not cover
+  `git -C <path> rebase`, and a leading variable assignment (`GIT_EDITOR=true git …`) matches no `git` rule. The
   candidates are `cp` (the instruction-file copy on every worktree entry), `./.ci/in-devshell` (baseline tests and
-  lint checks), `git worktree add`, `git worktree remove`, `git worktree prune`, `git branch --delete`,
-  `git pull --ff-only` (in the main checkout and, resuming a parallel run's worktree, `origin <branch>` there),
-  `git worktree unlock`, `git rebase` and `git rebase --abort`, `rm -rf` of a plan workspace, and any tool the plan
-  needs beyond the devShell's. A deferral ("do whatever you think") answers no permission question; a follow-up
-  message carrying only this request is allowed and is not a second question round.
+  lint checks), `git worktree add`, `git worktree remove`, `git worktree prune`, `git worktree unlock`,
+  `git branch --delete`, `git pull --ff-only` (in the main checkout and, resuming a parallel run's worktree,
+  `origin <branch>` there), `git rebase` and `git rebase --abort`, `git -C` (`leftovers.md` runs
+  `git -C <path> rebase --abort` and `switch`), `git push --force-with-lease` (a rebase in `merging.md` step 2),
+  `sleep` (the background waits in "Long commands"), `rm -rf` of a plan workspace, the plan sub-skills' helper
+  scripts (`task-start`, `task-done` and `sdd-workspace`, run from the superpowers plugin directory), and any tool
+  the plan needs beyond the devShell's. Right before the unattended part starts (the chunk OK for bugs, the
+  question round for features), re-read the allowlists, since the user may have changed them in between, and check
+  that `ssh-add -L` lists the key `git config user.signingkey` names, loaded with no lifetime that could expire
+  mid-run: every commit and rebase signs with it. A missing key is part of the request. Commit signing that fails
+  mid-run is a blocked-banner halt, since every later commit would fail too. A deferral ("do whatever you think")
+  answers no permission question; a follow-up message carrying only this request is allowed and is not a second
+  question round.
 - **Worktrees:** every branch is a worktree.
   - Create from the main checkout with
     `git worktree add --no-track -b <type/N-description> .claude/worktrees/<N-description> origin/main`. Without
@@ -250,19 +268,26 @@ piece's code.
   stricter guard would stop an unattended run partway.
 - **Long commands:** the pre-push gate, the baseline tests, and the CI watch each run for minutes, past the Bash
   tool's two-minute default and sometimes its ten-minute foreground maximum. Run them with `run_in_background` and
-  read the output when the command exits; a foreground timeout is not a failure of the command.
+  read the output when the command exits; a foreground timeout is not a failure of the command. A step that says to
+  wait a minute runs `sleep 60` with `run_in_background` and goes on when its completion notification arrives;
+  never a foreground `sleep`, which the harness blocks.
 - **Features:** follow `feature-flow.md`.
 - **Bugs:** follow `bug-flow.md`.
-- **PRs:** one per issue, so each merges and reverts on its own. Closely related bugs that touch the same code may
-  share a PR with at least one commit per issue. An umbrella issue gets one PR per piece, each from its own worktree
+- **PRs:** one per issue, so each merges and reverts on its own; related bugs never share one, so dropping one bug
+  never means rewriting a pushed branch another bug's PR needs. An umbrella issue gets one PR per piece, each from
+  its own worktree
   and plan (`feature-flow.md` step 6 runs once per piece); the earlier PRs carry `Part of #N` and the last one
   `Closes #N`. Push a branch with `git push --set-upstream origin <type/N-description>` as soon as the local gate
   passes (the pre-push hook runs it; never bypass it with `--no-verify`), and open its PR early, so unfinished work
-  stays findable. The body uses only `Closes #N` or `Part of #N`, never another closing keyword, because
-  `leftovers.md` matches exactly those two strings to tie a PR to its issue. It carries every `Ruling:` the work
-  made (from the ledger for plan-driven work, from the session's own calls otherwise), and ends with the marker.
-  Since the PR opens early, rulings made after that are added with `gh pr edit <number> --body`: at the ledger
-  sweep for plan-driven work, before the sub-skill deletes the ledger, and before the merge for other work.
+  stays findable. The body uses only `Closes #N` or `Part of #N`, never another closing keyword, each on a line by
+  itself, because both skills tie a PR to its issue by matching that whole line (a substring match would take a
+  PR for a longer issue number as this one's). It carries every `Ruling:` the work made (from the ledger for
+  plan-driven work, from the session's own calls otherwise), and ends with the marker. Since the PR opens early,
+  rulings made after that are added with `gh pr edit <number> --body` (read the body first and add the rulings above
+  the marker, so nothing already there is lost): at the ledger sweep for plan-driven work, before the sub-skill
+  deletes the ledger, and before the merge for other work. A body edit goes before a push, never after: CI re-runs
+  on the `edited` event and cancels the run in progress, so an edit right after a push throws away the CI run that
+  push started. With nothing left to push, edit before the CI watch starts.
 - **PR title:** `type: subject`, at most 65 characters. The merge commit's header is the title followed by the PR
   number in parentheses, and `ci.yml` runs commitlint over every push to `main`, so a longer or unconventional title
   turns `main` red after a green merge.
@@ -292,7 +317,8 @@ piece's code.
   nearby code the change did not touch, is an ordinary finding: judge it by the filing bar and the out-of-scope
   rules. Every other place in this skill that says "fixed, known-gap-commented or dropped" means this item.
 - **Subagents:** every subagent prompt that implements or reviews tells the subagent to return every finding to the
-  controller and never to open an issue, leave a `TODO` or decide for itself what is worth reporting. The filing bar
+  controller and never to open an issue, comment on a PR, leave a `TODO` or decide for itself what is worth
+  reporting. The filing bar
   is the controller's to apply, after the report; a reviewer told what not to flag reviews with a blind spot. The
   prompt templates the sub-skills ship carry no such clause, so it is appended to each (`sub-skill-overrides.md`).
   A reviewer inspects the branch with `git diff` and `git show`, never by adding a worktree of its own, which the
@@ -340,7 +366,8 @@ that fell behind `main` or conflicts with it, a merge the ruleset refuses, and a
 A blocked-banner halt in `merging.md` stops the chunk at that issue. Leave the worktree and record the halt in
 `current-session.md` ("Banners"), then tell the user what stopped it and what the session would do next; after the
 user's reply, go on with the issues that do not depend on the halted one, or stop, as the user says. Steps 8 and 9
-then run from the main checkout.
+then run from the main checkout, except that a halt caused by a failed `gh` call skips step 8: the walkthrough needs
+`gh` to open issues, and the findings wait in `pending-findings.md` for the next session. The summary says so.
 
 ## Ending early
 
@@ -357,6 +384,9 @@ worktree's ledger, which `leftovers.md` has the next session sweep before that P
   chunk, whose issues the merged PRs close.
 - Force-add a local file ("State").
 - Force a delete: no `git branch -D`, no `git worktree remove --force`, no `gh pr merge --admin`.
+- Text-merge `.coverage-baseline.txt`: a rebase that touches it regenerates it (`merging.md` step 2, "Baseline after
+  a rebase").
+- Edit `CHANGELOG.md`; the release tooling writes it.
 
 ## Red flags
 
