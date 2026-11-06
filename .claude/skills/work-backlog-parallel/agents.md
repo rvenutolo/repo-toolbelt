@@ -18,7 +18,7 @@ An isolated worktree starts from `origin/main` as the main checkout last fetched
 Inputs: `n`, `kind` (`bug` or `feature`), `spec` (repo-relative, read at `<main>/<spec>`; empty for a bug), `piece`
 (for an umbrella issue, the spec's piece to build; otherwise empty), `after` (the batch issues this one waited on,
 merged before it started), `haltAnswers` (the user's answers to this batch's halt questions; may be empty), `date`,
-`main`.
+`main`, `deadline` (a UTC time, `/work-backlog` "Budgets").
 
 1. **Reconcile.** An earlier agent may have started this issue (a resumed run re-runs agents that were mid-run).
    - `gh pr list --state all --search "#<n> in:body" --json number,state,headRefName,body`, keeping PRs whose body
@@ -44,9 +44,13 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
      push with `git push origin HEAD:refs/heads/<branch>`. Resume the plan from the ledger; work never committed in
      the dead worktree is lost and is redone. With no ledger, the branch's commits beyond `origin/main` say how far
      it got: a feature whose plan tasks are all committed, or a bug with its `fix:` commit, goes straight to step 4.
-2. **Fresh start** (nothing found). Read the issue with `gh issue view <n> --json state,title,body,comments`:
-   `CLOSED` returns `state: "skipped"`. The comments are part of the issue: a design or a requirement the user
-   settled there binds you as the body does. `haltAnswers` binds you too: never re-decide a question it answers.
+2. **Fresh start** (nothing found). First the run's time budget: when `date --utc +%FT%TZ` prints a time later
+   than `deadline` (compare the two as strings), return `state: "skipped"`, `deadlinePassed: true` and a `parkNote`
+   saying the deadline passed before this issue started, having changed nothing. Work found by step 1 is finished
+   whatever the time: it is already on a branch. Read the issue with
+   `gh issue view <n> --json state,title,body,comments`: `CLOSED` returns `state: "skipped"`. The comments are part
+   of the issue: a design or a requirement the user settled there binds you as the body does. `haltAnswers` binds
+   you too: never re-decide a question it answers.
    Rename the branch with `git branch --move <type>/<n>-<description>` (the "Branches" bullet). Copy
    `<main>/.claude/CLAUDE.md` and `<main>/.claude/rules/` to the same relative paths here, and for a feature
    `<main>/<spec>` as well (`mkdir --parents .claude docs/superpowers/specs docs/superpowers/plans` first); read the
@@ -78,7 +82,7 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
    (`.superpowers/sdd/<plan-basename>/`) with `rm --recursive --force` on the absolute path `sdd-workspace` printed,
    written out (a named exception: the ledger must outlive a death before the push).
 5. **Return** `state: "ready"`, `branch`, `pr`, `plan` (repo-relative, or empty), `worktree`, `rulings`
-   (`Summary:` lines included, below), `findings`, `changed: true`.
+   (`Summary:` lines included, below), `findings`, `changed: true`, `deadlinePassed: false`.
 
 **`Summary:` lines** are returned as `common.md` "Summary items" says, by Build and Fix alike; the merge agent's are
 in `merge-queue.md`.
@@ -151,5 +155,6 @@ empty), `changeFindings`, `date`, `main`.
 3. **Push**, when you made commits: first add any new rulings, not the `Summary:` lines, to the PR body (`common.md` "PR
    bodies"), then `git push origin HEAD:refs/heads/<branch>` (the pre-push gate runs). With no commits, only the body
    edit.
-4. **Return** `state: "ready"`, `worktree`, `rulings`, `findings`, and `changed` (true when you pushed commits).
+4. **Return** `state: "ready"`, `worktree`, `rulings`, `findings`, `changed` (true when you pushed commits) and
+   `deadlinePassed: false` (the deadline is a build agent's check only).
    With `changed` false, the script skips the next review round: the code it would review is unchanged.

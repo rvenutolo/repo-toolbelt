@@ -38,13 +38,15 @@ background.
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
      step repeats once from the watch. If CI is still red after the rerun, blocked banner.
    - A non-zero exit with no JSON and any other message is a failed `gh` call (blocked banner).
-2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this
-   step: go to step 3 (step 0 also catches this when it runs first). Otherwise `gh pr merge <number> --merge`: the
-   repo allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local
-   branch is checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing
-   `MERGED`, then go straight to step 3, which records the merge; a compaction before that record is caught by this
-   `MERGED` check. A refused merge is read from
-   `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
+2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this step:
+   go to step 3 (step 0 also catches this when it runs first). While shakedown is on ("Shakedown" in `SKILL.md`), ask
+   first with the question banner whether to merge, naming the PR and its green checks, and record the halt and its
+   answer as "Halting" says; a "no" leaves the PR open for the user and is named in the summary. Coming back here after
+   a `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
+   allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local branch is
+   checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go
+   straight to step 3, which records the merge; a compaction before that record is caught by this `MERGED` check. A
+   refused merge is read from `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
    - `UNKNOWN`: GitHub is still computing the status after a push. Wait a minute and read it again, up to three
      times.
    - `BEHIND`: the ruleset requires the branch to be up to date with `main`, and Renovate merges its own PRs

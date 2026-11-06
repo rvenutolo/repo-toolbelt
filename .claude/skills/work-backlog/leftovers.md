@@ -12,6 +12,8 @@ hand stays registered until then):
 - `git branch --no-merged main --format='%(refname:short)'`
 
 Sort what they show by the sections below. Anything no section above "The user's own work" claims is the user's.
+`.claude/backlog/config` and `.claude/backlog/reports/` are the user's settings and kept reports, not leftovers:
+nothing here reads, moves or deletes them.
 
 ## A parallel run's files
 
@@ -57,6 +59,15 @@ Then fold the files, before sorting anything:
   - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
     deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
     were for. Ask with the question banner whether to remove each worktree and its branch, recommending removal.
+    A budget skip is the exception: its note says the issue was never started (a budget, the deadline, or a
+    prerequisite waiting for its merge OK), its issue is still open and no worktree or PR was made. There is nothing
+    to confirm or sort: delete the file, and the issue stays in the backlog for the next chunk.
+  - `ready-to-merge`: an open PR the run built and reviewed, waiting for the shakedown's merge OK
+    (`/work-backlog-parallel` "Shakedown and budgets"). Ask with the question banner whether to merge it, naming the
+    PR. On yes, merge it with `merging.md` from step 0, in the issue's worktree (sorted below); this answer is
+    `merging.md` step 2's shakedown question, so it is not asked again unless a `BEHIND` rebase changes the head. The
+    run's review stage was its review, so it gets no requesting-code-review pass. Then handle it as `merged`. On no,
+    keep the file and leave the PR open for the user.
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it with the question banner before resuming that issue, recommending the
     note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
@@ -149,7 +160,8 @@ To resume:
   unbuilt part, not a check to fix. The ledger sweep ("Review" in `SKILL.md`) then runs at its normal place before
   the merge, and sweeps what the dead session parked along with the rest; when every task is complete, the sweep is
   the next step.
-- A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built.
+- A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built, unless
+  its `<N>.md` says `ready-to-merge` (above).
 
 ## Done
 
