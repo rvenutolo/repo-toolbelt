@@ -28,8 +28,8 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   ("State" in `SKILL.md`).
 - **superpowers:brainstorming**, "Size the Work" (a small change is built from the chat with no document) and "If it
   grows mid-task, stop, say so, and step up a size": a feature issue always gets the spec, however small
-  (`feature-flow.md` step 1), so there is no size to step up; growth found during the unattended part is a `Ruling:`
-  when it does not change what gets built, and a question-banner halt when it does.
+  (`feature-flow.md` step 1), so there is no size to step up; growth found during the unattended part is settled as
+  "How the session runs" in `SKILL.md` says.
 - **superpowers:brainstorming**, "invoke superpowers:writing-plans and no other skill" after approval: the Fable
   review, the question round and the worktree come first; `feature-flow.md` steps 4–6.
 - **superpowers:writing-plans**, "Please review the plan. Which execution approach would you prefer?" and its other
@@ -49,13 +49,13 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   never; a failed `git worktree add` is a blocked-banner halt. "If NOT ignored: Add to .gitignore, commit the
   change": `.claude/worktrees/` is already ignored, and nothing is committed for it.
 - **superpowers:using-git-worktrees**, project setup (`go mod download` and the like on the host): skipped; the
-  devShell supplies every tool. Baseline tests as `npm test / cargo test / …`: the command is
-  `./.ci/in-devshell ./run-tests`, run in the background ("Long commands" in `SKILL.md`). "If tests fail: Report
-  failures, ask whether to proceed or investigate": a red baseline on a fresh branch from `origin/main` is run once
-  more. Still red, and the latest `ci.yml` run on `main` is red too
-  (`gh run list --branch main --workflow ci.yml --limit 1 --json conclusion`): `main` itself is broken, a
-  blocked-banner halt. Otherwise a test that fails only here (under load, or on this machine) is flaky: record it as a
-  finding and carry on; a question banner only if it keeps the issue's work from going on.
+  devShell supplies every tool. Baseline tests as `npm test / cargo test / …`: the baseline is the one "Worktrees" in
+  `SKILL.md` runs for every issue, bug or feature. "If tests fail: Report failures, ask whether to proceed or
+  investigate": a red baseline on a fresh branch from `origin/main` is run once more. Still red, and the latest
+  `ci.yml` run on `main` is red too (`gh run list --branch main --workflow ci.yml --limit 1 --json conclusion`):
+  `main` itself is broken, a blocked-banner halt. Otherwise a test that fails only here (under load, or on this
+  machine) is flaky: record it as a finding and carry on; a question banner only if it keeps the issue's work from
+  going on.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, "Four things stop you, and only
   these: an irreversible or destructive operation; a security-sensitive action; a side effect outside this worktree
   that norms say you ask about first (a merge, a push to a shared branch, a publish); and a plan so broken that every
@@ -75,36 +75,31 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   fixes itself, in one pass, as that skill makes its own.
 - **superpowers:subagent-driven-development**, "delete this plan's workspace (`rm -rf <workspace>`)", and
   **superpowers:executing-plans**, "delete this plan's workspace directory", at their finish: the ledger sweep runs
-  first, because the skills collect only `Ruling:`
-  lines before the delete and the sweep needs the deferred, parked and out-of-scope lines too. Delete the workspace
-  after the sweep, before the PR merges.
+  first, because the skills collect only `Ruling:` lines before the delete and the sweep needs the deferred, parked
+  and out-of-scope lines too. Delete the workspace after the sweep, before the PR merges.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, rulings reported to the user in
   the final message, and **superpowers:requesting-code-review**, "Declined to judge … The executor rules on each
-  line": every ruling goes in the PR body ("PRs" in `SKILL.md`), for every PR, since the ledger is deleted with the
-  worktree and non-plan work has no ledger at all. The PR is open before most rulings exist, so the body is updated
-  with `gh pr edit <number> --body` at the ledger sweep, before the workspace is deleted.
+  line": every ruling goes in the PR body instead, as "PRs" in `SKILL.md` says.
 - **superpowers:subagent-driven-development**, an implementer's question ("Ask them now", "It's always OK to pause
-  and clarify"): the controller answers it. A question whose answer changes what gets built is a question-banner halt
-  to the user; any other is a `Ruling:`.
+  and clarify"): the controller answers it, as "How the session runs" in `SKILL.md` says.
 - **superpowers:requesting-code-review**, "Note Minor issues for later" and a `BASE_SHA` of `HEAD~1`: there is no
   later ("Findings about the change itself" in `SKILL.md`), and the base is `git merge-base origin/main HEAD`.
 - **superpowers:test-driven-development**, "Exceptions (ask your human partner)" and "No exceptions without your
   human partner's permission": no exception is asked for. Configuration gets the test the repo has for it (BATS e2e
   against the image, `.ci/check-examples`, the workflow lints); a change that truly has no test is a `Ruling:` in
-  the PR body. "Don't know how to test | … Ask your human partner": decide and record a `Ruling:`; the question
-  banner only when the answer changes what gets built.
+  the PR body. "Don't know how to test | … Ask your human partner": settled as "How the session runs" in `SKILL.md`
+  says.
 - **superpowers:systematic-debugging**, Phase 4.5 "Discuss with your human partner before attempting more fixes"
   (three failed fixes) and "Ask for help": a question-banner halt in the shape of `bug-flow.md` step 3 (explain what
   was tried, recommend, the rest of the chunk goes on after the answer) with options that fit: try a named
   different approach, leave the issue open for a later session, or close it as not planned.
 - **superpowers:systematic-debugging**, a cause found to be "truly environmental, timing-dependent, or external"
   with "Implement appropriate handling (retry, timeout, error message)" and "Add monitoring/logging for future
-  investigation": no handling is
-  added on that finding alone. The bug is re-judged by the filing bar; one that fails it goes to the user as
-  `bug-flow.md` step 3 says, and one that passes gets the fix its real trigger calls for.
+  investigation": no handling is added on that finding alone. The bug is re-judged by the filing bar; one that fails
+  it goes to the user as `bug-flow.md` step 3 says, and one that passes gets the fix its real trigger calls for.
 - **superpowers:receiving-code-review**, "STOP - do not implement anything yet / ASK for clarification on unclear
   items", the "Should I [investigate/ask/proceed]?" question, and "IF conflicts with your human partner's prior
   decisions: Stop and discuss with your human partner first": review findings are handled as "Findings about the
   change itself" in `SKILL.md` says. An unclear item is read the most plausible way and handled under a `Ruling:`
   that says how it was read; one that conflicts with an approval the user gave (the spec, a halt answer) keeps the
-  approval and records a `Ruling:`. The question banner only when the answer changes what gets built.
+  approval and records a `Ruling:`. Anything else is settled as "How the session runs" in `SKILL.md` says.
