@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# @description Wait for a file to exist with content, for at most a given number of seconds.
+# @description Wait for a regular file to exist with content, for at most a given number of seconds.
 #              Workflow agents use it to wait on a background command that
 #              writes its exit status to a file. It is its own script, not a
 #              `timeout … bash -c` loop, so one allow rule naming its path
@@ -9,8 +9,8 @@
 #              safely.
 # @arg $1 file path of the file to wait for
 # @arg $2 seconds how long to wait, a positive whole number
-# @exitcode 0 the file exists and is not empty
-# @exitcode 2 wrong arguments
+# @exitcode 0 the file exists, is a regular file and is not empty
+# @exitcode 2 wrong arguments, or the path exists and is not a regular file
 # @exitcode 124 the file did not appear in time, the code `timeout` uses
 
 set -Eeuo pipefail
@@ -39,8 +39,13 @@ function main() {
   if [[ -z "${file}" || ! "${seconds}" =~ ^[0-9]+$ ]] || ((10#${seconds} == 0)); then
     usage
   fi
+  # A status file is always a regular file. Anything else at the path (a
+  # directory, which `-s` alone accepts) is a wrong path that no write will fix.
+  if [[ -e "${file}" && ! -f "${file}" ]]; then
+    usage
+  fi
   local -r deadline="$((SECONDS + 10#${seconds}))"
-  while [[ ! -s "${file}" ]]; do
+  while [[ ! -f "${file}" || ! -s "${file}" ]]; do
     if ((SECONDS >= deadline)); then
       exit 124
     fi
