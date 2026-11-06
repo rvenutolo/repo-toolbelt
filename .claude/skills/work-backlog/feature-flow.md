@@ -31,8 +31,8 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    change what gets built; hold the rest for step 5.
 5. **One question round.** A single message, ending with the question banner, that asks:
    - everything held from steps 3 and 4;
-   - every likely halt question for the unattended part ("Terms" in `SKILL.md`), each with a recommended answer and
-     a one-line reason;
+   - every likely halt question for the unattended part ("Terms" in `SKILL.md`; `halt-questions.md` lists the kinds
+     that recur), each with a recommended answer and a one-line reason;
    - any copied rule in `.claude/rules/` the planned code could not satisfy (the repo's `CLAUDE.md` asks the user
      about those);
    - the permission request (`permissions.md`), with any tool the spec's work needs beyond the devShell's added to

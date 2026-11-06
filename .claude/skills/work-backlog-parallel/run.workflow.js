@@ -9,8 +9,9 @@ export const meta = {
   ],
 }
 
-// args: {date, main, cap, batch: [{n, kind, after: [m], spec, piece, haltAnswers}]}; see SKILL.md "The run".
-// Dates come from args because Date and Math.random throw in a workflow script (they would break resume).
+// args: {date, main, cap, deadline, maxParked, stopBeforeMerge, batch: [{n, kind, after: [m], spec, piece,
+// haltAnswers}]}; see SKILL.md "The run". Dates come from args because Date and Math.random throw in a workflow
+// script (they would break resume), so the deadline is checked by each build agent, which can read the clock.
 const A = args
 
 // A malformed args file must fail before any agent starts: a missing cap would leave every slot waiting forever, a
@@ -21,6 +22,12 @@ function checkArgs() {
   if (typeof A.date !== 'string' || !A.date) bad('date must be a non-empty string')
   if (typeof A.main !== 'string' || !A.main) bad('main must be a non-empty string')
   if (!Number.isInteger(A.cap) || A.cap < 1) bad('cap must be an integer of at least 1')
+  // Build agents compare `date --utc +%FT%TZ` with the deadline as strings, which orders correctly only in this form.
+  if (typeof A.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(A.deadline)) {
+    bad('deadline must be a UTC time like 2026-01-31T18:00:00Z')
+  }
+  if (!Number.isInteger(A.maxParked) || A.maxParked < 1) bad('maxParked must be an integer of at least 1')
+  if (typeof A.stopBeforeMerge !== 'boolean') bad('stopBeforeMerge must be true or false')
   if (!Array.isArray(A.batch) || !A.batch.length) bad('batch must be a non-empty list')
   const seen = new Set()
   for (const item of A.batch) {
@@ -64,8 +71,11 @@ const WRITER = {
     rulings: strs, findings, parkNote: str, batchHalt: str,
     // True when the agent pushed new commits; a fix that only ruled on findings leaves nothing new to review.
     changed: { type: 'boolean' },
+    // True when a build skipped because the run's deadline had passed; its dependents are skipped with it.
+    deadlinePassed: { type: 'boolean' },
   },
-  required: ['state', 'branch', 'pr', 'plan', 'worktree', 'rulings', 'findings', 'parkNote', 'batchHalt', 'changed'],
+  required: ['state', 'branch', 'pr', 'plan', 'worktree', 'rulings', 'findings', 'parkNote', 'batchHalt', 'changed',
+    'deadlinePassed'],
 }
 const CHANGE = { type: 'object', properties: { file: str, summary: str }, required: ['file', 'summary'] }
 const REVIEW = {
@@ -178,8 +188,23 @@ function inCycle(start) {
   return false
 }
 
-const TERMINAL = ['merged', 'parked', 'skipped']
-function end(rec, state, note) {
+const TERMINAL = ['merged', 'parked', 'skipped', 'ready-to-merge']
+// The parked budget counts issues that parked on their own work: a dependent parked for its prerequisite, or an
+// issue parked by a batch halt, says nothing new about how the run is going.
+let parkedCount = 0
+// Kept off the records, which the result returns as SKILL.md "The run" step 5 lists them.
+const parkCounted = new Set()
+const budgetStopped = new Set()
+// A park is counted while its agent still holds the slot, so the build that takes the slot next already sees it.
+// end() counts the rest (a dead agent, a contradictory output) and skips a park counted here.
+function countPark(rec, result) {
+  if (result && result.state === 'parked' && !result.batchHalt && !batchHalt && !parkCounted.has(rec.n)) {
+    parkCounted.add(rec.n)
+    parkedCount++
+  }
+  return result
+}
+function end(rec, state, note, { counts = true } = {}) {
   if (TERMINAL.includes(state)) {
     rec.state = state
     if (note) rec.note = note
@@ -187,9 +212,17 @@ function end(rec, state, note) {
     rec.state = 'parked'
     rec.note = `The issue stopped in state "${state}". ${note || ''}`.trim()
   }
+  if (rec.state === 'parked' && counts && !batchHalt && !parkCounted.has(rec.n)) {
+    parkCounted.add(rec.n)
+    parkedCount++
+  }
   settle[rec.n](rec.state)
   return rec
 }
+const budgetNote = () => `Not started: the run's parked budget (${A.maxParked}) was spent.`
+// A prerequisite that stopped for a budget, or that waits for the user's merge, leaves its dependent unstarted, not
+// broken: it is skipped with the same reason and builds in a later session.
+const UNSTARTED = { 'ready-to-merge': (m) => `Not started: #${m} waits for the user's OK to merge.` }
 
 async function mergeIssue(rec) {
   if (batchHalt) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
@@ -216,7 +249,8 @@ async function mergeIssue(rec) {
   for (const attempt of [1, 2, 3]) {
     const merge = await slot(() => unlessHalted(() => ask(
       prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings }),
-      { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })),
+      { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })
+      .then((r) => countPark(rec, r))),
     { priority: true })
     if (merge === HALTED) return park(haltNote())
     if (!merge) return park(dead('merge agent'))
@@ -267,15 +301,26 @@ async function runIssue(item) {
   if (inCycle(n)) return end(rec, 'parked', `Its "after" list forms a dependency cycle: ${item.after.join(', ')}.`)
   for (const m of item.after) {
     const state = await finished[m]
-    if (state !== 'merged') return end(rec, 'parked', `Depends on #${m}, which ended ${state}.`)
+    if (budgetStopped.has(m)) {
+      budgetStopped.add(n)
+      return end(rec, 'skipped', records[m].note)
+    }
+    if (UNSTARTED[state]) return end(rec, 'skipped', UNSTARTED[state](m))
+    if (state !== 'merged') return end(rec, 'parked', `Depends on #${m}, which ended ${state}.`, { counts: false })
   }
 
-  const build = await slot(() => unlessHalted(() => call(
+  // The budget is checked once a slot is free, so a build queued behind the cap does not start after it is spent.
+  const BUDGET = { budget: true }
+  const build = await slot(() => (parkedCount >= A.maxParked ? BUDGET : unlessHalted(() => call(
     prompt('agents.md', 'Build', {
       n, kind: item.kind, spec: item.spec, piece: item.piece, after: item.after, haltAnswers: item.haltAnswers,
-      date: A.date, main: A.main,
+      date: A.date, main: A.main, deadline: A.deadline,
     }),
-    { label: `build #${n}`, phase: 'Build', schema: WRITER, isolation: 'worktree' })))
+    { label: `build #${n}`, phase: 'Build', schema: WRITER, isolation: 'worktree' }).then((r) => countPark(rec, r)))))
+  if (build === BUDGET) {
+    budgetStopped.add(n)
+    return end(rec, 'skipped', budgetNote())
+  }
   if (build === HALTED) return end(rec, 'parked', haltNote())
   if (!build) return end(rec, 'parked', dead('build agent'))
   rec.branch = build.branch
@@ -285,7 +330,9 @@ async function runIssue(item) {
   rec.rulings.push(...build.rulings)
   rec.unrecorded = build.findings
   halt(build.batchHalt)
-  // A build that skipped at its first step changed nothing, so its worktree is not left in place.
+  // A build that skipped at its first step changed nothing, so its worktree is not left in place. One that found the
+  // deadline passed stopped for the run's time budget, and its dependents stop with it.
+  if (build.state === 'skipped' && build.deadlinePassed) budgetStopped.add(n)
   if (build.state !== 'ready') return end(rec, build.state, writerNote(build))
   // Every review, fix and merge prompt names the branch and PR; without them the rest would act on nothing.
   if (!build.branch || !build.pr) return end(rec, 'parked', 'The build agent returned ready without a branch or PR.')
@@ -316,7 +363,8 @@ async function runIssue(item) {
         n, round, kind: item.kind, branch: rec.branch, pr: rec.pr, spec: item.spec, plan: rec.plan,
         changeFindings: review.changeFindings, date: A.date, main: A.main,
       }),
-      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })), { priority: true })
+      { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })
+      .then((r) => countPark(rec, r))), { priority: true })
     if (fix === HALTED) return end(rec, 'parked', haltNote())
     if (!fix) return end(rec, 'parked', dead(`round ${round} fix agent`))
     if (fix.worktree) rec.worktrees.push(fix.worktree)
@@ -332,6 +380,8 @@ async function runIssue(item) {
     if (!fix.changed) break
   }
 
+  // The shakedown leaves the merge to the controller, which asks the user first (SKILL.md "Ending").
+  if (A.stopBeforeMerge) return end(rec, 'ready-to-merge', 'Reviewed; waits for the user\'s OK to merge.')
   const merged = await serial(() => mergeIssue(rec))
   halt(merged.batchHalt)
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace
@@ -354,6 +404,7 @@ return {
   merged: all.filter((r) => r.state === 'merged').map((r) => r.n),
   parked: all.filter((r) => r.state === 'parked').map((r) => ({ n: r.n, note: r.note })),
   skipped: all.filter((r) => r.state === 'skipped').map((r) => r.n),
+  readyToMerge: all.filter((r) => r.state === 'ready-to-merge').map((r) => r.n),
   batchHalt: batchHalt || null,
   records: all,
 }

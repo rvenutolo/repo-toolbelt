@@ -8,8 +8,11 @@ below.
 
 `/work-backlog` "Choosing the chunk" holds, minus what `SKILL.md` "Named exceptions" replaces (size, the bugs-only
 or one-family rule, every piece of an umbrella issue). What is left to say here is how to propose a size: ask
-nothing about it up front; propose a batch that fits the session shape the user asked for, and when they named none,
-propose a short one and name the long batch the backlog would support.
+nothing about it up front; propose the size the `short` or `long` argument named (`SKILL.md` "Arguments"), or the
+session shape the user asked for, and when they named none, propose a short one and name the long batch the backlog
+would support. Issues the user named as arguments are the batch, whatever their size. While the shakedown is on
+(`SKILL.md` "Shakedown and budgets"), the batch is one issue: the first named one, or else the first the short batch
+would hold.
 
 - **Short:** the doable bugs, or one feature family when there are none, about two hours by the estimate below.
 - **Long:** the doable bugs plus as many feature families as fit an unattended run of about eight hours by that
@@ -51,8 +54,10 @@ One message, ending with the question banner, naming everything `/work-backlog`'
 
 - the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece,
   in the order "Choosing the chunk" "Order" gives (by leverage, not bugs before features);
-- **the cap**: how many build, fix and merge agents run at once (default 4; each runs the full pre-push gate when it
-  pushes);
+- **the cap**: how many build, fix and merge agents run at once (default 4, and 1 during the shakedown; each runs
+  the full pre-push gate when it pushes);
+- **the budgets** and the shakedown as `/work-backlog` "Budgets" and "Shakedown" give them, with the deadline they
+  set and what each does to a run that reaches it (`SKILL.md` "Shakedown and budgets");
 - **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
   bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review
   and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never
@@ -61,7 +66,8 @@ One message, ending with the question banner, naming everything `/work-backlog`'
   registry files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes
   about the longer of the longest chain and the first ready PR plus one merge round per issue; merges and fixes take
   a free slot ahead of builds not yet started, so merging begins while later builds wait. Say plainly that a short
-  batch of small bugs saves little over `/work-backlog`;
+  batch of small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that; an
+  estimate longer than the time budget names the issues that would likely skip;
 - **the agent count**, from these bounds: per issue at most ten agents (one build, two reviews, two fixes, three
   merge calls and two resolution reviews between them), each retried once if it dies, plus a resumed run's live
   re-runs; most issues need three (build, review, merge). Name the session's workflow size
@@ -72,8 +78,8 @@ One message, ending with the question banner, naming everything `/work-backlog`'
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`; the
 permission request is left out when the session runs with permissions bypassed. Ask every likely halt question, as
-`/work-backlog` does: a halt parks the issue here instead of stopping the session, but a park still waits for a
-later session to ask the same question.
+`/work-backlog` does, working through `/work-backlog` `halt-questions.md` for each issue: a halt parks the issue here
+instead of stopping the session, but a park still waits for a later session to ask the same question.
 
 ## Feature batches
 
@@ -81,7 +87,8 @@ later session to ask the same question.
    brainstorm and one spec each, in proposal order, one after another in this sitting.
 2. **Spec, builder check, Fable review** per spec (`feature-flow.md` steps 2–4).
 3. **One question round** for the whole batch (`feature-flow.md` step 5): every held question from every spec, the
-   halt questions, rule conflicts and the permission request (left out when bypassed), in one message.
+   halt questions (`halt-questions.md` again, for each issue), rule conflicts and the permission request (left out
+   when bypassed), in one message.
 
 ## The permission request
 

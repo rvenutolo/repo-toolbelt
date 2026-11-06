@@ -4,6 +4,9 @@ description: >-
   Works this repo's open GitHub issues one PR at a time: proposes a chunk of related bugs or features, builds each in
   its own worktree, and merges each on green CI unattended once the user approves the chunk. Use when starting a
   session to work through the issue backlog, or when asked to pick up the next backlog issue, bug or feature.
+  Arguments: `plan` for a read-only proposal that changes nothing, and issue numbers to name the chunk. For a long
+  run of independent issues, /work-backlog-parallel finishes sooner.
+argument-hint: "[plan] [<issue>...]"
 disable-model-invocation: true
 ---
 
@@ -50,6 +53,25 @@ every "question banner, otherwise a `Ruling:`" elsewhere in this skill and its f
   commit signing that fails, a long command that hangs past its 30 minutes ("Long commands"), Docker unreachable or
   `sysctl net.ipv4.ip_forward` not 1 when a step needs a container, since the user's global Docker rule forbids
   running one then). Both are recorded as "Halting" says.
+
+## Arguments
+
+The invocation's arguments, in any order:
+
+- **`plan`:** plan only, so a run can be rehearsed. It changes nothing: step 1 runs `git fetch --prune origin` and
+  `gh auth status` only (no switch, no pull, a dirty tree is fine); step 2 takes the open-issue count for the
+  proposal's trend line but appends no log line and creates no state file; step 3 lists what it finds without acting
+  on it; step 4 names the pending findings without walking them; step 5 says whether triage would run instead of
+  running it. Step 6 then prints the proposal, its halt questions and the permission request (`permissions.md`) as
+  it would send them, and the session ends with the done banner. Scratch files go to `.claude/tmp/` only; nothing is
+  written under `.claude/backlog/`.
+- **Issue numbers:** the chunk is exactly these issues, so step 6 skips choosing and classifies only them
+  (`backlog-index <N>...`, "Choosing the chunk"). Each must still be open and doable; the bugs-first rule and the
+  size limit give way, since the user chose, but shakedown does not: while it is on, the chunk is the first named
+  issue and the proposal says so ("Shakedown"). Named issues of both kinds make the bugs this chunk and the features
+  the runner-up, said in the proposal, because a chunk follows one flow.
+- **Anything else** (including `short` and `long`, which are `/work-backlog-parallel`'s batch sizes): ask with the
+  question banner, listing the valid forms, before step 1.
 
 ## Terms
 
@@ -118,12 +140,17 @@ if any is missing.
   earlier session gets this line rewritten, step 6); the flow (bug or feature); the issues in order; the halt answers
   and the commands the user allowed, from the chunk OK (bugs) or `feature-flow.md` step 5 (features); the spec path
   once `feature-flow.md` step 2 writes it; `spec approved` after `feature-flow.md` step 5; each issue's plan path;
-  every banner halt with its answer ("Halting"); and one line per issue as it reaches a PR, as its PR merges, and as
-  its worktree is removed. Step 2 reads a copy of any date as the point to resume from, step 3 reconciles it against
-  git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
+  every banner halt with its answer ("Halting"); a `started:` line with the UTC time the unattended part began
+  ("Budgets"); and one line per issue as it reaches a PR, as its PR merges, and as its worktree is removed. Step 2
+  reads a copy of any date as the point to resume from, step 3 reconciles it against git and GitHub
+  (`leftovers.md`), and step 9 deletes it. Code is recovered from git and GitHub; approvals, halt
   answers and spec paths survive only in this file and under `docs/superpowers/`.
 - `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State"). This
   skill writes them only when `leftovers.md` records a finished run's result, and folds any it finds.
+- `config`: the user's settings for both backlog skills, `key: value` lines: `shakedown:` ("Shakedown"),
+  `max-hours:` and `max-parked:` ("Budgets"). An absent file or key means the default. Written only on the user's
+  word; never a leftover.
+- `reports/`: one file per finished session ("End-of-run report"). Kept, never a leftover.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`. The
@@ -155,7 +182,8 @@ from inside a worktree is fine.
 5. **Stall check.** Compare today's line with the third line above it ending in `done` (three finished sessions
    earlier, however many calendar days apart; lines without `done` are skipped). If that line exists and today's count
    is not lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
-6. **Choose the chunk** (below), propose it, and wait for the user's OK. The user may swap or trim it. Then write
+6. **Choose the chunk** (below), or take the issues the arguments name ("Arguments"), propose it, and wait for the
+   user's OK; with `plan`, print the proposal and end there instead. The user may swap or trim it. Then write
    `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or it holds
    parked issues of a parallel run left for later); never overwrite one. Either way its `session-date:` line names
    the date of the line this session's step 2 appended, and the halt answers and allowed commands go in with the
@@ -164,7 +192,7 @@ from inside a worktree is fine.
    why, and goes to step 8.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
-9. **Summary.** One message that names:
+9. **Summary.** Write the end-of-run report ("End-of-run report") and send it as one message that names:
    - what merged and which issues it closed;
    - any merged change that alters an existing lint's behavior, so the user knows to check consumers before the next
      release;
@@ -182,7 +210,9 @@ from inside a worktree is fine.
    - every issue the user's decision opened or closed this session (the walkthrough, `bug-flow.md` step 3,
      `triage.md`);
    - every item in `.claude/backlog/parallel/summary.md`, which `leftovers.md` writes when step 3 finishes a parallel
-     run's "Ending"; delete the file once the summary is sent.
+     run's "Ending"; delete the file once the summary is sent;
+   - a budget that stopped new issues from starting, and the issues it left ("Budgets");
+   - while shakedown is on, the offer to lift it ("Shakedown").
 
    Then append `done` to the `session-log.md` line this session's step 2 appended or kept. A long unattended run
    crosses midnight, so today's date may name no line: once step 6 has written this session's chunk, the line is
@@ -194,25 +224,21 @@ from inside a worktree is fine.
 
 ## Choosing the chunk
 
-Read every open issue into a file first:
-`gh issue list --state open --limit 1000 --json number,title,labels,body > .claude/tmp/issues.json` (after
-`mkdir --parents .claude/tmp`; the default limit hides older issues). The bodies run to well over what the Bash tool
-shows, and a classification read from a cut-off listing misses issues. Classify from one line per issue:
-
-```bash
-jq --raw-output '.[] | [.number, ([.labels[].name] | join(",")), .title,
-  (.body[0:160] | gsub("\\s+"; " "))] | @tsv' .claude/tmp/issues.json
-```
-
-and read a full body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only where
-the excerpt leaves the kind unclear, and for every issue the proposal takes.
+Run `.claude/skills/work-backlog/backlog-index` (with the issue numbers when the arguments name them). It writes every
+open issue, body included, to `.claude/tmp/issues.json` and prints one tab-separated row per issue: `number`, `kind`,
+`labels`, `title`, `repro`, `refs`, `umbrella`, `bytes`. The bodies run to well over what the Bash tool shows, and a
+classification read from a cut-off listing misses issues, so classify from the rows and read a full body
+(`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only for a row whose `kind` is
+`?`, a non-bug row with `repro` `yes`, and every issue the proposal takes. `refs` and `umbrella` show the
+dependencies and umbrella issues "Order" and the proposal need. A non-zero exit is a failed `gh` call (step 1).
 
 An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body reports something that is wrong
-now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. Few issues carry the
-label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable review. The proposal
-names every issue whose kind was a judgment call, so the user can correct it with the chunk OK: a bug found from its
-body alone, and an issue with neither the `bug` label nor a `fix:` or `feat:` title. An issue whose kind follows from
-its label or title is not named. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is
+now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. The `kind` column
+decides only the first two (`bug`, or `feature` from a `feat:` title or the `enhancement` label); `?` is neither.
+Few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable
+review. The proposal names every issue whose kind was a judgment call, so the user can correct it with the chunk
+OK: a bug found from its body alone, and a `?` row. An issue whose kind follows from its label or title is not
+named. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is
 features. A bug the session cannot do at all (below) does not count, or it would block every later chunk until the
 user acts.
 
@@ -224,10 +250,10 @@ user acts.
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size. A
   prerequisite internal to the chunk that no issue names (a shared helper the pieces need) counts under the first
   factor.
-- **Size:** two to four PRs. Each PR waits on its own CI run and merges before the next starts, and the findings
-  walkthrough still follows, so more than four rarely finishes in a session. When a family is bigger, propose the
-  part that fits; the rest stays open for the next session, and the spec covers only the proposed part, with a
-  shared helper designed so the rest can reuse it.
+- **Size:** two to four PRs; one while shakedown is on ("Shakedown"). Each PR waits on its own CI run and merges before
+  the next starts, and the findings walkthrough still follows, so more than four rarely finishes in a session. When a
+  family is bigger, propose the part that fits; the rest stays open for the next session, and the spec covers only the
+  proposed part, with a shared helper designed so the rest can reuse it.
 - **Combined changes:** an issue body or comment that asks for its change to land together with another's still
   gets one PR per issue ("PRs" below): order the two by the dependency between them, and say so in the proposal.
 - **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments`. A decision the
@@ -243,9 +269,17 @@ The proposal is one message, ending with the question banner, that names:
 - the runner-up chunk and why it lost, so the user can swap with one word, or "none" when no other chunk could be
   formed (every doable issue of the chosen kind is already in this one);
 - the user's own work step 3 saw and left alone, or "none";
-- for a bug chunk, every likely halt question for the unattended part ("Terms") and the permission request
-  (`permissions.md`). The OK on the chunk answers the questions; the permission request needs its own answer. A
-  feature chunk asks both in `feature-flow.md` step 5 instead;
+- the backlog's trend, as `Backlog: <prev> → <now> open since <date>`, from the `open=` and date of the last
+  `session-log.md` line before this session's and the count step 2 took (not `backlog-index`'s row count, which
+  covers only the named issues when the arguments name some); the stall check sees only three sessions apart, and
+  this shows growth between any two;
+- the budgets and whether shakedown is on ("Budgets", "Shakedown"), so the user can change either with the OK;
+- when the chunk holds several independent issues and a long unattended run, that `/work-backlog-parallel` would
+  finish it sooner;
+- for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md` lists the kinds
+  that recur, each with its default answer) and the permission request (`permissions.md`). The OK on the chunk
+  answers the questions; the permission request needs its own answer. A feature chunk asks both in
+  `feature-flow.md` step 5 instead;
 - an issue whose own text asks the session to do something this skill forbids (open further issues, change another
   repo, cut a release), with the question it raises, so the user settles it with the chunk. An issue that describes
   a product which does such things, such as a workflow that opens issues, raises no question;
@@ -260,7 +294,7 @@ The loop for one issue:
 
 1. Check the issue is still open: `gh issue view <number> --json state --jq .state`. `CLOSED` means the user decided
    against it since the chunk was approved: skip it, leave its part of any spec unbuilt, name it in the summary, and
-   go on to the next.
+   go on to the next. Then check the time budget ("Budgets"); a spent one starts no further issue.
 2. Create a worktree and enter it, copy the instruction files in, and run the baseline tests ("Worktrees").
 3. Build the change (`feature-flow.md` or `bug-flow.md`).
 4. Push as soon as the local gate passes, and open the PR ("PRs").
@@ -363,7 +397,8 @@ those steps refer to.
     next item says, with no further review; anything else still goes through the filing bar and "Out-of-scope
     findings" (a same-PR fix made after round two also gets no review).
   - A leftover PR from an earlier session gets a superpowers:requesting-code-review pass before it merges whichever
-    way it was built, since no record of an earlier review survives a session.
+    way it was built, since no record of an earlier review survives a session. The one record that does is a
+    parallel run's `ready-to-merge` file, whose PR merges with no further review (`leftovers.md`).
 - **Findings about the change itself** (a hole in the session's own fix, a gap in its own new test, a finding a plan
   sub-skill parked or deferred) are fixed in the branch, given a known-gap comment, or dropped. They never become an
   issue or a pending finding. The filing bar does not apply to them, nor to design findings (`feature-flow.md` step
@@ -409,7 +444,8 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 
 ## Merging
 
-Approval ("Terms") covers every push and merge in the chunk, so none waits for the user. `merging.md` gives the
+Approval ("Terms") covers every push and merge in the chunk, so none waits for the user, except a merge under
+shakedown ("Shakedown"). `merging.md` gives the
 procedure, its traps and its exceptions: watching CI, a check that fails, a coverage-ratchet failure, an
 infrastructure failure worth one rerun, a branch that fell behind `main` or conflicts with it, a merge the ruleset
 refuses, and a pull or delete that is refused.
@@ -419,6 +455,34 @@ A blocked-banner halt in `merging.md` stops the chunk at that issue. Leave the w
 user's reply, go on with the issues that do not depend on the halted one, or stop, as the user says. Steps 8 and 9
 then run from the main checkout, except that a halt caused by a failed `gh` call skips step 8: the walkthrough needs
 `gh` to open issues, and the findings wait in `pending-findings.md` for the next session. The summary says so.
+
+## Shakedown
+
+Until the user has watched one run go through end to end, an unattended merge is a step taken on trust, so both
+backlog skills start in shakedown: `shakedown: on` is the default while `.claude/backlog/config` does not say `off`.
+While it is on, a chunk is one issue, and its merge waits for the user's OK: `merging.md` step 2 asks with the
+question banner once CI is green, recorded as "Halting" says. The summary offers to lift it; on the user's yes,
+write `shakedown: off` to the config (create the file, or replace the key's line). The user may also turn it on or
+off with the chunk OK.
+
+## Budgets
+
+An unattended run that goes badly should stop costing time on its own, so the config bounds it: `max-hours:` (default 8)
+and `max-parked:` (default 2), stated in the proposal. The time runs from the `started:` line the session writes to
+`current-session.md` as the unattended part begins (`date --utc +%FT%TZ`), replacing one a carried-over file
+holds. Once `max-hours` has passed, no further issue
+starts: the loop's step 1 stops there, the issues not started stay open for the next session, and the session goes to
+step 8 after the current issue merges or halts. `max-parked` applies to `/work-backlog-parallel` alone, whose halts park
+an issue and go on; here every halt already waits for the user.
+
+## End-of-run report
+
+Step 9 writes its summary to `.claude/backlog/reports/<YYYY-MM-DD>.md` (`-2`, `-3` and so on when the day already
+has one) before sending it, so it survives a closed terminal and two runs can be compared. Sections, each `none`
+when empty: `Merged`, `Not merged` (with the reason, and for a parked issue its question and recommended answer),
+`Rulings`, `Leftovers` (branches, worktrees and a local `main` left in place), `Findings` (filed, dropped or still
+pending), `Consumer-impacting changes`, and `Budgets and shakedown`. The message sent is the same text. `plan`
+writes no report.
 
 ## Ending early
 

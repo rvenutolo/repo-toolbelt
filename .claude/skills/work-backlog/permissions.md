@@ -23,8 +23,14 @@ follow-up message carrying only the request is allowed and is not a second quest
 
 ## Rule strings
 
-Check the allowlists in `$CLAUDE_CONFIG_DIR/settings.json` and the main checkout's `.claude/settings*.json` rather
-than assuming, and list only the rules they lack. Name rule strings, not commands: a rule matches a command by its
+Check the allowlists rather than assuming, and list only the rules they lack:
+`.claude/skills/work-backlog/permission-diff <rule>...`, with every candidate below written out (or one per line on
+stdin with `-`), prints each rule that no allowlist (`$CLAUDE_CONFIG_DIR/settings.json`, its `settings.local.json`,
+and the main checkout's `.claude/settings.json` and `.claude/settings.local.json`) holds verbatim, and prints
+`defaultMode` on stderr. Its `--superpowers-dir` prints the installed superpowers plugin directory, the
+`<plugin dir>` below. It compares strings only: a printed rule that a broader rule already in the allowlist covers
+by prefix (`Bash(git *)` covers `Bash(git rebase *)`) is dropped from the request by reading that allowlist. Name
+rule strings, not commands: a rule matches a command by its
 literal prefix, so `Bash(git rebase *)` does not cover `git -C <path> rebase`, and a leading variable assignment
 (`GIT_EDITOR=true git …`) matches no `git` rule. Claude Code strips a leading `timeout`, `nice` or `nohup` before
 matching, so a rule names the wrapped command, never the wrapper. A redirect is checked as a file write: a target
@@ -46,9 +52,14 @@ The candidates, with what runs them:
   included.
 - `Bash(git config --get *)` and `Bash(ssh-keygen -Y sign *)`: the signing check ("Signing").
 - `Bash(sleep *)`: the background waits in "Long commands".
+- `Bash(date --utc *)`: the time budget's `started:` line and its check before each issue ("Budgets"), and the
+  parallel run's `deadline`.
+- `Bash(.claude/skills/work-backlog/backlog-index*)` and `Bash(.claude/skills/work-backlog/permission-diff*)`: the
+  proposal runs them while the user is there, so a missing rule costs a prompt, not a stall; with them allowed, a
+  later session's proposal, `plan` included, runs without one.
 - The plan sub-skills' helper scripts, each run by its absolute path from the installed superpowers plugin, without
-  a `bash` prefix (`sub-skill-overrides.md`), so one rule per script matches. `<plugin dir>` is
-  `$CLAUDE_CONFIG_DIR/plugins/cache/claude-plugins-official/superpowers/<version>`, with both written out:
+  a `bash` prefix (`sub-skill-overrides.md`), so one rule per script matches. `<plugin dir>` is what
+  `permission-diff --superpowers-dir` prints, written out:
   `Bash(<plugin dir>/skills/executing-plans/scripts/task-start *)`,
   `Bash(<plugin dir>/skills/executing-plans/scripts/task-done *)`,
   `Bash(<plugin dir>/skills/subagent-driven-development/scripts/sdd-workspace *)`,
@@ -91,7 +102,8 @@ permission request"):
   that `Edit` rule covers.
 - `Edit(/<main>/.claude/backlog/parallel/**)` is covered by the `.claude/backlog/` rule above; the review stage
   writes there.
-- `Bash(sysctl net.ipv4.ip_forward)`, and `Bash(kill -0 *)` from "Rule strings".
+- `Bash(sysctl net.ipv4.ip_forward)`, and `Bash(kill -0 *)` and `Bash(date --utc *)` (a build agent's deadline
+  check) from "Rule strings".
 
 ## Signing
 

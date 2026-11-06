@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+# @description Index the open backlog for choosing a chunk. Writes the full
+#              issue JSON to a file and prints one TSV row per issue, so a
+#              session classifies from a compact table and reads a full body
+#              only for the issues it considers: the whole backlog's bodies run
+#              far past what one tool result shows.
+# @option --out <file> where to write the full JSON (default .claude/tmp/issues.json)
+# @arg $@ issue numbers to index instead of every open issue
+# @stdout a header line, then per issue: number, kind (bug, feature or ? for a
+#         judgment call), labels, title, repro (yes when the body describes a
+#         reproduction), refs (other issue numbers the body names), umbrella
+#         (yes when the body calls itself an umbrella or tracks sub-issues),
+#         bytes (body length)
+# @exitcode 0 the index was written
+# @exitcode 1 a gh call failed
+# @exitcode 2 wrong arguments
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+readonly FIELDS='number,title,labels,body'
+
+# The kind rules are the skill's: a `bug` label or a `fix:` title is a bug, a
+# `feat:` title or an `enhancement` label is a feature, anything else is a
+# judgment call the proposal names.
+# shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
+readonly TABLE_JQ='
+  ["number", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
+  (sort_by(.number)[]
+    | (.body // "") as $body
+    | ([.labels[].name]) as $labels
+    | .number as $self
+    | [
+        .number,
+        (if ($labels | index("bug")) or (.title | test("^fix(\\([^)]*\\))?!?:")) then "bug"
+         elif (.title | test("^feat(\\([^)]*\\))?!?:")) or ($labels | index("enhancement")) then "feature"
+         else "?" end),
+        ($labels | join(",")),
+        .title,
+        (if $body | test("repro"; "i") then "yes" else "" end),
+        ([$body | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber | select(. != $self)]
+          | unique | map(tostring) | join(",")),
+        (if ($body | test("- \\[[ xX]\\] [^\\n]*#[0-9]+")) or ($body | test("sub-issue|umbrella"; "i"))
+         then "yes" else "" end),
+        ($body | utf8bytelength)
+      ])
+  | @tsv'
+
+# @description Print the usage line to stderr and exit 2.
+# @noargs
+function usage() {
+  printf 'usage: %s [--out <file>] [<issue>...]\n' "${0##*/}" >&2
+  exit 2
+}
+
+# @description Print the JSON array of the named issues, or of every open issue.
+# @arg $@ issue numbers, none for every open issue
+function fetch() {
+  if (($# == 0)); then
+    gh issue list --state open --limit 1000 --json "${FIELDS}"
+    return
+  fi
+  local issue
+  for issue in "$@"; do
+    gh issue view "${issue}" --json "${FIELDS}" || return 1
+  done | jq --slurp '.'
+}
+
+# @description Parse the arguments, write the JSON and print the table.
+# @arg $@ the script's arguments
+function main() {
+  local out='.claude/tmp/issues.json'
+  local -a issues=()
+  while (($# > 0)); do
+    case "$1" in
+      --out)
+        if (($# < 2)) || [[ -z "$2" ]]; then
+          usage
+        fi
+        out="$2"
+        shift 2
+        ;;
+      *)
+        if [[ ! "$1" =~ ^[1-9][0-9]*$ ]]; then
+          usage
+        fi
+        issues+=("$1")
+        shift
+        ;;
+    esac
+  done
+  local json
+  if ! json="$(fetch "${issues[@]}")"; then
+    printf '%s: gh failed to list the issues\n' "${0##*/}" >&2
+    exit 1
+  fi
+  mkdir --parents "$(dirname "${out}")"
+  printf '%s\n' "${json}" > "${out}"
+  jq --raw-output "${TABLE_JQ}" "${out}"
+}
+
+main "$@"
