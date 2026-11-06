@@ -9,8 +9,8 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 
 - **Every prompt template** (`implementer-prompt.md`, `task-reviewer-prompt.md` and `re-review-prompt.md` in
   superpowers:subagent-driven-development; `code-reviewer.md` in superpowers:requesting-code-review): each is used
-  with the "Subagents" clause from `SKILL.md` appended (return every finding; never open an issue, leave a `TODO`
-  or filter). `code-reviewer.md`'s "check it out into a separate temporary directory (e.g.
+  with the "Subagents" clause from `SKILL.md` appended (return every finding; never open an issue, comment on a PR,
+  leave a `TODO` or filter). `code-reviewer.md`'s "check it out into a separate temporary directory (e.g.
   `git worktree add /tmp/review-[SHA] [SHA]`)": the reviewer uses `git diff` and `git show` only, for the reason
   "Subagents" gives.
 - **superpowers:finishing-a-development-branch**: not invoked at all, even where another skill ends by naming it.
@@ -51,8 +51,11 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 - **superpowers:using-git-worktrees**, project setup (`go mod download` and the like on the host): skipped; the
   devShell supplies every tool. Baseline tests as `npm test / cargo test / …`: the command is
   `./.ci/in-devshell ./run-tests`, run in the background ("Long commands" in `SKILL.md`). "If tests fail: Report
-  failures, ask whether to proceed or investigate": a red baseline on a fresh branch from `origin/main` is a
-  blocked-banner halt, since `main` itself is broken.
+  failures, ask whether to proceed or investigate": a red baseline on a fresh branch from `origin/main` is run once
+  more. Still red, and the latest `ci.yml` run on `main` is red too
+  (`gh run list --branch main --workflow ci.yml --limit 1 --json conclusion`): `main` itself is broken, a
+  blocked-banner halt. Otherwise a test that fails only here (under load, or on this machine) is flaky: record it as a
+  finding and carry on; a question banner only if it keeps the issue's work from going on.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, "Four things stop you, and only
   these: an irreversible or destructive operation; a security-sensitive action; a side effect outside this worktree
   that norms say you ask about first (a merge, a push to a shared branch, a publish); and a plan so broken that every

@@ -1,46 +1,77 @@
 # Merging
 
-The commands behind "Merging" in `SKILL.md`. Steps 1 and 2 run inside the worktree; step 3 leaves it, and the rest
+The commands behind "Merging" in `SKILL.md`. Steps 0 to 2 run inside the worktree; step 3 leaves it, and the rest
 runs in the main checkout, because a session in a worktree may not write to the main checkout or run git there
 ("Leaving to write" in `SKILL.md`). The CI watch is a long command ("Long commands" in `SKILL.md`): run it in the
 background.
 
+0. **Reconcile** before the first CI watch, and again when a resumed session reaches this file, since the user may
+   have acted while nobody watched:
+   - `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past the merge: go to step
+     3. `CLOSED`: the user closed the PR; leave the issue and its worktree, name both in the summary, and go on.
+   - `gh issue view <N> --json state --jq .state` printing `CLOSED`: the user closed the issue; leave the PR open for
+     them, name it in the summary, and go on. A PR whose body carries no `Closes #N` or `Part of #N` line (a "fix it
+     now") skips this check.
+   - `gh pr view <number> --json isDraft,reviewDecision,comments,reviews`: a draft, a non-empty review decision, or
+     any comment or review means the user has touched the PR (this skill never comments or reviews on GitHub). Ask
+     with the question banner whether to go on with it or leave it, quoting what they wrote, and do not touch it
+     before the answer.
 1. **Wait for CI** with `gh pr checks <number> --watch --fail-fast`, then read the result from
    `gh pr checks <number> --json bucket`, since the exit code alone does not tell the cases apart (a cancelled check
    exits 0). CI is green when every bucket is `pass` or `skipping`. Otherwise:
    - A non-zero exit saying `no checks reported on the '<branch>' branch` means no check has started yet, which
      happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
-     run again, up to three times; still none is a failed `gh` call (blocked banner).
+     run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
+     not a failed `gh` call, which is a `gh` command that errors.
    - A `fail` bucket is a check to fix: fix the cause and push again. A coverage-ratchet failure is fixed by a test
      where one is possible, otherwise by a new signed commit (never an amend) that raises the baseline and carries the
-     `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it.
+     `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it. A fix made
+     here, after the PR's review (and a fix to a pre-push gate failure after a rebase in step 2), gets one
+     superpowers:requesting-code-review pass scoped to the fix, with the base at the head that was pushed before it,
+     before it is pushed; the fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews it. The
+     third such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
    - A `cancel` bucket, or a failure that is plainly infrastructure (such as a Nix setup step failing before any
      check runs, or a job that hangs until its timeout), gets one `gh run rerun <run-id> --failed`, with the id from
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
      step repeats once from the watch. If CI is still red after the rerun, blocked banner.
    - A non-zero exit with no JSON and any other message is a failed `gh` call (blocked banner).
 2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this
-   step: go to step 3. Otherwise `gh pr merge <number> --merge`: the repo allows merge commits only and deletes the
-   remote branch itself. Do not pass `--delete-branch`; the local branch is checked out in the worktree and the
-   delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go straight to step 3, which records
-   the merge; a compaction before that record is caught by this `MERGED` check. A refused merge is read from
+   step: go to step 3 (step 0 also catches this when it runs first). Otherwise `gh pr merge <number> --merge`: the
+   repo allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local
+   branch is checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing
+   `MERGED`, then go straight to step 3, which records the merge; a compaction before that record is caught by this
+   `MERGED` check. A refused merge is read from
    `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
    - `UNKNOWN`: GitHub is still computing the status after a push. Wait a minute and read it again, up to three
      times.
    - `BEHIND`: the ruleset requires the branch to be up to date with `main`, and Renovate merges its own PRs
      unattended, so a branch that was current when CI started can fall behind. Rebase as the global GitHub rule
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
-     `git rebase origin/main`, confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter:
-     do not push, blocked banner), push with `git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push
-     hook runs the full gate again), and go back to step 1 for the new CI run. A rebase that conflicts is a change
-     the user must see: `git rebase --abort`, blocked banner. Never `gh pr update-branch`; it rewrites the commits
-     unsigned.
+     `git rebase origin/main`, regenerate the baseline when "Baseline after a rebase" below says so,
+     confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
+     push with `git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full gate again),
+     and go back to step 1 for the new CI run. A rebase that conflicts is a change the user must see:
+     `git rebase --abort`, blocked banner. Never `gh pr update-branch`; it rewrites the commits unsigned. The third
+     `BEHIND` or `DIRTY` on one PR is a blocked banner: `main` is moving faster than CI, and the user decides when to
+     try again.
    - `DIRTY`: the branch conflicts with `main` (a Renovate merge touched the same file). Take the `BEHIND` path; the
      rebase conflicts and ends in its blocked banner, or resolves cleanly and runs CI again.
    - `UNSTABLE`, or any status not named here: blocked banner naming the status.
    - `BLOCKED` with green CI: a rule other than up-to-date refused it, such as an unresolved review thread (the
      ruleset requires every thread resolved) or an unsigned commit. Blocked banner, saying which. Never pass
      `--admin`, which `gh` itself suggests, and never resolve a thread; both are the user's.
+
+   **Baseline after a rebase.** A rebase never leaves a text-merged `.coverage-baseline.txt` ("Never" in
+   `SKILL.md`). Regenerate it when the rebase took `main`'s copy in a conflict, or when both sides changed it since
+   their merge base. Measure that from the branch as it was pushed, since after the rebase the merge base is
+   `origin/main` itself: with `base` from `git merge-base origin/main <old-remote-sha>`, both
+   `git diff --quiet <base> <old-remote-sha> -- .coverage-baseline.txt` and
+   `git diff --quiet <base> origin/main -- .coverage-baseline.txt` exit 1. Skip it when `HEAD` already has a
+   commit after `origin/main` that changes the baseline and nothing has been rebased since (an earlier pass
+   regenerated it). To regenerate, run `./.ci/in-devshell ./run-tests` then
+   `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline`; a changed file is committed as a new signed
+   commit, never an amend, and a unit whose line rises carries the `Coverage-Drop:` trailer exactly as README
+   "Recording a rise" says.
 3. **Leave, record and pull.** `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`).
    From the main checkout, record the merge in `current-session.md` if it is not there yet, so a compaction from
    here on does not lead to a second merge attempt. Then `git pull --ff-only`, so the merge is on local `main`. If
