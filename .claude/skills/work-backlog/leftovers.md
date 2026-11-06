@@ -1,7 +1,7 @@
 # Leftovers
 
-Runs from `SKILL.md` step 3 when step 2 found a `current-session.md`, `.claude/backlog/parallel/` holds a file, or
-the main checkout holds anything beyond `main`. Its inputs: the `current-session.md` step 2 read, which names the
+Runs from `SKILL.md` step 3 when its normal case does not hold. Its inputs: the `current-session.md` step 2 read
+(format in `state.md`), which names the
 dead session's issues, spec, plans, halt answers and how far each issue got; the files under
 `.claude/backlog/parallel/`; and four listings, all run after `git worktree prune` (a worktree directory deleted by
 hand stays registered until then):
@@ -39,8 +39,9 @@ either skill may be the one that finds them.
   below). Taking over strips the `workflow-*` and `cap:` lines from `current-session.md` first, so the parallel skill
   never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
   `/work-backlog-parallel`'s "The run" step 4 says; recommend the resume when that step finds it possible. Leaving
-  keeps `current-session.md` as the run's file: this session never adds its own chunk to a file that still holds
-  `workflow-*` lines (`SKILL.md` step 6).
+  keeps `current-session.md` as the run's file, whose `session-date:` that run's "Ending" and lost-run check read:
+  this session never adds its own chunk to it, and step 9 leaves it in place (`SKILL.md` steps 6 and 9). Its
+  `session-log.md` line is the run's too; step 2 appended this session's own.
 - `cap:` and `issue` lines but no `workflow-*` line: a parallel batch that was approved and never launched. Ask with
   the question banner whether to launch it with `/work-backlog-parallel` (recommended: the approval was given for a
   parallel run) or take its issues over here; taking over strips the `cap:` line first, so a later parallel session
@@ -54,9 +55,7 @@ Then fold the files, before sorting anything:
   `plan:` is repo-relative: the plan is at that path in the main checkout.
   - `merged`: correct the spec for each divergence `ruling:` in it (the code that merged wins) and apply each
     `ruling:` that names a `.claude/CLAUDE.md` edit to the main checkout's copy, sort the worktrees it lists
-    (below), then delete the file. The parallel skill's "Ending" step 1 does only the findings fold above, this spec
-    correction and the `.claude/CLAUDE.md` edits; the worktree sort and the delete wait for its step 4, because
-    its summary reads the file's `worktrees:` line.
+    (below), then delete the file.
   - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
     deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
     were for. Ask with the question banner whether to remove each worktree and its branch, recommending removal.
@@ -121,9 +120,9 @@ agent or a session that died. `git worktree list --porcelain` shows the lock rea
   issue is the N after `<type>/` in the branch name (`<type>/<N>-<description>`, "Branches" in `SKILL.md`). A
   `fix/finding-<slug>` branch has no issue; it is this skill's while its entry is still in `pending-findings.md`.
   The PR listing above shows open PRs only, so check `gh pr list --state all --head <branch> --json state` first: a
-  `CLOSED` PR means the user rejected that work, so it is not unfinished. Ask with the question banner whether to
+  `CLOSED` PR means the user rejected that work, so it is not unfinished: ask with the question banner whether to
   remove the worktree and its branch, recommending removal, and never open a new PR for it unasked. A `MERGED` one
-  belongs to "Done".
+  belongs to "Done". With no PR at all, the worktree is unfinished work and is resumed below.
 - A worktree under `.claude/worktrees/` with no commits beyond `origin/main` is this skill's too, but holds nothing:
   remove it (`git worktree remove`, then `git branch --delete`) and name it in the summary.
 - A worktree under `.claude/worktrees/` whose issue has since been closed is this skill's but has nothing left to

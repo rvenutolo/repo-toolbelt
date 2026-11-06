@@ -26,7 +26,8 @@ background.
      run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
      not a failed `gh` call, which is a `gh` command that errors.
    - A `fail` bucket is a check to fix: fix the cause and push again. A coverage-ratchet failure is fixed by a test
-     where one is possible, otherwise by a new signed commit (never an amend) that raises the baseline and carries the
+     where one is possible, otherwise by a new signed commit (never an amend: it rewrites the pushed head, which needs
+     a force push and discards the review and CI that head already had) that raises the baseline and carries the
      `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it.
    - **A merge-time fix** (one made here, after the PR's review, or for a pre-push gate failure after a rebase in
      step 2) gets one superpowers:requesting-code-review pass scoped to the fix, with the base at the commit the fix
@@ -41,7 +42,8 @@ background.
 2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this step:
    go to step 3 (step 0 also catches this when it runs first). While shakedown is on ("Shakedown" in `SKILL.md`), ask
    first with the question banner whether to merge, naming the PR and its green checks, and record the halt and its
-   answer as "Halting" says. On "no": `ExitWorktree` with `action: keep`, record `pr open, not merged` against the
+   answer as "Halting" in `resume.md` says. On "no": `ExitWorktree` with `action: keep`, record `pr open, not merged`
+   against the
    issue in `current-session.md`, leave the PR, worktree and branch for the next session's step 3, name the PR in
    the summary, and go on with the next issue; steps 3 and 4 are the merge path and do not run. Coming back here after
    a `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo

@@ -113,7 +113,8 @@ worktree path the issue's agents used so far), `build` (the latest build or fix 
    `<main>/<plan>` does not exist yet, copy `<headWorktree>/<plan>` there; write `plan: <plan>`.
 2. **Review the pushed branch yourself**, following the review prompt inside superpowers:requesting-code-review's
    `code-reviewer.md` with the "Subagents" clause. Do not dispatch the subagent the template wraps, and do not read
-   that skill's `SKILL.md`. Fill the template's placeholders:
+   that skill's `SKILL.md`: it is written around dispatching a reviewer this agent cannot start, and reading it pulls
+   that instruction in. Fill the template's placeholders:
    - `[DESCRIPTION]`: the PR's title and body (`gh pr view <pr> --json title,body`).
    - `[PLAN_OR_REQUIREMENTS]`: the issue, body and comments (`gh issue view <n> --json title,body,comments`; the
      `--comments` form prints only the comments when not on a terminal) and, for a feature,

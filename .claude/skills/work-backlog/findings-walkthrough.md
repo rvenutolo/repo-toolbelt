@@ -26,4 +26,5 @@ For each finding:
    file has none yet, a `started:` line ("Budgets" in `SKILL.md`), since the fix is unattended work. When this
    runs at session step 4, session step 6 later adds the chunk to this file. A known-gap comment also goes through
    a PR of its own, since `main` is protected and nothing lands on it without one.
-7. **Remove the entry** from `pending-findings.md` only after the decision is carried out.
+7. **Remove the entry** from `pending-findings.md` only after the decision is carried out, so a session that dies
+   between decision and action still has the finding on disk.

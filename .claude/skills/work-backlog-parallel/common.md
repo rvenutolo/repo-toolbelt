@@ -3,8 +3,9 @@
 Read by every agent `run.workflow.js` starts, before its own section (`agents.md` "Build", "Review" or "Fix", or
 `merge-queue.md`). `<main>` is the main checkout's absolute path, from the inputs. Paths without `<main>/` are
 relative to your own working directory. Every `/work-backlog` file named here without a path (`SKILL.md` where it
-says `/work-backlog`, `bug-flow.md`, `feature-flow.md`, `merging.md`, `sub-skill-overrides.md`, `pending-findings.md`'s
-format) is the one under `<main>/.claude/skills/work-backlog/`, never your worktree's copy.
+says `/work-backlog`, `bug-flow.md`, `feature-flow.md`, `merging.md`, `sub-skill-overrides.md`, and
+`pending-findings.md`'s entry format, which is in `state.md`) is the one under `<main>/.claude/skills/work-backlog/`,
+never your worktree's copy.
 
 ## What to read
 
