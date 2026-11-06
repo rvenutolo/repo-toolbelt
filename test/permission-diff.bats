@@ -70,10 +70,28 @@ function allow() {
   assert_output ''
 }
 
-@test 'counts a rule present only when listed verbatim, not when a wider rule covers it' {
+@test 'counts a rule present only when listed verbatim, and names the wider rule that covers it' {
   allow "${CLAUDE_CONFIG_DIR}/settings.json" 'Bash(git *)'
   run --separate-stderr "${PERMISSION_DIFF}" 'Bash(git fetch *)'
-  assert_output 'Bash(git fetch *)'
+  assert_output "$(printf 'Bash(git fetch *)\n  covered by: Bash(git *)')"
+}
+
+@test 'prints no covered-by line when no wider rule covers a missing rule' {
+  allow "${CLAUDE_CONFIG_DIR}/settings.json" 'Bash(git worktree list)' 'Bash(gi *)' 'Bash(gitk *)'
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(git worktree list *)' 'Edit(//x/**)'
+  assert_output "$(printf 'Bash(git worktree list *)\nEdit(//x/**)')"
+}
+
+@test 'names the most specific wider rule when several cover a missing rule' {
+  allow "${CLAUDE_CONFIG_DIR}/settings.json" 'Bash(git *)' 'Bash(git worktree *)'
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(git worktree list *)'
+  assert_output "$(printf 'Bash(git worktree list *)\n  covered by: Bash(git worktree *)')"
+}
+
+@test 'names a wider rule from any settings file' {
+  allow "${FIXTURE_REPO}/.claude/settings.local.json" 'Bash(mkdir *)'
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(mkdir --parents *)'
+  assert_output "$(printf 'Bash(mkdir --parents *)\n  covered by: Bash(mkdir *)')"
 }
 
 @test 'reads the rules one per line from stdin for -' {
