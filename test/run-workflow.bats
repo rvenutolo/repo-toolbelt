@@ -69,6 +69,14 @@ function run_scenario() {
   run_scenario review-round-two-unrecorded.js
 }
 
+@test 'a fix agent that finds its PR merged still runs the merge agent before its dependent builds' {
+  run_scenario fix-merged-runs-merge-tail.js
+}
+
+@test 'the merge retry count threads from each merge call to the next' {
+  run_scenario merge-retries-thread.js
+}
+
 @test 'lastReason threads between merge calls and a ci park says ahead of, not diverges' {
   run_scenario last-reason-ci-park.js
 }

@@ -136,6 +136,18 @@ function setup() {
   assert_failure 2
 }
 
+@test 'a status name with no start file of its own starts fresh beside an old start file of another name' {
+  printf '%s\n' "$(($(date +%s) - 3600))" > "${BATS_TEST_TMPDIR}/other.status.start"
+  run "${WAIT_FOR}" "${STATUS}" 1 100
+  assert_failure 124
+  assert [ "$(($(date +%s) - $(cat "${STATUS}.start")))" -lt 30 ]
+}
+
+@test 'exits 1 when a hang limit is given and the status file directory does not exist' {
+  run "${WAIT_FOR}" "${BATS_TEST_TMPDIR}/missing/cmd.status" 1 100
+  assert_failure 1
+}
+
 @test 'without a hang limit it writes no start file' {
   run "${WAIT_FOR}" "${STATUS}" 1
   assert_failure 124

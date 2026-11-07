@@ -99,7 +99,7 @@ function section() {
   assert_line 'Pull requests'
   assert_line 'Worktrees'
   assert_line 'Findings'
-  assert_equal "$(section 'Pull requests')" '  no session date'
+  assert_equal "$(section 'Pull requests')" '  none (no session in progress)'
   assert_equal "$(section 'Findings')" '  0 pending'
 }
 
