@@ -54,8 +54,11 @@
 # @exitcode 0 the wrapped command succeeded
 # @exitcode 1 no command given, the script is not inside a git repo, TMPDIR
 #             names no directory, or the host bash is too old
-# @exitcode 129 hung up before the command started (130 interrupted, 143
-#               terminated)
+# @exitcode 129 hung up once the private temp directory exists and before the
+#               command starts (130 interrupted, 143 terminated). The signal
+#               traps are set only once that directory is recorded, so a
+#               signal that lands earlier takes the shell's default action
+#               and ends the script, which the caller sees as 128+N
 # @exitcode * otherwise the wrapped command's exit status (128+N when a signal
 #             killed it, or when bash lost the status of a command that ended
 #             during a forwarded signal), nix's own when the devShell cannot be

@@ -93,7 +93,7 @@ background.
    `git diff --quiet <base> <old-remote-sha> -- .coverage-baseline.txt` and
    `git diff --quiet <base> origin/main -- .coverage-baseline.txt` exit 1. Skip it when `HEAD` already has a
    commit after `origin/main` that changes the baseline and nothing has been rebased since (an earlier pass
-   regenerated it). To regenerate, run `timeout 30m ./.ci/in-devshell ./run-tests` then
+   regenerated it). To regenerate, run `timeout 30m ./run-tests` then
    `./.ci/in-devshell go run ./cmd/toolbelt update-coverage-baseline` ("Long commands" in `SKILL.md`); a changed
    file is committed as a new signed commit, never an amend, and a unit whose line rises carries the
    `Coverage-Drop:` trailer exactly as README "Recording a rise" says.

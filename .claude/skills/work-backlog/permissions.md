@@ -72,12 +72,16 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
 
 - `Bash(cp *)`, `Bash(mkdir --parents *)` (all): the instruction-file copy on every worktree entry ("Worktrees" in
   `SKILL.md`).
-- `Bash(./.ci/in-devshell *)` (all): the baseline tests, the gate, lint checks, a bug's reproduction and the baseline
-  regeneration in `merging.md`.
+- `Bash(./.ci/in-devshell *)` (all): the gate, lint checks, a bug's reproduction and the baseline regeneration's
+  `go run` in `merging.md`.
+- `Bash(./run-tests *)` (all): the baseline tests and the tests of the baseline regeneration in `merging.md`;
+  `run-tests` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
+- `Bash(./.ci/test-image *)` (all): the one step that needs a container ("How the session runs" in `SKILL.md`);
+  `.ci/test-image` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
 - `Bash(git worktree add *)`, `Bash(git worktree remove *)`, `Bash(git branch --delete *)` (all): "Worktrees" in
   `SKILL.md`, `merging.md` step 4 and `leftovers.md`.
-- `Bash(sysctl net.ipv4.ip_forward)` (all): the Docker check before `./.ci/in-devshell ./.ci/test-image`, the one
-  step that needs a container ("How the session runs" in `SKILL.md`).
+- `Bash(sysctl net.ipv4.ip_forward)` (all): the Docker check before `./.ci/test-image`, the one step that needs a
+  container ("How the session runs" in `SKILL.md`).
 - `Bash(git add *)`, `Bash(git commit *)` (all): the `test:` and `fix:` commits (`bug-flow.md` step 4), a plan's
   commits, a baseline regeneration and a merge-time fix (`merging.md`).
 - `Bash(git fetch *)`, `Bash(git rev-parse *)`, `Bash(git log *)`, `Bash(git merge-base *)`, `Bash(git diff *)`,

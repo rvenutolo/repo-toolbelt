@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly PERMISSION_DIFF="${SCRIPT_DIR}/permission-diff"
 readonly OVERRIDES="${SCRIPT_DIR}/sub-skill-overrides.md"
-readonly CONTAINER_STEP='./.ci/in-devshell ./.ci/test-image'
+readonly CONTAINER_STEP='./.ci/test-image'
 readonly LIFETIME_NOTE='lifetime cannot be read; confirm the key was added with no lifetime that ends during the run'
 # One line, since the detail is printed on the check's own line.
 HOOK_EXAMPLE='{"hooks":{"Notification":[{"hooks":[{"type":"command",'
