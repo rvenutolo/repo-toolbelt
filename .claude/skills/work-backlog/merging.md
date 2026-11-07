@@ -25,9 +25,9 @@ background.
    - Exit 124 is the `timeout`: CI has not finished in 30 minutes (a queued or hung job). Blocked banner naming the
      checks still `pending`; "Long commands" in `SKILL.md`.
    - A non-zero exit saying `no checks reported on the '<branch>' branch` means no check has started yet, which
-     happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
-     run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
-     not a failed `gh` call ("Terms" in `SKILL.md`), which is a `gh` command that errors.
+     happens right after the PR opens: wait a minute and run again, up to three times. Still none means CI did not
+     trigger for this PR (blocked banner, saying so); it is not a failed `gh` call ("Terms" in `SKILL.md`), which is
+     a `gh` command that errors.
    - A `fail` bucket is a check to fix: fix the cause ("Merge-time fixes" below) and push again. A coverage-ratchet
      failure is fixed by a test where one is possible, otherwise by a new signed commit (never an amend: it rewrites
      the pushed head, which needs a force push and discards the review and CI that head already had) that raises the

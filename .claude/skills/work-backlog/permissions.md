@@ -5,11 +5,11 @@ user comes back (the global "Long Multi-Step Tasks" rule). Saying "allowed" in c
 prompting; only an allow rule or a session run with permissions bypassed does. So the permission request ("Terms" in
 `SKILL.md`) names the allow rules the run needs and the allowlists lack, and asks the user to add them to the main
 checkout's `.claude/settings.local.json` (a local file, ignored like the rest of "State" in `SKILL.md`) or to restart
-with permissions bypassed. A session already running with permissions bypassed omits the request; the signing check
-below still runs. A session whose system prompt carries the paragraph beginning "While bypass permissions mode is
-active" runs with permissions bypassed; one without it treats itself as not bypassed and makes the request, which
-costs one answer, where the wrong guess costs a stalled run. `defaultMode` in the settings is only a hint, since a
-session can be started in another mode.
+with permissions bypassed. A session already running with permissions bypassed omits the request; the
+`backlog-preflight` rerun in "When to ask" still runs. A session whose system prompt carries the paragraph beginning
+"While bypass permissions mode is active" runs with permissions bypassed; one without it treats itself as not
+bypassed and makes the request, which costs one answer, where the wrong guess costs a stalled run. `defaultMode` in
+the settings is only a hint, since a session can be started in another mode.
 
 ## When to ask
 
@@ -19,9 +19,9 @@ session can be started in another mode.
   `findings-walkthrough.md` asks first if this session has not asked yet.
 - Again right before the unattended part starts (the chunk OK for bugs, the answered question round for features, the
   launch for `/work-backlog-parallel`): re-read the allowlists, since the user may have changed them in between, and
-  run the signing check. Also confirm the main checkout is on `main` (`git symbolic-ref --short HEAD`) and that, after
-  `git fetch origin main`, `git merge-base --is-ancestor HEAD origin/main` succeeds: a sitting is long, and a commit the
-  user made on local `main` meanwhile would refuse the pull that follows every merge, so ask them to move it off first.
+  run `backlog-preflight` again; any `FAIL` stops the start. A sitting is long: a key can be unloaded meanwhile, and a
+  commit the user made on local `main` would refuse the pull that follows every merge, so a `main-current` failure
+  asks them to move it off first.
 
 The request tells the user how to add the rules and names the three replies the proposal's `Reply` line offers ("The
 proposal" in `choosing.md`): `rules added` means the user added them with `/permissions` or by editing
@@ -67,8 +67,6 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   `Bash(<main>/.claude/skills/work-backlog/permission-diff*)` (all), with `<main>` written out so the rule matches
   from any directory: step 1, `leftovers.md` and the proposal run them; with them allowed, a later session's step 1
   and proposal, `plan` included, run without a prompt.
-- `Bash(git config --get *)`, `Bash(ssh-keygen -Y sign *)` and `Bash(printf *)` (all): the signing check ("Signing"),
-  run by `backlog-preflight` in step 1 and again by the session right before the unattended part.
 
 **The unattended part.**
 
@@ -78,18 +76,18 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   `go run` in `merging.md`.
 - `Bash(./run-tests *)` (all): the baseline tests and the tests of the baseline regeneration in `merging.md`;
   `run-tests` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
-- `Bash(./.ci/test-image *)` (all): the one step that needs a container ("How the session runs" in `SKILL.md`);
+- `Bash(./.ci/test-image *)` (all): the one step that needs a container ("Long commands" in `SKILL.md`);
   `.ci/test-image` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
 - `Bash(git worktree add *)`, `Bash(git worktree remove *)`, `Bash(git branch --delete *)` (all): "Worktrees" in
   `SKILL.md`, `merging.md` step 4 and `leftovers.md`.
 - `Bash(sysctl net.ipv4.ip_forward)` (all): the Docker check before `./.ci/test-image`, the one step that needs a
-  container ("How the session runs" in `SKILL.md`).
+  container ("Long commands" in `SKILL.md`).
 - `Bash(git add *)`, `Bash(git commit *)` (all): the `test:` and `fix:` commits (`bug-flow.md` step 4), a plan's
   commits, a baseline regeneration and a merge-time fix (`merging.md`).
 - `Bash(git fetch *)`, `Bash(git rev-parse *)`, `Bash(git log *)`, `Bash(git merge-base *)`, `Bash(git diff *)`,
-  `Bash(git show *)`, `Bash(git status *)`, `Bash(git symbolic-ref *)` (all): the `BEHIND` rebase and its signature
-  check and baseline test in `merging.md` step 2, the review base ("Review" in `SKILL.md`), the reviewer's inspection
-  of the branch, step 1's preconditions and the `main` check in "When to ask".
+  `Bash(git show *)`, `Bash(git status *)` (all): the `BEHIND` rebase and its signature check and baseline test in
+  `merging.md` step 2, the review base ("Review" in `SKILL.md`), the reviewer's inspection of the branch and step 1's
+  preconditions.
 - `Bash(git -c rerere.enabled=false rebase *)` (with `--abort`; `merging.md` step 2 says why every rebase carries the
   `-c`) and `Bash(git push *)` (all): `--set-upstream` for the first push, and `--force-with-lease` after a rebase in
   `merging.md` step 2.
@@ -125,8 +123,7 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   the plan workspace delete after the ledger sweep. `sdd-workspace` prints the workspace as an absolute path, and the
   delete names that path in long options (`sub-skill-overrides.md`), so a relative `rm -rf` rule never matches it.
 - `Edit` rules (all) for every file the run writes, omitted when `permission-diff` prints `defaultMode: acceptEdits`
-  or `bypassPermissions` (the script counts `bypassPermissions` only from `$CLAUDE_CONFIG_DIR/settings.json`, since a
-  project or local file cannot set it; the system-prompt tell above is the other way to know): a wrong omission costs
+  or `bypassPermissions`, or the session runs with permissions bypassed: a wrong omission costs
   one prompt at the first write, the `current-session.md` write right after the OK, while the user is still there.
   `Edit(/<main>/.claude/worktrees/**)` for the code, and
   `Edit(/<main>/.claude/backlog/**)`, `Edit(/<main>/.claude/tmp/**)`, `Edit(/<main>/docs/superpowers/**)`,
@@ -137,9 +134,10 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
 
 ## Workflow agents add
 
-`/work-backlog-parallel`'s agents run unattended in their own worktrees, and one that meets a prompt holds its slot
-and stalls every issue that depends on it, so its request adds the commands they run (its `planning.md` "The
-permission request"):
+`/work-backlog-parallel`'s agents run unattended in their own worktrees, and one that meets a prompt waits for an
+answer nobody gives, holding its slot and stalling its issue and every issue that depends on it. A missed rule costs a
+chain of issues, not one pause, which is why that skill settles the permission mode before planning and takes no
+`skip the permissions`. Its request adds the commands the agents run (its `planning.md` "The permission request"):
 
 - `Bash(cd *)`: the merge agent runs `cd <worktree> && ./.ci/in-devshell …`.
 - `Bash(git switch --detach *)`, `Bash(git branch --move *)` and `Bash(git branch --list *)`: a build agent's branch
@@ -174,16 +172,10 @@ permission request"):
 
 ## Signing
 
-Every commit and rebase signs with the key `git config --get user.signingkey` names, so a key that is missing or
-expires mid-run fails every later commit. Check it the way git uses it, with a test signature: `backlog-preflight`
-runs it in step 1 (its `signing` and `agent-key` lines, while the user is there to allow the rule), and the session
-runs it again right before the unattended part ("When to ask"), since a key can be unloaded during a long sitting:
-
-```bash
-printf x | ssh-keygen -Y sign -n git -f "$(git config --get user.signingkey)" >/dev/null
-```
-
-A non-zero exit means the agent does not hold the key: say so in the request. `ssh-add -L` cannot show a key's
+Every commit and rebase signs with the key `user.signingkey` names, so a key that is missing or expires mid-run fails
+every later commit. `backlog-preflight` checks it the way git uses it, with a test signature (its `signing` line), in
+step 1 and again right before the unattended part ("When to ask"), since a key can be unloaded during a long sitting.
+A `FAIL` there means the agent does not hold the key: say so in the request. `ssh-add -L` cannot show a key's
 lifetime, so `backlog-preflight` prints `agent-key` as a `WARN` asking the user to confirm the key was loaded with
 no lifetime that could expire during the run; as a `WARN` it rides in the proposal's `Preflight:` lines, so it is
 asked even when the permission request is left out. Commit signing that fails mid-run is a blocked-banner halt.

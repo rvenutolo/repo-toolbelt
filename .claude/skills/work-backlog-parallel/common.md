@@ -7,6 +7,40 @@ says `/work-backlog`, `bug-flow.md`, `feature-flow.md`, `merging.md`, `sub-skill
 `pending-findings.md`'s entry format, which is in `state.md`) is the one under `<main>/.claude/skills/work-backlog/`,
 never your worktree's copy.
 
+## Exceptions to `/work-backlog`
+
+Where your role departs from `/work-backlog`, and why; each rule is stated in full in the section it names, and
+every one exists because a workflow builds the issues (`/work-backlog-parallel` `SKILL.md` "Named exceptions" lists
+the controller's). Read this list to know why a rule differs, not as the rule.
+
+- **A refused pull of local `main` ends the run** (`merge-queue.md` section 6): `merging.md` step 3 carries on from
+  `origin/main`, but here every later merge would hit the same refusal.
+- **Some rebase conflicts are resolved**, not halted on (`merge-queue.md` "3. Conflicts"): the list, registry,
+  baseline and changelog conflicts concurrent builds make by design, and a code conflict between two of the batch's
+  own PRs; any other parks the issue. Replaces `merging.md` step 2's conflict blocked banners for those only.
+- **Worktrees are made by the workflow** (`agents.md`): build and fix agents run in tool-made
+  `.claude/worktrees/<runId>-<k>` worktrees (the run id begins `wf_`; `k` counts the run's agents) from
+  `origin/main`, and the merge queue makes `.claude/worktrees/merge-<N>`. Replaces `/work-backlog` "Worktrees"
+  creation; branch names still follow its "Branches", and the baseline run is the build agent's.
+- **Nothing shared is written mid-run by a builder** ("Shared state is not yours" below): spec and
+  `.claude/CLAUDE.md` changes are `Ruling:` lines the controller applies at the end, and the review stage copies
+  the plan. Replaces `/work-backlog` "Leaving to write" for workflow agents.
+- **Agents wait with `wait-for`** ("Long commands" below): a background notification reaches an agent only while it
+  keeps working. Replaces `/work-backlog` "Long commands" for workflow agents.
+- **No early push or early PR for a build agent** (`agents.md` "Build" step 4): a resumed run takes any open PR as a
+  finished build. Replaces the early push and early PR of `/work-backlog` "PRs" for build agents.
+- **The plan's workspace is deleted after the PR exists** (`agents.md` "Build" step 4), not at the plan's "Finish":
+  a build that dies before its push would otherwise leave a branch with no ledger to resume from.
+- **Fix commits carry a `Review-round: <round>` trailer** (`agents.md` "Fix"), so a re-run fix agent sees which
+  findings the dead one covered; the serial controller records the round as a `#<N> review round <k>` line
+  (`state.md`).
+- **No nested subagents** (`agents.md` "Review"): workflow agents have no subagent tool, so
+  superpowers:subagent-driven-development is never chosen, superpowers:executing-plans' final review is skipped, and
+  the review stage performs `code-reviewer.md`'s review in place of superpowers:requesting-code-review. The two-round
+  cap holds: a round is one review stage plus one fix stage. The controller, which can dispatch, still runs
+  superpowers:requesting-code-review where the serial flow calls for it (a merge-time fix at the shakedown merge, a
+  leftover finished serially).
+
 ## What to read
 
 Read only what your role needs; the controller already settled everything else.
@@ -44,12 +78,11 @@ working, and nothing that arrives after your final message changes it.
 - **Batch-level failures** are not yours to park. They are these of the blocked banners `/work-backlog` `SKILL.md`
   "How the session runs" lists: a failed `gh` call ("Terms"), commit signing failing (`permissions.md` "Signing"),
   Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 right before the one step that needs a container
-  (`/work-backlog` `SKILL.md` "How the session runs" names it; the halt happens there and nowhere else, and the
-  preflight's `ip-forward` line is only a warning);
-  plus a red baseline that is `main`'s own (the using-git-worktrees entry of `sub-skill-overrides.md`; a
-  flaky one is a finding there, and parks the issue only if it keeps the work from going on). Each would stop every
-  other agent too: the red baseline because every isolated worktree starts from the same `origin/main`. Return
-  `state: "parked"` with `batchHalt` set to the cause and a `parkNote` naming it.
+  (`/work-backlog` `SKILL.md` "Long commands" names it, and says why the halt happens there and nowhere else); plus a
+  red baseline that is `main`'s own (the using-git-worktrees entry of `sub-skill-overrides.md`; a flaky one is a finding
+  there, and parks the issue only if it keeps the work from going on). Each would stop every other agent too: the red
+  baseline because every isolated worktree starts from the same `origin/main`. Return `state: "parked"` with `batchHalt`
+  set to the cause and a `parkNote` naming it.
 - **Halt answers bind every role.** `haltAnswers` in your inputs holds the user's answers to the questions that
   bear on this issue: never re-decide one and never park on a question one answers. A reviewer still raises a
   finding that goes against an answer, naming it, and the fix agent rules on it by citing the answer.

@@ -42,7 +42,7 @@ Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, 
 `examples/consumer/` lint lists, `.coverage-baseline.txt`) are not a dependency: the merge queue resolves conflicts
 in them (`merge-queue.md`). README prose follows the code-conflict rule. Any
 other overlap the graph misses meets the merge queue as a conflict; one between two of the batch's own PRs is
-resolved, and one with a change from outside the batch parks the issue (`SKILL.md` "Named exceptions").
+resolved, and one with a change from outside the batch parks the issue (`common.md` "Exceptions to `/work-backlog`").
 
 An issue with no edge runs as soon as a slot is free. An `after` list names only issues in the batch: a
 prerequisite outside it is either merged already (drop the edge) or not, and then the dependent stays out of the
@@ -60,28 +60,19 @@ sections are inserted after `Chunk`, in this order:
   order "Order" in `choosing.md` gives (by leverage, not bugs before features);
 - `Cap`: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
   pre-push gate when it pushes); the one merge agent runs beside them, so at most cap + 1 gates run;
-- `Estimate`: a wall-clock range, not a promise. Per issue, guess its work from the issue and spec: a small bug about
-  30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review and fixes.
-  A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never overlap. A
-  merge that meets a code conflict or a baseline regeneration takes 30 to 40 minutes (a second test run, a
-  resolution review, a second gate), and every new lint after the first in a batch meets one in the shared registry
-  files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes about the
-  longer of the longest chain and the first ready PR plus one merge round per issue; a fix takes a slot ahead of
-  builds still queued when the fix asks (not ahead of one already running), and the merge agent runs outside the
-  cap, so merging begins as soon as a review passes, whatever the builds are doing. Say plainly that a short batch of
-  small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that, except while
-  the shakedown is on: its one-issue batch exists to try this skill, so it never gains on `/work-backlog` and is
-  proposed anyway. An estimate longer than the time budget names the issues that would likely skip;
-- `Agents`: the agent count, from these bounds: per issue at most ten agents (one build, two reviews, two fixes,
-  three merge calls and two resolution reviews between them), each retried once if it dies, plus a resumed run's
-  live re-runs; most issues need three (build, review, merge). Name the session's workflow size guideline (the
-  Workflow tool's description states it in one of two forms: "This session has the … workflow size guideline" by
-  default, or "A workflow size guideline is configured for this session: …") and say whether the estimate exceeds
-  it, adding: "This is a guideline for whoever writes the script, not a limit; nothing needs changing for the run to
-  proceed." Agents running at once are the build and fix agents up to the cap, plus every review in progress
-  (reviews run outside the cap) and one merge agent, so a long batch at cap 4 can approach the hard limit of
-  concurrent agents, min(16, CPUs − 2); name that limit, and the 1000 agents per run, only when the batch
-  would reach them.
+- `Estimate`: a wall-clock range, not a promise. When a report under `.claude/backlog/reports/` opens with a
+  `Skill:` line naming this skill, its `Timings` are the figures; otherwise per issue, guess its work from the issue
+  and spec: a small bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15
+  minutes for review and fixes. A merge round is about 15 minutes, and 30 to 40 when it meets a code conflict or a
+  baseline regeneration (every new lint after the first in a batch meets one in the shared registry files); merges
+  never overlap. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes
+  about the longer of the longest chain and the first ready PR plus one merge round per issue. Say plainly that a
+  short batch of small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that,
+  except while the shakedown is on: its one-issue batch exists to try this skill, so it never gains on `/work-backlog`
+  and is proposed anyway. An estimate longer than the time budget names the issues that would likely skip;
+- `Agents`: about three per issue (build, review, merge), up to ten with review rounds, merge retries and resolution
+  reviews. Say whether that exceeds the session's workflow size guideline, which the Workflow tool's description
+  states: it is advice for whoever writes a script, not a limit, and nothing needs changing for the run to proceed.
 
 Two of the shared sections read differently here. `Budgets and shakedown` states `max-hours`, not a clock time, since
 the deadline is computed at launch, after the sitting (`SKILL.md` "Shakedown and budgets"), and while the shakedown
@@ -110,12 +101,10 @@ instead of stopping the session, but a park still waits for a later session to a
 
 ## The permission request
 
-`/work-backlog` `permissions.md` holds the list: its "Rule strings" and "Workflow agents add" both apply here. A
-missing rule costs more than it does serially: an agent that meets a permission prompt waits for an answer nobody
-gives, holding its slot and stalling its issue and every issue that depends on it. The list is long and one miss
-does that, so recommend running the session with permissions bypassed; `SKILL.md` "The session" step 1 asks about
-it before planning (a session tells its mode as `permissions.md` says, by the system-prompt paragraph), and "The
-run" step 2 checks again before launch.
+The list is `/work-backlog` `permissions.md`'s "Rule strings" plus "Workflow agents add", which says what a missed
+rule costs here. The list is long and one miss stalls a chain of issues, so recommend running the session with
+permissions bypassed; `SKILL.md` "The session" step 0 asks about it before planning, and "The run" step 2 checks
+again before launch.
 
 ## Writing it down
 
