@@ -6,11 +6,16 @@
 #              `timeout … bash -c` loop, so one allow rule naming its path
 #              pre-approves every wait: permission matching strips a `timeout`
 #              prefix and then sees only `bash -c`, which no rule can name
-#              safely.
+#              safely. With a hang limit, the first wait writes its time to
+#              `<file>.start` and later waits keep it, so a command is judged
+#              hung by the time since it started, not by how many waits ran:
+#              the Bash tool may cut a wait short, which makes a count wrong.
 # @arg $1 file path of the file to wait for
 # @arg $2 seconds how long to wait, a positive whole number
+# @arg $3 hang-seconds optional; how long after the start time a missing status means a hang
 # @exitcode 0 the file exists, is a regular file and is not empty
-# @exitcode 2 wrong arguments, or the path exists and is not a regular file
+# @exitcode 2 wrong arguments, the path exists and is not a regular file, or `<file>.start` holds no whole number
+# @exitcode 3 the hang limit has passed since the start time and the file is still missing or empty
 # @exitcode 124 the file did not appear in time, the code `timeout` uses
 
 # devshell-exempt: a work-backlog-parallel skill helper Claude Code runs on the host by the path its allow rule names, outside any gate; it needs only bash and sleep
@@ -25,20 +30,25 @@ readonly POLL_SECONDS=5
 # @description Print the usage line to stderr and exit 2.
 # @noargs
 function usage() {
-  printf 'usage: %s <file> <seconds>\n' "${0##*/}" >&2
+  printf 'usage: %s <file> <seconds> [<hang-seconds>]\n' "${0##*/}" >&2
   exit 2
 }
 
 # @description Poll for the file until it exists with content or the time runs out.
 # @arg $1 file path of the file to wait for
 # @arg $2 seconds how long to wait
+# @arg $3 hang-seconds optional hang limit, counted from the time in `<file>.start`
 function main() {
-  if (($# != 2)); then
+  if (($# < 2 || $# > 3)); then
     usage
   fi
   local -r file="$1"
   local -r seconds="$2"
+  local -r hang="${3:-}"
   if [[ -z "${file}" || ! "${seconds}" =~ ^[0-9]+$ ]] || ((10#${seconds} == 0)); then
+    usage
+  fi
+  if (($# == 3)) && { [[ ! "${hang}" =~ ^[0-9]+$ ]] || ((10#${hang} == 0)); }; then
     usage
   fi
   # A status file is always a regular file. Anything else at the path (a
@@ -46,8 +56,24 @@ function main() {
   if [[ -e "${file}" && ! -f "${file}" ]]; then
     usage
   fi
+  local hung_at=''
+  if [[ -n "${hang}" ]]; then
+    local -r start_file="${file}.start"
+    if [[ ! -e "${start_file}" ]]; then
+      printf '%s\n' "${EPOCHSECONDS}" > "${start_file}"
+    fi
+    local start
+    start="$(< "${start_file}")"
+    if [[ ! "${start}" =~ ^[0-9]+$ ]]; then
+      usage
+    fi
+    hung_at="$((10#${start} + 10#${hang}))"
+  fi
   local -r deadline="$((SECONDS + 10#${seconds}))"
   while [[ ! -f "${file}" || ! -s "${file}" ]]; do
+    if [[ -n "${hung_at}" ]] && ((EPOCHSECONDS >= hung_at)); then
+      exit 3
+    fi
     if ((SECONDS >= deadline)); then
       exit 124
     fi

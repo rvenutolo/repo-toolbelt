@@ -4,6 +4,7 @@ description: >-
   Works the issue backlog with independent issues built concurrently by a workflow and merged one at a time on green
   CI, after one planning sitting. `plan` rehearses; `short` or `long` sizes the batch; issue numbers name it. Under
   shakedown it builds one issue, like /work-backlog; for two or three small bugs /work-backlog is as fast and simpler.
+  Needs the Workflow tool; start the session with permissions bypassed.
 argument-hint: "[plan] [short|long] [<issue>...]"
 disable-model-invocation: true
 ---

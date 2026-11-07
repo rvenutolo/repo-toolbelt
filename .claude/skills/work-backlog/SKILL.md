@@ -1,9 +1,9 @@
 ---
 name: work-backlog
 description: >-
-  Works open issues one PR at a time: proposes a chunk, builds each in a worktree, merges on green CI after your OK.
-  `plan` rehearses; `short` or `long` sizes the chunk; issue numbers name it. For many independent issues,
-  /work-backlog-parallel is faster.
+  Works open issues one PR at a time: proposes a chunk, builds each in a worktree, merges on green CI after your OK
+  (and asks before each merge until you lift shakedown). `plan` rehearses; `short` or `long` sizes the chunk; issue
+  numbers name it. For many independent issues, /work-backlog-parallel is faster.
 argument-hint: "[plan] [short|long] [<issue>...]"
 disable-model-invocation: true
 ---
