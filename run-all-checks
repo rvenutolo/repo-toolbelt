@@ -9,9 +9,10 @@
 #              the formatter built beside it), the coverage lints on the
 #              reports the tests wrote, the baseline-slack check, and
 #              check-toolbelt-pins over the example files. Exit codes
-#              aggregate, so one run surfaces every failing category. Every
-#              caller (the pre-push hook, the .justfile and CI) runs it
-#              through .ci/in-devshell, so local and CI runs cannot drift.
+#              aggregate, so one run surfaces every failing category. Started
+#              outside the devShell it re-runs itself through
+#              .ci/in-devshell, so a direct run, the pre-push hook, the
+#              .justfile and CI all grade in the same environment.
 # @noargs
 # @exitcode 0 every check passed.
 # @exitcode 1 one or more checks failed.
@@ -20,6 +21,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # shellcheck source=.ci/dogfood-formatters.bash
 source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/.ci/dogfood-formatters.bash"

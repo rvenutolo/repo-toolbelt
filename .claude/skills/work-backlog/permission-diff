@@ -25,6 +25,8 @@
 # @exitcode 1 --superpowers-dir found no installed superpowers plugin
 # @exitcode 2 wrong arguments, CLAUDE_CONFIG_DIR unset, or a settings file is not valid JSON
 
+# devshell-exempt: a work-backlog skill helper Claude Code runs on the host, outside any gate; it reads CLAUDE_CONFIG_DIR, which the devShell's cleared environment drops
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

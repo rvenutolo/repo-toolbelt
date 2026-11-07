@@ -27,6 +27,8 @@
 # @exitcode 1 a lint reported a problem, or docker is not on PATH.
 # @exitcode 2 a usage or setup error in the runner.
 
+# devshell-exempt: an example hook copied into consumer repos, which run the lints in Docker and have no .ci/in-devshell
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

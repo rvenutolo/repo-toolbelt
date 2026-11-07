@@ -13,8 +13,8 @@
 #              is accepted only while no `v*` tag exists: after the first
 #              release the examples must pin it. Whether the pins agree with
 #              each other is check-toolbelt-pins' job. Run it inside the repo;
-#              the repo is the one containing the working directory. Must run
-#              inside the devShell.
+#              the repo is the one containing the working directory. Re-runs
+#              itself inside the devShell when started outside it.
 # @noargs
 # @stdout One finding per line, as `<path>[:<line>]: <message>`, then a count
 #         line when there is any.
@@ -28,6 +28,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit

@@ -19,6 +19,8 @@
 # @exitcode 1 the working directory is not inside a git repo, or an argument
 #             was given.
 
+# devshell-exempt: bootstrap; the devShell's shellHook runs it while the shell starts, it needs only git, and a re-run would nest nix develop
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

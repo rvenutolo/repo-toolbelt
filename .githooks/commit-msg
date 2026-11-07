@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
 # @description Git commit-msg hook: validates the message against the
-#              Conventional Commits rules in .commitlintrc.yml. Uses the
-#              commitlint on the ambient PATH, which is the devShell's when the
-#              shell is entered through direnv or `nix develop`. Without one it
-#              runs commitlint through .ci/in-devshell, because commits are made
-#              outside the devShell: signing needs the host's ssh-keygen.
+#              Conventional Commits rules in .commitlintrc.yml with the
+#              devShell's commitlint. Started outside the devShell, as git
+#              starts it for a commit made from the host, it re-runs itself
+#              through .ci/in-devshell. That re-run needs what
+#              .ci/in-devshell needs on the host: bash 4.4+, git, GNU coreutils
+#              (readlink, mktemp, rm) and nix. On macOS: brew install bash
+#              coreutils, with the coreutils gnubin directory first on PATH.
 # @arg $1 message_file path to the commit message file, supplied by git
 # @exitcode 0 the message is valid.
 # @exitcode 1 the message is invalid, or commitlint could not be run.
@@ -15,17 +17,21 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+# Git runs hooks with the caller's environment, and an interactive shell leaves
+# IN_DEVSHELL unset and the host PATH in place: a tool the flake lacks would
+# resolve from the host. Re-run through in-devshell, which sets IN_DEVSHELL and
+# so stops the recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/../.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 # @description Validate the commit message with commitlint.
 # @arg $1 message_file path to the commit message file
 function main() {
   local -r message_file="$1"
-  if command -v commitlint > '/dev/null' 2>&1; then
-    commitlint --edit "${message_file}"
-  else
-    local repo_dir
-    repo_dir="$(git rev-parse --show-toplevel)"
-    "${repo_dir}/.ci/in-devshell" commitlint --edit "${message_file}"
-  fi
+  commitlint --edit "${message_file}"
 }
 
 main "$@"

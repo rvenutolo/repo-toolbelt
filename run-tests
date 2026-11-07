@@ -8,7 +8,8 @@
 #              measures nothing.
 #
 #              Both suites always run and the exit codes aggregate, so one run
-#              surfaces every failing suite. Must run inside the devShell.
+#              surfaces every failing suite. Re-runs itself inside the devShell
+#              when started outside it.
 # @arg $@ args Optional bats arguments or test paths.
 # @exitcode 0 every suite passed.
 # @exitcode 1 a required tool is not on PATH, or a suite failed.
@@ -18,6 +19,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
@@ -160,7 +171,7 @@ function main() {
 
 for tool in bats go kcov; do
   if ! command -v "${tool}" > '/dev/null' 2>&1; then
-    printf '%s: %s not found on PATH; run ./.ci/in-devshell ./run-tests\n' "${0##*/}" "${tool}" >&2
+    printf '%s: %s not found on PATH, though IN_DEVSHELL is set; unset it to enter the devShell\n' "${0##*/}" "${tool}" >&2
     exit 1
   fi
 done

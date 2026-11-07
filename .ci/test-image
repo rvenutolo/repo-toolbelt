@@ -5,9 +5,9 @@
 #              image is tagged repo-toolbelt:test, and the suite reads its
 #              reference from TOOLBELT_TEST_IMAGE and the version it was built
 #              as from TOOLBELT_TEST_VERSION. Refuses to start a container
-#              when the host has IP forwarding off. Must run inside the
-#              devShell, which carries the docker client; the daemon is the
-#              host's.
+#              when the host has IP forwarding off. Re-runs itself inside the
+#              devShell, which carries the docker client, when started outside
+#              it; the daemon is the host's.
 # @arg $@ args Optional bats arguments or e2e test paths; default test/e2e.
 # @stderr Progress, and the reason for a failure.
 # @exitcode 0 the e2e suite passed.
@@ -18,6 +18,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit

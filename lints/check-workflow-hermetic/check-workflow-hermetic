@@ -39,6 +39,8 @@
 #             or naming no file, a scan root that cannot be listed, not inside
 #             a git repository, or an internal failure
 
+# devshell-exempt: shipped in the image and run by the runner inside consumer repos, which have no .ci/in-devshell; the image supplies its tools
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

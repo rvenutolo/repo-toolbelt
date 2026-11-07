@@ -51,6 +51,8 @@
 #             that cannot be read or written, gofumpt failing other than on a
 #             parse error, goimports failing, or an internal failure
 
+# devshell-exempt: shipped in the image and run by the runner inside consumer repos, which have no .ci/in-devshell; the image supplies its tools
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

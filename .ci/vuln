@@ -6,8 +6,8 @@
 #              here. A reachable vulnerability is one whose trace starts at a
 #              called function; modules and packages that are merely required
 #              or imported are not findings. A scan that did not run, or whose
-#              report cannot be read, is a failure, never a pass. Must run
-#              inside the devShell.
+#              report cannot be read, is a failure, never a pass. Re-runs
+#              itself inside the devShell when started outside it.
 #
 #              SECURITY-EXCEPTIONS.md lists one exception per line, in the
 #              form `- <OSV id>: <reason>; review by <YYYY-MM-DD>`.
@@ -19,6 +19,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
