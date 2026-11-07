@@ -40,6 +40,8 @@ readonly EXEMPT=(
   '.ci/activate-githooks'
   '.claude/skills/work-backlog-parallel/wait-for'
   '.claude/skills/work-backlog/backlog-index'
+  '.claude/skills/work-backlog/backlog-preflight'
+  '.claude/skills/work-backlog/backlog-status'
   '.claude/skills/work-backlog/permission-diff'
   'examples/consumer/.githooks/pre-commit'
   'examples/consumer/.githooks/pre-push'
