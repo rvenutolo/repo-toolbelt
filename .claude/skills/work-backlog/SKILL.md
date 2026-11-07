@@ -33,7 +33,7 @@ what gets built, or when it is a merge under shakedown; everything else the sess
 - **Either:** a question-banner halt when a decision changes what gets built (a not-a-bug finding, `bug-flow.md`
   step 3, is one), and a blocked-banner halt when something outside the session's control stops it: a failed `gh`
   call, what `merging.md` and "Long commands" name, commit signing that fails, or Docker unreachable or
-  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/in-devshell ./.ci/test-image`, the one step that needs a
+  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/test-image`, the one step that needs a
   container (the user's global Docker rule forbids running one then; that check runs there and nowhere else). Both
   are recorded as `resume.md` "Halting" says.
 
@@ -211,7 +211,7 @@ those steps refer to.
     checkout's file ("Leaving to write") and copied again; a change made only in the worktree dies with it. A change
     that makes `.claude/CLAUDE.md` wrong (a lint, formatter, command or layout it describes) updates it this way, in
     the same issue's work, as the global docs rule asks of every doc.
-  - Then run the baseline tests, `./.ci/in-devshell ./run-tests` ("Long commands"), for bugs and features alike: a
+  - Then run the baseline tests, `./run-tests` ("Long commands"), for bugs and features alike: a
     failure that was already on `main` would otherwise be blamed on the change. Judge a red baseline as the
     using-git-worktrees entry of `sub-skill-overrides.md` says.
   - Resume a leftover worktree or PR as `leftovers.md` says. Leave and remove in `merging.md` steps 3 and 4.

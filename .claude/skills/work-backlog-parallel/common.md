@@ -77,7 +77,7 @@ working, and nothing that arrives after your final message changes it.
 - **The superpowers plugin directory** is what `<main>/.claude/skills/work-backlog/permission-diff --superpowers-dir`
   prints: `code-reviewer.md` is `<it>/skills/requesting-code-review/code-reviewer.md`, and the plan scripts are under
   `<it>/skills/<skill>/scripts/`. The config directory is not `~/.claude`, so a guessed path misses.
-- **Long commands** (`git push`, whose pre-push hook runs the full gate, `./.ci/in-devshell ./run-tests`,
+- **Long commands** (`git push`, whose pre-push hook runs the full gate, `./run-tests`,
   `gh pr checks --watch`, and superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash
   tool's limits. Each one writes its exit status to a file in the worktree it runs in, by absolute path:
   `<wt>/.claude/tmp/<n>-<role>-<step>-<k>.status`, where `<wt>` is that worktree (your `pwd`; for the merge agent,
