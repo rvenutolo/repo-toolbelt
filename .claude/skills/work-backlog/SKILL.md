@@ -163,13 +163,13 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
    OK begins the unattended part; a file that already exists is added to as `leftovers.md` says, and one a running
    parallel run owns means this session chooses no chunk and goes to step 8 (`leftovers.md` "A parallel run's files").
 7. **Do the work** (below), one PR per issue, merging each on green CI.
-8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`. 9. **Summary.**
-Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the `session-log.md` line
-step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that date into
-`session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it (leave it as it
-is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a `#<N> left to user` line:
-trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so the next session's step 3
-still knows the first "no" was given.
+8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
+9. **Summary.** Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the
+   `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that
+   date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it
+   (leave it as it is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a `#<N>
+   left to user` line: trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so the
+   next session's step 3 still knows the first "no" was given.
 
 ## Choosing the chunk
 
