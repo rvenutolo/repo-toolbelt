@@ -28,15 +28,11 @@ background.
      happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
      run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
      not a failed `gh` call, which is a `gh` command that errors.
-   - A `fail` bucket is a check to fix: fix the cause and push again. A coverage-ratchet failure is fixed by a test
-     where one is possible, otherwise by a new signed commit (never an amend: it rewrites the pushed head, which needs
-     a force push and discards the review and CI that head already had) that raises the baseline and carries the
-     `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers directly under it.
-   - **A merge-time fix** (one made here, after the PR's review, or for a pre-push gate failure after a rebase in
-     step 2) gets one superpowers:requesting-code-review pass scoped to the fix, with the base at the commit the fix
-     was made on, before it is pushed: a base at the last pushed head would, after a rebase, also show every commit
-     `main` gained. The fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews it. The third
-     such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
+   - A `fail` bucket is a check to fix: fix the cause ("Merge-time fixes" below) and push again. A coverage-ratchet
+     failure is fixed by a test where one is possible, otherwise by a new signed commit (never an amend: it rewrites
+     the pushed head, which needs a force push and discards the review and CI that head already had) that raises the
+     baseline and carries the `Coverage-Drop:` trailer exactly as README "Recording a rise" says, other trailers
+     directly under it.
    - A `cancel` bucket, or a failure that is plainly infrastructure (such as a Nix setup step failing before any
      check runs, or a job that hangs until its timeout), gets one `gh run rerun <run-id> --failed`, with the id from
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
@@ -70,7 +66,8 @@ background.
      confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
      push with `timeout 30m git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full
      gate again, a long command;
-     a fix for a gate failure here is a merge-time fix, step 1), and go back to step 1 for the new CI run. A rebase
+     a fix for a gate failure here is a merge-time fix, "Merge-time fixes" below), and go back to step 1 for the new
+     CI run. A rebase
      that conflicts is a change the user must see: `git -c rerere.enabled=false rebase --abort`, blocked banner. Never
      `gh pr update-branch`; it rewrites the commits unsigned. The third `BEHIND` or `DIRTY` on one PR is a blocked
      banner: `main` is moving faster than CI, and the user decides when to try again.
@@ -81,6 +78,12 @@ background.
      ruleset requires every thread resolved), an unsigned commit, or any other ruleset rule: name the parameter
      `gh api repos/{owner}/{repo}/rules/branches/main` reports for it. Blocked banner, saying which. Never pass
      `--admin`, which `gh` itself suggests, and never resolve a thread; both are the user's.
+
+   **Merge-time fixes.** A fix made after the PR's review (for a `fail` bucket in step 1, or for a pre-push gate
+   failure after a rebase in step 2) gets one superpowers:requesting-code-review pass scoped to the fix, with the base
+   at the commit the fix was made on, before it is pushed: a base at the last pushed head would, after a rebase, also
+   show every commit `main` gained. The fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews
+   it. The third such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
 
    **Baseline after a rebase.** A rebase never leaves a text-merged `.coverage-baseline.txt` ("Never" in
    `SKILL.md`). Regenerate it when the rebase took `main`'s copy in a conflict (the case `merge-queue.md`

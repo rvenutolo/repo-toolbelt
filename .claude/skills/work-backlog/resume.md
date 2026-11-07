@@ -9,7 +9,7 @@ recorded there before the user sees it.
 Nothing about the session survives a context compaction except what is on disk, and the skill cannot be re-invoked by
 the model. So, in order:
 
-1. Re-read `SKILL.md` (its pointer brought you here), then come back to step 2 of this file.
+1. If `SKILL.md` has not been re-read since the compaction, do that now, then come back to step 2 of this file.
 2. Re-read `.claude/backlog/current-session.md`, which records the approved chunk and where the session is in it,
    then the spec, plan and ledger it names, if any. Check where the session is: `git rev-parse --show-toplevel`
    names the main checkout or a worktree.

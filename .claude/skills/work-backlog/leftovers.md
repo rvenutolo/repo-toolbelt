@@ -41,7 +41,8 @@ either skill may be the one that finds them.
   never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
   `/work-backlog-parallel`'s "The run" step 4 says; recommend the resume when that step finds it possible. Leaving
   keeps `current-session.md` as the run's file, whose `session-date:` that run's "Ending" and lost-run check read:
-  this session chooses no chunk (`SKILL.md` step 6), and step 9 leaves the file in place. Its
+  this session chooses no chunk (`SKILL.md` step 6), because that run's merge queue is the only thing that may pull
+  `main` or touch worktrees while it runs, and step 9 leaves the file in place. Its
   `session-log.md` line is the run's too; step 2 appended this session's own.
 - `cap:` and `issue` lines but no `workflow-*` line: a parallel batch that was approved and never launched. Ask with
   the question banner whether to launch it with `/work-backlog-parallel` (recommended: the approval was given for a
@@ -145,7 +146,10 @@ Unfinished work is finished (the rest of its flow, then review, CI, merge) befor
 approval it already has: the halt answers and the allowed commands are in `current-session.md`, and the spec and
 plans it names are under `docs/superpowers/` in the main checkout. This comes before the bugs-first rule. The one
 exception is a parked issue the user chose to leave for later (the answer to its `park-note:` question): it stays
-recorded and parked, and a new chunk may be chosen around it. If `current-session.md` is missing (a death before it
+recorded and parked, and a new chunk may be chosen around it. A chunk chosen while `current-session.md` already
+exists (parked issues left in it, or a "fix it now" that started it) is added to that file by `SKILL.md` step 6,
+which rewrites its `session-date:` to this session's and never overwrites the file, since the parked issues' approval
+and notes survive only there. If `current-session.md` is missing (a death before it
 was written) the approval is gone with it: an unfinished PR or worktree is still this skill's, but its remaining halt
 questions and the permission request are asked again before work on it resumes.
 
@@ -169,8 +173,9 @@ To resume:
   unbuilt part, not a check to fix. The ledger sweep ("Review" in `SKILL.md`) then runs at its normal place before
   the merge, and sweeps what the dead session parked along with the rest; when every task is complete, the sweep is
   the next step.
-- A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built, unless
-  its `<N>.md` says `ready-to-merge` (above).
+- A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built, since no
+  record of an earlier review survives a session, unless its `<N>.md` says `ready-to-merge` (above) or it was
+  recorded `pr open, not merged` (next bullet).
 - A PR recorded `pr open, not merged` by a shakedown "no" (`merging.md` step 2) was already reviewed and green: run
   `merging.md` from step 0 and ask its shakedown question once more; on a second no, leave it to the user, name it in
   the proposal, and go on to `SKILL.md` step 4.

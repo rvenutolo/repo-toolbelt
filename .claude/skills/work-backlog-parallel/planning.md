@@ -1,12 +1,11 @@
 # Planning the batch
 
 Step 2 of `SKILL.md` "The session". Everything here happens with the user, in the main checkout, before the
-workflow starts. It is `/work-backlog`'s "Choosing the chunk" and `feature-flow.md` steps 1–5, with the exceptions
-below.
+workflow starts. It is `/work-backlog`'s `choosing.md` and `feature-flow.md` steps 1–5, with the exceptions below.
 
 ## Choosing the batch
 
-`/work-backlog` "Choosing the chunk" holds, minus what `SKILL.md` "Named exceptions" replaces (size, the bugs-only
+`/work-backlog` `choosing.md` holds, minus what `SKILL.md` "Named exceptions" replaces (size, the bugs-only
 or one-family rule, every piece of an umbrella issue). What is left to say here is how to propose a size: ask
 nothing about it up front; propose the size the `short` or `long` argument named (`SKILL.md` "Arguments"), or the
 session shape the user asked for, and when they named none, propose a short one and name the long batch the backlog
@@ -24,7 +23,7 @@ short one beside a long proposal), or "none" when the backlog holds nothing more
 the short batch the one issue was taken from.
 
 An umbrella issue's one piece is the next unbuilt piece its spec names, recorded as the issue's `piece`. Each
-issue's `kind` in `run-args.json` (`bug` or `feature`) is the kind "Choosing the chunk" decides.
+issue's `kind` in `run-args.json` (`bug` or `feature`) is the kind "Kinds" in `choosing.md` decides.
 
 ## The dependency graph
 
@@ -36,7 +35,7 @@ The batch is a graph, not a list. Issue B depends on issue A, written `issue B a
 - A and B are bugs with the same root cause, so B's fix would rebase onto A's change in the same lines;
 - A and B change the same lines of a file that is not a registry or doc file listed below (the same step of a
   workflow, the same function), so the second would meet the first as a code conflict. An issue that asks to land
-  with another is handled as "Combined changes" in `/work-backlog` says; the edge is the order it names.
+  with another is handled as "Combined changes" in `choosing.md` says; the edge is the order it names.
 
 Registry and doc files every new lint touches (`lints.toml`, `formatters.toml`, README lists and tables,
 `examples/consumer/` lint lists, `.coverage-baseline.txt`) are not a dependency: the merge queue resolves conflicts
@@ -53,7 +52,7 @@ batch too.
 One message, beginning with the question banner, naming everything `/work-backlog`'s proposal names, plus:
 
 - the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece,
-  in the order "Choosing the chunk" "Order" gives (by leverage, not bugs before features);
+  in the order "Order" in `choosing.md` gives (by leverage, not bugs before features);
 - **the cap**: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
   pre-push gate when it pushes); the one merge agent runs beside them, so at most cap + 1 gates run;
 - **the budgets** and the shakedown as `/work-backlog` "Budgets" and "Shakedown" give them, with what each does to a

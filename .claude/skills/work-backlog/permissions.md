@@ -90,8 +90,8 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
 - `Bash(sleep *)` (all): the background waits in "Long commands" in `SKILL.md`.
 - `Bash(date --utc *)` (all): the time budget's `started:` line, its deadline and its check before each issue
   ("Budgets" in `SKILL.md`), and the parallel run's `deadline`.
-- `Bash(jq *)` (all): reading an issue body from the index ("Choosing the chunk" in `SKILL.md`) and a PR body before
-  an edit.
+- `Bash(jq *)` (all): reading an issue body from the index ("The index" in `choosing.md`) and a PR body before an
+  edit.
 - `Bash(echo *)` and `Bash(ls *)` (all): a background command's exit status written to a file and the check for an
   existing status file (`/work-backlog-parallel` `common.md` "Long commands"), and the listing of a directory before
   a delete.
@@ -127,14 +127,24 @@ permission request"):
 - `Bash(cd *)`: the merge agent runs `cd <worktree> && ./.ci/in-devshell …`.
 - `Bash(git switch --detach *)`, `Bash(git branch --move *)` and `Bash(git branch --list *)`: a build agent's branch
   rename and a fix agent's detached checkout (`agents.md`), and the merge queue's branch listing.
-- The merge agent runs its git in the rebase worktree as `git -C <rebase worktree> …`, which no rule above matches:
-  `Bash(git -C * -c core.editor=true -c rerere.enabled=false rebase *)`, `Bash(git -C * rebase --abort)`,
-  `Bash(git -C * switch *)`,
-  `Bash(git -C * merge --ff-only *)`, `Bash(git -C * checkout --ours *)`, `Bash(git -C * add *)`,
-  `Bash(git -C * commit *)`, `Bash(git -C * log *)`, `Bash(git -C * status *)`, `Bash(git -C * merge-base *)`,
-  `Bash(git -C * diff *)`, `Bash(git -C * range-diff *)`, `Bash(git -C * blame *)`, `Bash(git -C * rev-parse *)` and
-  `Bash(git -C * push --force-with-lease=*)`, each its own rule for the reason the `git -C` bullet above gives.
-  Name only the forms `merge-queue.md` and `agents.md` "Review" use.
+- The merge agent runs its git in the rebase worktree as `git -C <rebase worktree> …`, which no rule above matches.
+  Each form is its own rule, for the reason the `git -C` bullet above gives, and only the forms `merge-queue.md` and
+  `agents.md` "Review" use are named:
+  - `Bash(git -C * -c core.editor=true -c rerere.enabled=false rebase *)`
+  - `Bash(git -C * rebase --abort)`
+  - `Bash(git -C * switch *)`
+  - `Bash(git -C * merge --ff-only *)`
+  - `Bash(git -C * checkout --ours *)`
+  - `Bash(git -C * add *)`
+  - `Bash(git -C * commit *)`
+  - `Bash(git -C * log *)`
+  - `Bash(git -C * status *)`
+  - `Bash(git -C * merge-base *)`
+  - `Bash(git -C * diff *)`
+  - `Bash(git -C * range-diff *)`
+  - `Bash(git -C * blame *)`
+  - `Bash(git -C * rev-parse *)`
+  - `Bash(git -C * push --force-with-lease=*)`
 - `Bash(<main>/.claude/skills/work-backlog-parallel/wait-for *)`: the waits in its `common.md` "Long commands". The
   status files those waits poll live under `.claude/tmp/` in the worktree the command runs in, named by absolute
   path; every agent's worktree, the merge agent's rebase worktree included, lies under `.claude/worktrees/`, which
