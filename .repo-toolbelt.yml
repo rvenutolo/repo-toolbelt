@@ -25,6 +25,12 @@ check-issue-numbers:
       reason: These fixtures are issue bodies whose references the backlog-index helper must find.
     - path: test/test_helper/run-workflow/scenarios/*.js
       reason: The harness's agent labels and notes name issues the way run.workflow.js does, so the scenarios must hold them.
+    - path: test/backlog-status.bats
+      match: 'Z #[0-9]+ '
+      reason: 'Progress-line fixtures: `#<N> <event>` after a timestamp is the form backlog-status parses.'
+    - path: .claude/skills/work-backlog/state.md
+      match: 'Z #[0-9]+ '
+      reason: 'The example record shows progress lines in the `#<N> <event>` form backlog-status parses.'
     - path: test/release-version.bats
       match: 'merge --quiet --no-ff --message'
       reason: These fixtures are merge subjects as GitHub writes them, pull request number included, which the release tooling must drop.

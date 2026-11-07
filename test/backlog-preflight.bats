@@ -95,13 +95,19 @@ function register_superpowers() {
 # @description Print the check names of the output in order, one per line.
 # @noargs
 function check_names() {
-  awk '$1 == "PASS" || $1 == "WARN" || $1 == "FAIL" { sub(":", "", $2); print $2 }' <<< "${output}"
+  check_names_of_stdin <<< "${output}"
+}
+
+# @description Print the check names of the check lines on stdin, in order.
+# @noargs
+function check_names_of_stdin() {
+  awk '$1 == "PASS" || $1 == "WARN" || $1 == "FAIL" { sub(":", "", $2); print $2 }'
 }
 
 @test 'exits 2 with usage for an unknown argument' {
   run "${PREFLIGHT}" --bogus
   assert_failure 2
-  assert_output --partial 'usage: backlog-preflight [--parallel]'
+  assert_output --partial 'usage: backlog-preflight'
 }
 
 @test 'exits 2 when CLAUDE_CONFIG_DIR is not set' {
@@ -118,22 +124,23 @@ function check_names() {
   assert_output --partial 'not inside a git repository'
 }
 
-@test 'a ready checkout passes every check, in the documented order, and exits 0' {
+@test 'a ready checkout passes every check but the lifetime warning, in the documented order, and exits 0' {
   run "${PREFLIGHT}"
   assert_success
   assert_equal "$(check_names)" "$(printf '%s\n' config-dir gh-auth clean-tree on-main main-current signing \
     agent-key ip-forward superpowers config notification-hook state)"
-  refute_line --regexp '^(WARN|FAIL) '
-  assert_line 'preflight: 0 fail, 0 warn'
+  refute_line --regexp '^FAIL '
+  assert_equal "$(grep '^WARN ' <<< "${output}" | check_names_of_stdin)" 'agent-key'
+  assert_line 'preflight: 0 fail, 1 warn'
 }
 
 @test 'every check line has the PASS|WARN|FAIL <check>: <detail> shape and the count comes last' {
   run "${PREFLIGHT}"
   local line
   while IFS= read -r line; do
-    [[ "${line}" =~ ^(PASS|WARN|FAIL)\ [a-z-]+:\ .+$ || "${line}" == 'preflight: 0 fail, 0 warn' ]]
+    [[ "${line}" =~ ^(PASS|WARN|FAIL)\ [a-z-]+:\ .+$ || "${line}" == 'preflight: 0 fail, 1 warn' ]]
   done <<< "${output}"
-  assert_equal "${lines[-1]}" 'preflight: 0 fail, 0 warn'
+  assert_equal "${lines[-1]}" 'preflight: 0 fail, 1 warn'
 }
 
 @test 'fails config-dir when CLAUDE_CONFIG_DIR is not a directory, and still runs the other checks' {
@@ -218,9 +225,9 @@ function check_names() {
   grep --quiet --fixed-strings -- "-Y sign -n git -f ${BATS_TEST_TMPDIR}/key" "${STUB_LOG}"
 }
 
-@test 'passes agent-key when ssh-add lists the public half, always with the lifetime reminder' {
+@test 'warns agent-key even when ssh-add lists the public half, since the lifetime cannot be read' {
   run "${PREFLIGHT}"
-  assert_line --regexp '^PASS agent-key: .*lifetime cannot be read; confirm the key was added with no lifetime'
+  assert_line --regexp '^WARN agent-key: listed by ssh-add -L; lifetime cannot be read; confirm the key was added'
 }
 
 @test 'warns agent-key when ssh-add does not list the key' {
@@ -270,36 +277,38 @@ function check_names() {
   assert_line 'PASS config: defaults'
 }
 
-@test 'passes config with valid keys, counting them' {
+@test 'passes config with valid keys, the parallel shakedown key included, counting them' {
   mkdir --parents .claude/backlog
-  printf 'shakedown: off\nmax-hours: 6\nmax-parked: 1\n' > .claude/backlog/config
+  printf 'shakedown: off\nshakedown-parallel: on\nmax-hours: 6\nmax-parked: 1\n' > .claude/backlog/config
   run "${PREFLIGHT}"
   assert_success
-  assert_line 'PASS config: 3 keys'
+  assert_line 'PASS config: 4 keys'
 }
 
-@test 'passes config with blank lines between keys, counting only the keys' {
+@test 'passes config with blank and comment lines between keys, counting only the keys' {
   mkdir --parents .claude/backlog
-  printf 'shakedown: off\n\nmax-hours: 6\n' > .claude/backlog/config
+  printf '# lifted after the first run\nshakedown: off\n\nmax-hours: 6\n' > .claude/backlog/config
   run "${PREFLIGHT}"
   assert_success
   assert_line 'PASS config: 2 keys'
 }
 
-@test 'fails config on an unknown key, naming the line' {
+@test 'warns config on an unknown key, naming the line, and still counts the valid keys' {
   mkdir --parents .claude/backlog
   printf 'shakedown: on\ncap: 4\n' > .claude/backlog/config
   run "${PREFLIGHT}"
-  assert_failure 1
-  assert_line 'FAIL config: line 2 "cap: 4" is not shakedown|max-hours|max-parked: <value>'
+  assert_success
+  assert_line 'WARN config: line 2 "cap: 4" ignored; default used (keys: shakedown|shakedown-parallel|max-hours|max-parked)'
+  assert_line 'PASS config: 1 keys'
 }
 
-@test 'fails config on a bad value, naming the line' {
+@test 'warns config on a bad value, naming the line, once per bad line' {
   mkdir --parents .claude/backlog
-  printf 'max-hours: soon\n' > .claude/backlog/config
+  printf 'max-hours: soon\nshakedown-parallel: maybe\n' > .claude/backlog/config
   run "${PREFLIGHT}"
-  assert_failure 1
-  assert_line --regexp '^FAIL config: line 1 "max-hours: soon"'
+  assert_success
+  assert_line --regexp '^WARN config: line 1 "max-hours: soon" ignored; default used'
+  assert_line --regexp '^WARN config: line 2 "shakedown-parallel: maybe" ignored; default used'
 }
 
 @test 'warns notification-hook when no settings file has one, showing a notify-send example' {
@@ -333,23 +342,10 @@ function check_names() {
   assert_line 'PASS state: current-session.md absent; parallel: 0 files; pending findings: 0'
 }
 
-@test '--parallel adds the workflow-tool reminder as the last check' {
-  run "${PREFLIGHT}" --parallel
-  assert_success
-  assert_equal "$(check_names | tail --lines=1)" 'workflow-tool'
-  assert_line --regexp '^WARN workflow-tool: cannot be checked from a shell; the session confirms the Workflow tool'
-  assert_line 'preflight: 0 fail, 1 warn'
-}
-
-@test 'without --parallel there is no workflow-tool line' {
-  run "${PREFLIGHT}"
-  refute_line --partial 'workflow-tool'
-}
-
 @test 'the count sums every FAIL and WARN and the exit is 1 with any FAIL' {
   git config gpg.format openpgp
   printf 'y\n' > file
   SYSCTL_VALUE=0 run "${PREFLIGHT}"
   assert_failure 1
-  assert_line 'preflight: 2 fail, 1 warn'
+  assert_line 'preflight: 2 fail, 2 warn'
 }

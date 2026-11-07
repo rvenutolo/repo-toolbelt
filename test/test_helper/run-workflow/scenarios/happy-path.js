@@ -42,13 +42,14 @@ exports.check = (r, t, test) => {
   test('review inputs', () => {
     const inputs = L.inputsOf(t.calls.find((call) => call.label === 'review #1 r1').prompt)
     L.assert.deepStrictEqual(Object.keys(inputs).sort(),
-      ['branch', 'build', 'headWorktree', 'kind', 'main', 'n', 'plan', 'pr', 'round', 'spec', 'worktrees'])
+      ['branch', 'build', 'haltAnswers', 'headWorktree', 'kind', 'main', 'n', 'piece', 'plan', 'pr', 'round', 'spec',
+        'worktrees'])
   })
   test('merge inputs', () => {
     const inputs = L.inputsOf(t.calls.find((call) => call.label === 'merge #1').prompt)
     L.assert.deepStrictEqual(Object.keys(inputs).sort(),
-      ['branch', 'date', 'lastReason', 'main', 'n', 'pendingRulings', 'pr', 'resolutionFindings', 'resolutionReviewed',
-        'worktrees'])
+      ['branch', 'date', 'haltAnswers', 'kind', 'lastReason', 'main', 'n', 'pendingRulings', 'plan', 'pr',
+        'resolutionFindings', 'resolutionReviewed', 'spec', 'stopAtMerge', 'worktrees'])
   })
   test('worktrees recorded', () => L.assert.deepStrictEqual(L.recOf(r, 1).worktrees, ['/main/.claude/worktrees/wf_1-1']))
 }
