@@ -2,8 +2,9 @@
 name: work-backlog
 description: >-
   Works open issues one PR at a time: proposes a chunk, builds each in a worktree, merges on green CI after your OK.
-  `plan` rehearses; issue numbers name the chunk. For many independent issues, /work-backlog-parallel is faster.
-argument-hint: "[plan] [<issue>...]"
+  `plan` rehearses; `short` or `long` sizes the chunk; issue numbers name it. For many independent issues,
+  /work-backlog-parallel is faster.
+argument-hint: "[plan] [short|long] [<issue>...]"
 disable-model-invocation: true
 ---
 
@@ -47,8 +48,10 @@ The invocation's arguments, in any order:
   and the size limit give way, since the user chose, but shakedown still trims the chunk ("Shakedown"). Named issues
   of both kinds make the bugs this chunk and the features the runner-up, said in the proposal, because a chunk
   follows one flow.
-- **Anything else** (including `short` and `long`, which are `/work-backlog-parallel`'s batch sizes): ask with the
-  question banner, listing the valid forms, before step 1.
+- **`short` or `long`:** the chunk size, at most two PRs or at most four ("Size" in `choosing.md`); without one the
+  size rule stands. Shakedown ignores both, since its chunk is one issue. `/work-backlog-parallel` reads the same two
+  words as its batch sizes, so a habit formed there costs no question here.
+- **Anything else:** ask with the question banner, listing the valid forms, before step 1.
 
 ## Terms
 
@@ -105,14 +108,24 @@ from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=
 state files are written there and nowhere else, and only from the main checkout ("Leaving to write"); reading them
 from inside a worktree is fine.
 
+Every line appended to `current-session.md` after its first starts with the UTC time, and one `at:` line names the
+file and step the session is in, rewritten at each step (`state.md`), so a dead session's record says when it stopped
+and where. `<main>/.claude/skills/work-backlog/backlog-status` reads these files, the parallel run's files, the
+session's open PRs and the worktrees, and prints a session's state; it is read-only and runs from any terminal, so the
+user can watch an unattended run without touching the session, and `leftovers.md` opens with it.
+
 ## The session
 
-1. **Preconditions.** `git status --porcelain` prints nothing, `gh auth status --hostname github.com` succeeds, and
-   after `git switch main` (the user's branch stays as it was, checked out nowhere), `git fetch --prune origin` and
-   `git pull --ff-only` succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any fails, stop
-   with the blocked banner before doing anything else. Every later `gh` call this skill makes gets one retry after a
-   minute (a long run meets transient network errors); if it fails again, stop with the blocked banner, never logging
-   a count or choosing work from a partial or guessed result.
+1. **Preconditions.** `git status --porcelain` prints nothing; then, after `git switch main` (the user's branch stays
+   as it was, checked out nowhere), run `<main>/.claude/skills/work-backlog/backlog-preflight`: one `PASS`, `WARN` or
+   `FAIL` line per check (auth, clean tree, `main` current with `origin/main`, the signing key, the superpowers
+   version the overrides quote, the config file, the notification hook, and more), so every prerequisite a run needs
+   is learned here, not from a failed step hours later. A `FAIL` line is a blocked banner quoting it; `WARN` lines
+   ride in the proposal (`choosing.md` "The proposal"). Then `git fetch --prune origin` and `git pull --ff-only` must
+   succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any of these fails, stop with the
+   blocked banner before doing anything else. Every later `gh` call this skill makes gets one retry after a minute (a
+   long run meets transient network errors); if it fails again, stop with the blocked banner, never logging a count or
+   choosing work from a partial or guessed result.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
    `current-session.md`: its existence means unfinished work; step 3 reads it). Append `YYYY-MM-DD open=N` to
    `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless today's line
@@ -128,12 +141,17 @@ from inside a worktree is fine.
    This runs after step 3 so that a "fix it now" decision does not start new work while a leftover is unfinished.
 5. **Stall check.** Compare today's line with the third line above it ending in `done` (three finished sessions
    earlier, however many calendar days apart; lines without `done` are skipped). If that line exists and today's count
-   is not lower than its count, the backlog has not shrunk over three sessions: run `triage.md` before choosing work.
+   is not lower than its count, the backlog has not shrunk over three sessions: the proposal's trend line says so and
+   offers `triage` as a reply, and `triage.md` runs only on that reply. A backlog of deliberately filed families
+   stalls by design while the user files faster than a session closes, so an unasked triage would cost a long sitting
+   for nothing.
 6. **Choose the chunk.** Read `.claude/backlog/config` ("Shakedown", "Budgets"): an unreadable value is the default,
    said in the proposal. Choose the chunk, or take the issues the arguments name ("Arguments"), propose it as
-   `choosing.md` says, and wait for the user's OK; with `plan`, print the proposal and end there instead. Then write
-   `current-session.md` with its `session-date:` (the date of the line step 2 appended), the halt answers, the
-   allowed commands and, for a bug chunk, the `started:` line ("Budgets"), since the OK begins the unattended part;
+   `choosing.md` says, and wait for the user's reply from its `Reply` line (`triage` runs `triage.md`, then the
+   proposal is sent again); with `plan`, print the proposal and end there instead. Then write
+   `current-session.md` with its `session-date:` (the date of the line step 2 appended), the `flow:` and `issue`
+   lines (`state.md`), the halt answers, the allowed commands and, for a bug chunk, the `started:` line ("Budgets"),
+   since the OK begins the unattended part;
    a file that already exists is added to as `leftovers.md` says, and one a running parallel run owns means this
    session chooses no chunk and goes to step 8 (`leftovers.md` "A parallel run's files").
 7. **Do the work** (below), one PR per issue, merging each on green CI.
@@ -148,8 +166,9 @@ from inside a worktree is fine.
 
 `choosing.md` holds the detail; in short: run `backlog-index`, classify from its rows (bug by label, `fix:` title or a
 body that reproduces something wrong now; otherwise a feature), bugs first when any doable bug is open, related
-issues together in dependency order, two to four PRs (one under shakedown), then one proposal message with the
-runner-up, the trend, the halt questions and the permission request. The user's OK on it is the approval ("Terms").
+issues together in dependency order, two to four PRs (one under shakedown; `short` or `long` narrows it), then one
+proposal message in a fixed layout with the runner-up, the trend, the halt questions, the permission request and the
+reply forms. The user's OK on it is the approval ("Terms").
 
 ## Doing the work
 

@@ -145,6 +145,9 @@
                 git-lfs
                 just
                 commitlint
+                # The BATS suite runs the parallel backlog skill's workflow
+                # script under a node harness (test/test_helper/run-workflow/).
+                nodejs
                 # nix.out, not bare `nix`: the default output is `dev`, which has
                 # no bin/, so a bare `nix` puts nothing on PATH.
                 nix.out

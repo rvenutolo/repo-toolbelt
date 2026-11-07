@@ -8,15 +8,17 @@ happens with the user present, before the unattended part. Section and bullet na
 
 Run `<main>/.claude/skills/work-backlog/backlog-index` (with the issue numbers when the arguments name them), with
 `<main>` the main checkout's absolute path, which its allow rule (`permissions.md`) names. It writes every open
-issue, body included, to the main checkout's `.claude/tmp/issues.json` and prints one tab-separated row per issue:
-`number`, `state`, `kind`, `labels`, `title`, `repro`, `refs`, `umbrella`, `bytes`. The bodies run to well over what
-the Bash tool shows, and a classification read from a cut-off listing misses issues, so classify from the rows and
-read a full body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only for a row
-whose `kind` is `?`, a non-bug row with `repro` `yes`, and every issue the proposal takes; for those `?` and `repro`
-rows read the comments too ("Comments" below) before classifying, since a kind or a size can live only there. A body
-the Bash tool would cut off (`bytes` past about 16000) the script also writes to `.claude/tmp/issue-<N>.md`: read
-that with the Read tool, which pages. `refs` (open issues only) and `umbrella` show the dependencies and umbrella
-issues "Order" below and the proposal need. A non-zero exit is a failed `gh` call (`SKILL.md` step 1).
+issue, body and comments included, to the main checkout's `.claude/tmp/issues.json` and prints one tab-separated row
+per issue: `number`, `state`, `kind`, `labels`, `title`, `repro`, `refs`, `umbrella`, `comments` (how many), `bytes`,
+`pieces` (how many merged PRs carry the whole line `Part of #<N>` for it). The bodies run to well over what the Bash
+tool shows, and a classification read from a cut-off listing misses issues, so classify from the rows and read a full
+body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only for a row whose `kind`
+is `?`, a non-bug row with `repro` `yes`, and every issue the proposal takes; for those `?` and `repro` rows read the
+comments too ("Comments" below) before classifying, since a kind or a size can live only there. A body the Bash tool
+would cut off (`bytes` past about 16000) the script also writes to `.claude/tmp/issue-<N>.md`: read that with the
+Read tool, which pages. `refs` (open issues only when the whole backlog is indexed; every reference when issues are
+named) and `umbrella` show the dependencies and umbrella issues "Order" below and the proposal need. A non-zero exit
+is a failed `gh` call (`SKILL.md` step 1).
 
 ## Kinds
 
@@ -43,19 +45,22 @@ the user acts.
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size. The
   first factor counts any open issue the item unblocks, in the chunk or not, and a prerequisite internal to the chunk
   that no issue names (a shared helper the pieces need) counts under it too.
-- **Size:** two to four PRs; one while shakedown is on ("Shakedown"). Each PR waits on its own CI run and merges before
-  the next starts, and the findings walkthrough still follows, so more than four rarely finishes in a session. When a
+- **Size:** two to four PRs; one while shakedown is on ("Shakedown"); at most two with the `short` argument and at
+  most four with `long` ("Arguments"), which shakedown ignores. Each PR waits on its own CI run and merges before the
+  next starts, and the findings walkthrough still follows, so more than four rarely finishes in a session. When a
   family is bigger, propose the part that fits; the rest stays open for the next session, and the spec covers only the
   proposed part, with a shared helper designed so the rest can reuse it.
 - **Combined changes:** an issue body or comment that asks for its change to land together with another's still
   gets one PR per issue ("PRs"): order the two by the dependency between them, and say so in the proposal. The
   partner is classified with its requester when the body rule allows (a `?` row asked to land with a bug is a bug);
   otherwise it is named as the runner-up, with the dependency, since a chunk follows one flow.
-- **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments` (off a terminal
-  it prints only the comments, which is what is wanted: the body is in the index). A decision or requirement the
-  user left in a comment changes the proposal and binds the build as the body does, so the builder reads the
-  comments again when it starts the issue.
-- **Earlier pieces:** for each issue in the proposed chunk, also run
+- **Comments:** for the issues in the proposed chunk, also read the comments the index holds
+  (`jq --raw-output '.[] | select(.number == <N>) | .comments[].body' .claude/tmp/issues.json`; the `comments` column
+  says whether there are any). A decision or requirement the user left in a comment changes the proposal and binds
+  the build as the body does, so the builder reads the comments again when it starts the issue, with
+  `gh issue view <number> --comments` (off a terminal it prints only the comments, which is what is wanted then: the
+  body is already known).
+- **Earlier pieces:** for each issue in the proposed chunk whose `pieces` column is not `0`, run
   `gh pr list --state merged --limit 1000 --search '"Part of #<number>" in:body' --json number,title,body` (the
   quotes keep the phrase whole; unquoted, the search matches the three words anywhere in a body), then confirm the
   body holds the whole line `Part of #<number>`, as `leftovers.md` matches it. A merged piece means an earlier
@@ -64,32 +69,51 @@ the user acts.
 
 ## The proposal
 
-One message, beginning with the question banner, that names:
+One message, beginning with the question banner, in a fixed order of sections, each headed by its label on a line of
+its own with a blank line between sections. The order is fixed so the user learns where to look, since the message
+is long when the backlog is; every section is present, `none` when empty.
 
-- the issues, why they belong together, and why they come first by the three ordering factors;
-- the runner-up chunk and why it lost, so the user can swap with one word, or "none" when no other chunk could be
-  formed (every doable issue of the chosen kind is already in this one);
-- the user's own work step 3 saw and left alone, or "none";
-- the backlog's trend, as `Backlog: <prev> → <now> open since <date>`, from the `open=` and date of the last
+- `Chunk`: the issues, why they belong together, and why they come first by the three ordering factors; for each,
+  the judgment calls "Kinds" names, and anything from these cases:
+  - an issue whose own text asks the session to do something this skill forbids (open further issues, change another
+    repo, cut a release), with the question it raises, so the user settles it with the chunk. An issue that describes
+    a product which does such things, such as a workflow that opens issues, raises no question;
+  - an umbrella issue, one that asks for sub-issues to be filed and then worked: it is worked as one PR per piece
+    ("PRs") unless the user opts in the proposal to have the sub-issues opened instead;
+  - when the chunk holds several independent issues and a long unattended run, that `/work-backlog-parallel` would
+    finish it sooner.
+- `Runner-up`: the runner-up chunk and why it lost, so the user can swap with one word, or `none` when no other chunk
+  could be formed (every doable issue of the chosen kind is already in this one); and any issue the session cannot
+  do at all, such as one that needs a setting only the user can change in a GitHub App's settings or in another
+  repo, left out of the chunk and named with what the user would have to do.
+- `Seen and left alone`: the user's own work step 3 saw, or `none`.
+- `Backlog`: the trend, as `Backlog: <prev> → <now> open since <date>`, from the `open=` and date of the last
   `session-log.md` line before this session's and the count step 2 took (not `backlog-index`'s row count, which
   covers only the named issues when the arguments name some), or `Backlog: <now> open, first session` when this
-  session's line is the first; the stall check sees only three sessions apart, and this shows growth between any two;
-- the time budget and whether shakedown is on ("Budgets", "Shakedown"), so the user can change either with the OK,
-  and, while shakedown is on, that the session will ask for the merge OK when CI is green, about fifteen minutes
-  after the PR opens, so the user knows to stay or come back;
-- when the chunk holds several independent issues and a long unattended run, that `/work-backlog-parallel` would
-  finish it sooner;
-- for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md` lists the kinds
-  that recur, each with its default answer) and the permission request (`permissions.md`). The OK on the chunk
-  answers the questions; the permission request needs its own answer. A feature chunk asks both in
-  `feature-flow.md` step 5 instead;
-- an issue whose own text asks the session to do something this skill forbids (open further issues, change another
-  repo, cut a release), with the question it raises, so the user settles it with the chunk. An issue that describes
-  a product which does such things, such as a workflow that opens issues, raises no question;
-- an issue the session cannot do at all, such as one that needs a setting only the user can change in a GitHub App's
-  settings or in another repo: leave it out of the chunk and name it, with what the user would have to do;
-- an umbrella issue in the chunk, one that asks for sub-issues to be filed and then worked: it is worked as one PR
-  per piece ("PRs") unless the user opts in the proposal to have the sub-issues opened instead.
+  session's line is the first; the stall check sees only three sessions apart, and this shows growth between any two.
+  When step 5 found a stall, the line ends `, stalled over three sessions`.
+- `Budgets and shakedown`: the time budget and whether shakedown is on ("Budgets", "Shakedown"), so the user can
+  change either with the OK. While shakedown is on, the line `Shakedown: one issue; expect the merge question in
+  about <N> minutes`, so the user knows to stay or come back: N is the last report's `Timings` span from the OK to
+  the merge question when a report exists under `.claude/backlog/reports/` (`report.md`), else 45. Then every `WARN`
+  line `backlog-preflight` printed in step 1, each prefixed `Preflight:`.
+- `Halt questions`: for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md`
+  lists the kinds that recur, each with its default answer), one per line as
+  `Q<k>: <question> Recommended: <answer> (<reason>)`. The OK on the chunk answers them. A feature chunk asks them in
+  `feature-flow.md` step 5 instead, and this section says so.
+- `Permissions`: the permission request (`permissions.md`), which needs its own answer; `none missing` when the
+  allowlists hold every rule; `bypassed` when the session runs with permissions bypassed. A feature chunk asks it in
+  `feature-flow.md` step 5 instead, and this section says so.
+- `Reply`: the one line
+
+  ```text
+  Reply with: OK | OK, swap <N> | OK, Q2=<answer> | shakedown off | rules added | write the rules | skip the permissions
+  ```
+
+  with `triage` added as a last form when the `Backlog` line says stalled, so the user can answer in one reply
+  without composing one. `OK` alone takes every recommended answer; `OK, Q2=<answer>` overrides one; the three
+  permission replies are `permissions.md` "When to ask"'s; `shakedown off` is "Shakedown"'s; `triage` runs
+  `triage.md` first.
 
 The user may swap or trim the chunk with the OK. A swapped-in issue gets the proposal's per-issue items (comments,
 earlier pieces, kind, halt questions) in a follow-up message, which is not a second question round (`permissions.md`

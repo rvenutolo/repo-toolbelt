@@ -23,6 +23,8 @@ check-issue-numbers:
     - path: test/backlog-index.bats
       match: '(list|view)_fixture'
       reason: These fixtures are issue bodies whose references the backlog-index helper must find.
+    - path: test/test_helper/run-workflow/scenarios/*.js
+      reason: The harness's agent labels and notes name issues the way run.workflow.js does, so the scenarios must hold them.
     - path: test/release-version.bats
       match: 'merge --quiet --no-ff --message'
       reason: These fixtures are merge subjects as GitHub writes them, pull request number included, which the release tooling must drop.

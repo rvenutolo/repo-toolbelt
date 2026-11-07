@@ -1,12 +1,15 @@
 # Findings walkthrough
 
-Go through `pending-findings.md` one finding at a time, and never skip one. Never present them as a list: the user
-decides each on its own, and a list invites a blanket answer that files or drops findings nobody weighed.
+Go through `pending-findings.md` one finding at a time, and never skip one. Never present the decisions as a list: the
+user decides each on its own, and a list invites a blanket answer that files or drops findings nobody weighed.
 
-For each finding:
+First, **re-check every entry on current `main`** in one pass, before the first question: a merge since it was found
+may have fixed it, and a re-check between answers would make the user wait after each reply. Note which entries no
+longer reproduce.
 
-1. **Re-check it on current `main`.** A merge since it was found may have fixed it. If it no longer reproduces, say so
-   and recommend dropping it.
+Then, for each finding, headed `Finding <k> of <N>` so the user knows how long the sitting is:
+
+1. **If it no longer reproduces**, ask a one-line question that says so and recommends dropping it, then go to step 5.
 2. **Explain it** for a reader who does not know the context: what the code does, what goes wrong, the realistic input
    that triggers it, and who would hit it.
 3. **Offer options**, typically:
