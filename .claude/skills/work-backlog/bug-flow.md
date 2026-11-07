@@ -10,8 +10,10 @@ Per bug, in the order the chunk proposal gave:
 
 1. Check the issue is still open, as the loop in "Doing the work" in `SKILL.md` says. Create and enter a worktree,
    copy the instruction files into it, and run the baseline tests ("Worktrees" in `SKILL.md`). Each bug has its own
-   worktree and PR, related or not ("PRs").
-2. **Confirm it empirically** on the branch, with the realistic input the issue describes.
+   worktree and PR, related or not ("PRs" in `SKILL.md`).
+2. **Confirm it empirically** on the branch, with the realistic input the issue describes. When the issue's
+   reproduction is an external tool the devShell lacks (an audit that flags this repo), verifying the condition it
+   reports, locally, is the confirmation.
 3. **Not a bug.** A bug that does not reproduce on current `main`, or that fails the filing bar once examined, is not
    fixed: ask the user right then, with the question banner (the halt goes in `current-session.md` first, "Halting"
    in `resume.md`), before touching the next issue. Explain what was found, recommend "close as completed" or "close

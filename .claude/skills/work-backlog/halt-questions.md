@@ -10,8 +10,8 @@ Each default is the answer that never needs undoing.
   YAML key tests the parser, not the change.
 - **"Land together".** The issue asks for its change to ship with another issue's. Default: one PR each, ordered by
   the dependency ("Combined changes" in `SKILL.md`).
-- **Title broader than body.** The title names a problem the body never describes. Default: try to reproduce it; fix
-  it in the same PR if it reproduces, otherwise a `Ruling:` that it did not.
+- **Title broader than body.** The title names a problem neither the body nor a comment describes. Default: try to
+  reproduce it; fix it in the same PR if it reproduces, otherwise a `Ruling:` that it did not.
 - **Prerequisite outside the repo.** The change needs a GitHub App setting, a secret, another repo's change or a
   release. Default: leave the issue out and name what the user must do (the proposal's "cannot do at all" item).
 - **An untracked doc goes stale.** The change makes `.claude/CLAUDE.md` wrong (a lint, formatter, command or layout it

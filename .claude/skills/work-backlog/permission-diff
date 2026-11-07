@@ -10,15 +10,17 @@
 #              some file covers by prefix is followed by a `covered by:` line
 #              naming the most specific such rule, a hint for the reader that
 #              changes no verdict.
-#              Reads permissions.allow from $CLAUDE_CONFIG_DIR/settings.json,
-#              $CLAUDE_CONFIG_DIR/settings.local.json and the repo's
+#              Reads permissions.allow from the files Claude Code reads:
+#              $CLAUDE_CONFIG_DIR/settings.json and the repo's
 #              .claude/settings.json and .claude/settings.local.json; a missing
 #              file is skipped.
 # @option --superpowers-dir print the installed superpowers plugin's directory instead
 # @arg $@ the rule strings, or `-` to read them one per line from stdin
 # @stdout each requested rule no settings file allows, one per line, each
 #         followed by `  covered by: <rule>` when a wider Bash rule covers it
-# @stderr `defaultMode: <mode>` from the most specific file that sets it, or `unset`
+# @stderr `defaultMode: <mode>` from the most specific file that sets it, or
+#         `unset`; `bypassPermissions` and `auto` count only from the user
+#         file, since a project or local file cannot turn them on
 # @exitcode 0 success, whether or not a rule is missing
 # @exitcode 1 --superpowers-dir found no installed superpowers plugin
 # @exitcode 2 wrong arguments, CLAUDE_CONFIG_DIR unset, or a settings file is not valid JSON
@@ -56,7 +58,6 @@ function settings_files() {
   local file
   for file in \
     "${CLAUDE_CONFIG_DIR}/settings.json" \
-    "${CLAUDE_CONFIG_DIR}/settings.local.json" \
     "${repo}/.claude/settings.json" \
     "${repo}/.claude/settings.local.json"; do
     if [[ -f "${file}" ]]; then
@@ -124,9 +125,12 @@ function main() {
   local merged='{"allow": [], "mode": "unset"}'
   local path
   for path in "${paths[@]}"; do
-    if ! merged="$(jq --argjson acc "${merged}" '
-      {allow: ($acc.allow + (.permissions.allow // [])),
-       mode: (.permissions.defaultMode // $acc.mode)}' "${path}" 2> /dev/null)"; then
+    # Claude Code ignores bypassPermissions and auto outside the user file.
+    if ! merged="$(jq --argjson acc "${merged}" --arg user "${CLAUDE_CONFIG_DIR}/settings.json" --arg path "${path}" '
+      (.permissions.defaultMode // null) as $mode
+      | {allow: ($acc.allow + (.permissions.allow // [])),
+         mode: (if $mode == null or ($path != $user and ($mode == "bypassPermissions" or $mode == "auto"))
+                then $acc.mode else $mode end)}' "${path}" 2> /dev/null)"; then
       printf '%s: %s is not valid JSON\n' "${0##*/}" "${path}" >&2
       exit 2
     fi

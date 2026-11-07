@@ -22,9 +22,13 @@ For each finding:
    `SKILL.md`, after the permission request (`permissions.md`) if this session has not made it yet. A fix made now
    has no issue: its branch is `fix/finding-<slug>` ("Branches" in `SKILL.md`), its PR body describes the finding
    instead of using a closing keyword, and still ends with the marker. Write `current-session.md` as soon as the
-   worktree is created and before entering it ("State" in `SKILL.md`), with its `session-date:` line and, if the
-   file has none yet, a `started:` line ("Budgets" in `SKILL.md`), since the fix is unattended work. When this
-   runs at session step 4, session step 6 later adds the chunk to this file. A known-gap comment also goes through
-   a PR of its own, since `main` is protected and nothing lands on it without one.
+   worktree is created and before entering it ("State" in `SKILL.md`), with its `session-date:` line and a
+   `started:` line, written or replaced ("Budgets" in `SKILL.md`), since the fix is unattended work and a
+   carried-over file's clock is a dead session's. When this runs at session step 4, session step 6 later adds the
+   chunk to this file. A known-gap comment also goes through a PR of its own, since `main` is protected and nothing
+   lands on it without one: the branch `docs/finding-<slug>` and worktree `.claude/worktrees/finding-<slug>`
+   ("Branches" in `SKILL.md`), one `docs:` commit, a body that is the finding's entry text followed by the marker, one
+   superpowers:requesting-code-review pass, then "Merging" in `SKILL.md`; the same approval and permission request
+   as a "fix it now".
 7. **Remove the entry** from `pending-findings.md` only after the decision is carried out, so a session that dies
    between decision and action still has the finding on disk.

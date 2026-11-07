@@ -93,12 +93,34 @@ function cell() {
   assert_equal "$(jq --sort-keys '.' "${OUT}")" "$(jq --sort-keys '.' "${FIXTURES}/list.json")"
 }
 
-@test 'writes to .claude/tmp/issues.json under the working directory by default' {
+@test 'writes to .claude/tmp/issues.json under the main checkout by default, even from a worktree' {
+  list_fixture '1|feat: a||body'
+  make_repo
+  git -c user.name=t -c user.email=t@t commit --quiet --allow-empty --message init
+  git worktree add --quiet "${BATS_TEST_TMPDIR}/wt" --detach
+  cd "${BATS_TEST_TMPDIR}/wt"
+  run "${BACKLOG_INDEX}"
+  assert_success
+  assert_equal "$(jq '.[0].number' "${FIXTURE_REPO}/.claude/tmp/issues.json")" '1'
+  assert [ ! -e "${BATS_TEST_TMPDIR}/wt/.claude/tmp/issues.json" ]
+}
+
+@test 'writes to .claude/tmp/issues.json under the working directory outside a git repo' {
   list_fixture '1|feat: a||body'
   cd "${BATS_TEST_TMPDIR}"
   run "${BACKLOG_INDEX}"
   assert_success
   assert_equal "$(jq '.[0].number' "${BATS_TEST_TMPDIR}/.claude/tmp/issues.json")" '1'
+}
+
+@test 'writes a body over 16000 bytes to issue-<N>.md beside the index' {
+  local long
+  long="$(head --bytes=16001 /dev/zero | tr '\0' 'x')"
+  list_fixture "1|feat: a||${long}" '2|feat: b||short'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_success
+  assert_equal "$(cat "${BATS_TEST_TMPDIR}/out/issue-1.md")" "${long}"
+  assert [ ! -e "${BATS_TEST_TMPDIR}/out/issue-2.md" ]
 }
 
 @test 'lists every open issue when no issue is named' {
@@ -173,14 +195,40 @@ function cell() {
   assert_equal "$(cell 1 6),$(cell 2 6),$(cell 3 6),$(cell 4 6),$(cell 5 6),$(cell 6 6)" 'yes,yes,,yes,yes,yes'
 }
 
+@test 'marks a body that reports a check failing on main or an audit flagging the repo' {
+  # shellcheck disable=SC2016 # the backticks are markdown in the fixture body, not a command substitution
+  list_fixture '1|ci: a||github-repos-audit flags this repo' '2|ci: b||the audit flags the repository' \
+    '3|ci: c||check-examples fails on main' '4|ci: d||the gate fails on `main` today' '5|ci: e||nothing wrong'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 1 6),$(cell 2 6),$(cell 3 6),$(cell 4 6),$(cell 5 6)" 'yes,yes,yes,yes,'
+}
+
 @test 'does not read a feature body that says reproducible as a reproduction' {
   list_fixture '1|feat: a||Builds must be reproducible' '2|feat: b||ensures reproducibility of the image'
   run "${BACKLOG_INDEX}" --out "${OUT}"
   assert_equal "$(cell 1 6),$(cell 2 6)" ','
 }
 
-@test 'lists the other issues a body names, once each and in order' {
-  list_fixture '7|feat: a||See #12, #3 and #12 again; this is #7.'
+@test 'lists the other open issues a body names, once each and in order' {
+  list_fixture '7|feat: a||See #12, #3 and #12 again; this is #7.' '3|feat: b||x' '12|feat: c||x'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 7 7)" '3,12'
+}
+
+@test 'drops a reference to an issue that is not open when every open issue is indexed' {
+  list_fixture '7|feat: a||depends on #3 and on #99, which is closed' '3|feat: b||x'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 7 7)" '3'
+}
+
+@test 'keeps every reference when only named issues are indexed' {
+  view_fixture OPEN '7|feat: a||depends on #3 and on #99'
+  run "${BACKLOG_INDEX}" --out "${OUT}" 7
+  assert_equal "$(cell 7 7)" '3,99'
+}
+
+@test 'does not read an issue number inside a fenced code block as a reference' {
+  list_fixture $'7|feat: a||See #3.\n```text\nCloses #1\n```\nAnd #12.' '1|feat: x||x' '3|feat: b||x' '12|feat: c||x'
   run "${BACKLOG_INDEX}" --out "${OUT}"
   assert_equal "$(cell 7 7)" '3,12'
 }

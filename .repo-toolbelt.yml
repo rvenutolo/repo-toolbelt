@@ -21,7 +21,7 @@ check-issue-numbers:
     - path: internal/issuerefs/*_test.go
       reason: The lint's own tests hold issue references as the input they scan.
     - path: test/backlog-index.bats
-      match: 'list_fixture'
+      match: '(list|view)_fixture'
       reason: These fixtures are issue bodies whose references the backlog-index helper must find.
     - path: test/release-version.bats
       match: 'merge --quiet --no-ff --message'

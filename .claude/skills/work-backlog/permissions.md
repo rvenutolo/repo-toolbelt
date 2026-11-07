@@ -17,7 +17,9 @@ session can be started in another mode.
   `findings-walkthrough.md` asks first if this session has not asked yet.
 - Again right before the unattended part starts (the chunk OK for bugs, the answered question round for features, the
   launch for `/work-backlog-parallel`): re-read the allowlists, since the user may have changed them in between, and
-  run the signing check.
+  run the signing check. Also confirm the main checkout is on `main` (`git symbolic-ref --short HEAD`) and that, after
+  `git fetch origin main`, `git merge-base --is-ancestor HEAD origin/main` succeeds: a sitting is long, and a commit the
+  user made on local `main` meanwhile would refuse the pull that follows every merge, so ask them to move it off first.
 
 The request tells the user how to add the rules: with `/permissions`, or by editing `.claude/settings.local.json`
 and saying so; the session re-reads the files before it starts. A deferral ("do whatever you think") answers no
@@ -29,9 +31,9 @@ run will stop at its first prompt until the user returns. Never drop a command t
 
 Check the allowlists rather than assuming, and list only the rules they lack:
 `<main>/.claude/skills/work-backlog/permission-diff <rule>...`, with every candidate below written out (or one per
-line on stdin with `-`), prints each rule that no allowlist (`$CLAUDE_CONFIG_DIR/settings.json`, its
-`settings.local.json`, and the main checkout's `.claude/settings.json` and `.claude/settings.local.json`) holds
-verbatim, and prints `defaultMode` on stderr. Its `--superpowers-dir` prints the installed superpowers plugin
+line on stdin with `-`), prints each rule that no allowlist (`$CLAUDE_CONFIG_DIR/settings.json` and the main
+checkout's `.claude/settings.json` and `.claude/settings.local.json`; Claude Code reads no user-level local file)
+holds verbatim, and prints `defaultMode` on stderr. Its `--superpowers-dir` prints the installed superpowers plugin
 directory, the `<plugin dir>` below. It compares strings only, but a rule printed with a `covered by: <rule>` line
 under it is already allowed by that broader rule (`Bash(git *)` covers `Bash(git rebase *)`) and is left out of the
 request. Name rule strings, not commands: a rule matches a command by its literal prefix, so `Bash(git rebase *)`
@@ -44,44 +46,55 @@ The request lists the candidates of the flows this session will run. Each candid
 flow, a bug chunk and a "fix it now" included), `features` or `leftovers` (step 3 found unfinished work), with what
 runs it; a bug chunk with no leftovers asks for no plan-script rule and no recursive delete.
 
-- `Bash(cp *)`, `Bash(mkdir --parents *)` (all): the instruction-file copy on every worktree entry ("Worktrees").
+**Run while the user is there.** These are first used in steps 1 to 6, before or with the request, so a missing rule
+costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run unattended later too (`merging.md` step
+3, `merge-queue.md` section 6), so they still belong in the request:
+
+- `Bash(git switch main)`, `Bash(git pull --ff-only*)`, `Bash(git branch --merged *)`, `Bash(git branch --no-merged *)`,
+  `Bash(git worktree prune*)` (the `*` lets `plan`'s `--dry-run` match) and `Bash(git worktree list *)` (all): step 1,
+  step 3's listings and `leftovers.md`; the pull also runs in the main checkout after every merge and, resuming a
+  parallel run's worktree, as `origin <branch>` there.
+- `Bash(<main>/.claude/skills/work-backlog/backlog-index*)` and
+  `Bash(<main>/.claude/skills/work-backlog/permission-diff*)` (all), with `<main>` written out so the rule matches
+  from any directory: the proposal runs them; with them allowed, a later session's proposal, `plan` included, runs
+  without a prompt.
+- `Bash(git config --get *)`, `Bash(ssh-keygen -Y sign *)` and `Bash(printf *)` (all): the signing check ("Signing"),
+  run in the proposal and again right before the unattended part.
+
+**The unattended part.**
+
+- `Bash(cp *)`, `Bash(mkdir --parents *)` (all): the instruction-file copy on every worktree entry ("Worktrees" in
+  `SKILL.md`).
 - `Bash(./.ci/in-devshell *)` (all): the baseline tests, the gate, lint checks, a bug's reproduction and the baseline
   regeneration in `merging.md`.
-- `Bash(git worktree add *)`, `Bash(git worktree remove *)`, `Bash(git worktree prune)`,
-  `Bash(git branch --delete *)` (all): "Worktrees", `merging.md` step 4 and `leftovers.md`.
-- `Bash(git switch main)`, `Bash(git branch --merged *)`, `Bash(git branch --no-merged *)`,
-  `Bash(sysctl net.ipv4.ip_forward)` (all): step 1, `leftovers.md`'s listings and the Docker check before a step
-  that needs a container ("How the session runs"). The first three run while the user is there, so a missing rule
-  costs a prompt, not a stall.
+- `Bash(git worktree add *)`, `Bash(git worktree remove *)`, `Bash(git branch --delete *)` (all): "Worktrees" in
+  `SKILL.md`, `merging.md` step 4 and `leftovers.md`.
+- `Bash(sysctl net.ipv4.ip_forward)` (all): the Docker check before `./.ci/in-devshell ./.ci/test-image`, the one
+  step that needs a container ("How the session runs" in `SKILL.md`).
 - `Bash(git add *)`, `Bash(git commit *)` (all): the `test:` and `fix:` commits (`bug-flow.md` step 4), a plan's
   commits, a baseline regeneration and a merge-time fix (`merging.md`).
 - `Bash(git fetch *)`, `Bash(git rev-parse *)`, `Bash(git log *)`, `Bash(git merge-base *)`, `Bash(git diff *)`,
-  `Bash(git show *)`, `Bash(git status *)` (all): the `BEHIND` rebase and its signature check and baseline test in
-  `merging.md` step 2, the review base ("Review" in `SKILL.md`), the reviewer's inspection of the branch, and step 1's
-  preconditions.
-- `Bash(git pull --ff-only*)` (all): in the main checkout and, resuming a parallel run's worktree, `origin <branch>`
-  there.
-- `Bash(git rebase *)` (with `--abort`) and `Bash(git push *)` (all): `--set-upstream` for the first push, and
-  `--force-with-lease` after a rebase in `merging.md` step 2.
+  `Bash(git show *)`, `Bash(git status *)`, `Bash(git symbolic-ref *)` (all): the `BEHIND` rebase and its signature
+  check and baseline test in `merging.md` step 2, the review base ("Review" in `SKILL.md`), the reviewer's inspection
+  of the branch, step 1's preconditions and the `main` check in "When to ask".
+- `Bash(git -c rerere.enabled=false rebase *)` (with `--abort`; `merging.md` step 2 says why every rebase carries the
+  `-c`) and `Bash(git push *)` (all): `--set-upstream` for the first push, and `--force-with-lease` after a rebase in
+  `merging.md` step 2.
 - `Bash(gh *)` (all), or each of `gh pr create|edit|checks|merge|list|view`, `gh issue view|list|close`,
-  `gh run list|rerun` and `gh auth status`: the PR, its CI watch and merge, the issue checks, the walkthrough's
-  closes, and step 1's preconditions.
+  `gh run list|rerun`, `gh api repos/*` and `gh auth status`: the PR, its CI watch and merge, the issue checks, the
+  walkthrough's closes, step 1's preconditions, and the ruleset read for a refused merge (`merging.md` step 2).
 - `Bash(git worktree unlock *)`, `Bash(git -C * rebase --abort)`, `Bash(git -C * switch *)`,
-  `Bash(git branch --force *)`, `Bash(git worktree list *)`, `Bash(kill -0 *)` (leftovers): `leftovers.md` runs these
+  `Bash(git branch --force *)`, `Bash(kill -0 *)` (leftovers): `leftovers.md` runs these
   on a leftover worktree. Never the bare `Bash(git -C *)`: it matches every git subcommand after `-C`, `reset --hard`
   and `branch -D` included.
-- `Bash(git config --get *)`, `Bash(ssh-keygen -Y sign *)` and `Bash(printf *)` (all): the signing check ("Signing").
-- `Bash(sleep *)` (all): the background waits in "Long commands".
-- `Bash(date --utc *)` (all): the time budget's `started:` line and its check before each issue ("Budgets"), and the
-  parallel run's `deadline`.
-- `Bash(jq *)` (all): reading an issue body from the index ("Choosing the chunk") and a PR body before an edit.
+- `Bash(sleep *)` (all): the background waits in "Long commands" in `SKILL.md`.
+- `Bash(date --utc *)` (all): the time budget's `started:` line, its deadline and its check before each issue
+  ("Budgets" in `SKILL.md`), and the parallel run's `deadline`.
+- `Bash(jq *)` (all): reading an issue body from the index ("Choosing the chunk" in `SKILL.md`) and a PR body before
+  an edit.
 - `Bash(echo *)` and `Bash(ls *)` (all): a background command's exit status written to a file and the check for an
   existing status file (`/work-backlog-parallel` `common.md` "Long commands"), and the listing of a directory before
   a delete.
-- `Bash(<main>/.claude/skills/work-backlog/backlog-index*)` and
-  `Bash(<main>/.claude/skills/work-backlog/permission-diff*)` (all), with `<main>` written out so the rule matches
-  from any directory: the proposal runs them while the user is there, so a missing rule costs a prompt, not a stall;
-  with them allowed, a later session's proposal, `plan` included, runs without one.
 - The plan sub-skills' helper scripts (features), each run by its absolute path from the installed superpowers
   plugin, without a `bash` prefix (`sub-skill-overrides.md`), so one rule per script matches. `<plugin dir>` is what
   `permission-diff --superpowers-dir` prints, written out:
@@ -95,8 +108,10 @@ runs it; a bug chunk with no leftovers asks for no plan-script rule and no recur
   the plan workspace delete after the ledger sweep. `sdd-workspace` prints the workspace as an absolute path, and the
   delete names that path in long options (`sub-skill-overrides.md`), so a relative `rm -rf` rule never matches it.
 - `Edit` rules (all) for every file the run writes, omitted when `permission-diff` prints `defaultMode: acceptEdits`
-  or `bypassPermissions`: a wrong omission costs one prompt at the first write, the `current-session.md` write right
-  after the OK, while the user is still there. `Edit(/<main>/.claude/worktrees/**)` for the code, and
+  or `bypassPermissions` (the script counts `bypassPermissions` only from `$CLAUDE_CONFIG_DIR/settings.json`, since a
+  project or local file cannot set it; the system-prompt tell above is the other way to know): a wrong omission costs
+  one prompt at the first write, the `current-session.md` write right after the OK, while the user is still there.
+  `Edit(/<main>/.claude/worktrees/**)` for the code, and
   `Edit(/<main>/.claude/backlog/**)`, `Edit(/<main>/.claude/tmp/**)`, `Edit(/<main>/docs/superpowers/**)`,
   `Edit(/<main>/.claude/rules/**)` and `Edit(/<main>/.claude/CLAUDE.md)` for the state files, the issue listing,
   specs, plans, rule copies and `.claude/CLAUDE.md` corrections. `<main>` is the main checkout's absolute path, so
@@ -113,28 +128,28 @@ permission request"):
 - `Bash(git switch --detach *)`, `Bash(git branch --move *)` and `Bash(git branch --list *)`: a build agent's branch
   rename and a fix agent's detached checkout (`agents.md`), and the merge queue's branch listing.
 - The merge agent runs its git in the rebase worktree as `git -C <rebase worktree> …`, which no rule above matches:
-  `Bash(git -C * -c core.editor=true rebase *)`, `Bash(git -C * rebase --abort)`, `Bash(git -C * switch *)`,
+  `Bash(git -C * -c core.editor=true -c rerere.enabled=false rebase *)`, `Bash(git -C * rebase --abort)`,
+  `Bash(git -C * switch *)`,
   `Bash(git -C * merge --ff-only *)`, `Bash(git -C * checkout --ours *)`, `Bash(git -C * add *)`,
   `Bash(git -C * commit *)`, `Bash(git -C * log *)`, `Bash(git -C * status *)`, `Bash(git -C * merge-base *)`,
   `Bash(git -C * diff *)`, `Bash(git -C * range-diff *)`, `Bash(git -C * blame *)`, `Bash(git -C * rev-parse *)` and
   `Bash(git -C * push --force-with-lease=*)`, each its own rule for the reason the `git -C` bullet above gives.
   Name only the forms `merge-queue.md` and `agents.md` "Review" use.
-- `Bash(gh api repos/*)`, when `Bash(gh *)` is not used: the merge queue's conflict check reads which PR a `main`
-  commit came from.
 - `Bash(<main>/.claude/skills/work-backlog-parallel/wait-for *)`: the waits in its `common.md` "Long commands". The
   status files those waits poll live under `.claude/tmp/` in the worktree the command runs in, named by absolute
   path; every agent's worktree, the merge agent's rebase worktree included, lies under `.claude/worktrees/`, which
   that `Edit` rule covers.
 - `Edit(/<main>/.claude/backlog/parallel/**)` is covered by the `.claude/backlog/` rule above; the review stage
   writes there.
-- `Bash(git worktree list *)`, `Bash(git worktree unlock *)`, `Bash(kill -0 *)`, `Bash(date --utc *)` and
-  `Bash(sysctl net.ipv4.ip_forward)` (the merge queue's cleanup, a build agent's deadline check, the Docker check)
-  from "Rule strings", whatever flows the session runs.
+- `Bash(git worktree unlock *)`, `Bash(kill -0 *)`, `Bash(date --utc *)` and `Bash(sysctl net.ipv4.ip_forward)` (the
+  merge queue's cleanup, a build agent's deadline check, the Docker check) from "Rule strings", whatever flows the
+  session runs.
 
 ## Signing
 
 Every commit and rebase signs with the key `git config --get user.signingkey` names, so a key that is missing or
-expires mid-run fails every later commit. Check it the way git uses it, with a test signature:
+expires mid-run fails every later commit. Check it the way git uses it, with a test signature, in the proposal
+(while the user is there to allow the rule) and again right before the unattended part ("When to ask"):
 
 ```bash
 printf x | ssh-keygen -Y sign -n git -f "$(git config --get user.signingkey)" >/dev/null

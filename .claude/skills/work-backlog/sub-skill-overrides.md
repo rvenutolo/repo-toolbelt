@@ -2,8 +2,9 @@
 
 The superpowers skills this skill calls each pause for the user at points this workflow has already settled. The user
 settled them by giving approval ("Terms" in `SKILL.md`). Each entry names the pause and what stands in its place;
-everything else in those skills runs as written. The quotes are from superpowers 7.0.0; when the installed version no
-longer has a quoted phrase, follow the entry's intent and say so in the session summary.
+everything else in those skills runs as written. The quotes are from superpowers 7.0.0; a quoted phrase may span a
+line break or bold markers in the source, so search for its words, not the line. When the installed version has no
+such phrase, follow the entry's intent and say so in the session summary.
 
 The first two entries apply to every session, whichever sub-skills it ends up calling.
 
@@ -43,6 +44,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 - **superpowers:writing-plans**, "If working in an isolated worktree, it should have been created via the
   `superpowers:using-git-worktrees` skill at execution time": the worktree already exists (`feature-flow.md` step
   6.2) and the plan is written inside it.
+- **superpowers:writing-plans** and **superpowers:executing-plans**, the test commands a plan names and the one
+  handed to `task-done`: each is `./.ci/in-devshell <command>`. The host has no Go or BATS, so a bare `go test`
+  fails the task for a reason that is not the code's.
 - **superpowers:using-git-worktrees**, "Would you like me to set up an isolated worktree?" and its native-tool
   step: always yes, created as "Worktrees" in `SKILL.md` says (`git worktree add --no-track -b`, then
   `EnterWorktree` by `path`). "Sandbox fallback" (working in the current directory when `git worktree add` fails):
@@ -53,9 +57,9 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   `SKILL.md` runs for every issue, bug or feature. "If tests fail: Report failures, ask whether to proceed or
   investigate": a red baseline on a fresh branch from `origin/main` is run once more. Still red, and the latest
   `ci.yml` run on `main` is red too (`gh run list --branch main --workflow ci.yml --limit 1 --json conclusion`):
-  `main` itself is broken, a blocked-banner halt. Otherwise a test that fails only here (under load, or on this
-  machine) is flaky: record it as a finding and carry on; a question banner only if it keeps the issue's work from
-  going on.
+  `main` itself is broken, a blocked-banner halt; an empty `conclusion` is a run still going, not a red one.
+  Otherwise a test that fails only here (under load, or on this machine) is flaky: record it as a finding and carry
+  on; a question banner only if it keeps the issue's work from going on.
 - **superpowers:subagent-driven-development** and **superpowers:executing-plans**, "Four things stop you, and only
   these: an irreversible or destructive operation; a security-sensitive action; a side effect outside this worktree
   that norms say you ask about first (a merge, a push to a shared branch, a publish); and a plan so broken that every
@@ -98,7 +102,8 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   human partner's permission": no exception is asked for. Configuration gets the test the repo has for it (BATS e2e
   against the image, `.ci/check-examples`, the workflow lints); a change that truly has no test is a `Ruling:` in
   the PR body. "Don't know how to test | … Ask your human partner": settled as "How the session runs" in `SKILL.md`
-  says.
+  says. A test failure the change did not cause ("goes in your report by name") is a finding, judged by the filing
+  bar, and is never fixed as part of the issue.
 - **superpowers:systematic-debugging**, Phase 4.5 "Discuss with your human partner before attempting more fixes"
   (three failed fixes) and "Ask for help": a question-banner halt in the shape of `bug-flow.md` step 3 (explain what
   was tried, recommend, the rest of the chunk goes on after the answer) with options that fit: try a named
@@ -112,4 +117,6 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
   decisions: Stop and discuss with your human partner first": review findings are handled as "Findings about the
   change itself" in `SKILL.md` says. An unclear item is read the most plausible way and handled under a `Ruling:`
   that says how it was read; one that conflicts with an approval the user gave (the spec, a halt answer) keeps the
-  approval and records a `Ruling:`. Anything else is settled as "How the session runs" in `SKILL.md` says.
+  approval and records a `Ruling:`. A finding that a `Ruling:` in the PR body already settles is dropped with a
+  ruling that cites it, unless the code since contradicts that ruling (reviewers raise such findings on purpose,
+  "Subagents" in `SKILL.md`). Anything else is settled as "How the session runs" in `SKILL.md` says.

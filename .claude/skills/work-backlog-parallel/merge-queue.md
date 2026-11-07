@@ -11,8 +11,10 @@ or `EnterWorktree`.
 `/work-backlog`'s `merging.md` steps 0–2 are the procedure, with the differences below: a blocked or question banner
 there is a park here, with the status and the rule in the note. Its steps 3 and 4 (leaving a worktree, recording in
 `current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here replace them. Git commands in the
-rebase worktree run as `git -C <rebase worktree> …`, rebases as `git -C <rebase worktree> -c core.editor=true
-rebase …`, so `rebase --continue` never waits on an editor nobody will close. Devshell commands run there as
+rebase worktree run as `git -C <rebase worktree> …`. Every rebase and every `rebase --continue` runs as
+`git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase …`: the editor setting means
+`rebase --continue` never waits on an editor nobody will close, and rerere is off for the reason `merging.md` step 2
+gives (a replayed resolution would be staged before section 3 ever saw the conflict). Devshell commands run there as
 `cd <rebase worktree> && ./.ci/in-devshell …`. Long commands (the push, the baseline regeneration and its tests,
 `gh pr checks --watch`) follow `common.md` "Long commands", with their status files in the rebase worktree's
 `.claude/tmp/`, never the main checkout's.
@@ -21,8 +23,9 @@ Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents
 `resolutionReviewed` (true when the previous call returned `needs-review` and the review has run), `resolutionFindings`
 (that review's findings, possibly none), `pendingRulings` (the rulings earlier calls for this issue returned with
 `needs-review` (`Summary:` lines excluded); a call that stops for review may not have pushed, so they may not be in the
-PR body yet), `date`, `main`. Nothing else carries over between calls: what a call needs from an earlier one (the old
-remote SHA, the rebase worktree) it reads again from git.
+PR body yet), `lastReason` (the `reason` the previous call returned with `needs-review`: `conflict`, `gate` or `ci`;
+empty on the first call), `date`, `main`. Nothing else carries over between calls: what a call needs from an earlier
+one (the old remote SHA, the rebase worktree) it reads again from git.
 
 ## 1. Reconcile
 
@@ -41,14 +44,14 @@ The rebase happens on the issue branch itself, so that after the merge the local
 `git branch --delete` accepts it.
 
 1. `git fetch --prune origin`, then note the old remote SHA, `git rev-parse origin/<branch>`, for the
-   force-with-lease in section 3. It is the pre-rebase head, except after a call that returned `reason: "ci"`: that
-   call had already pushed the rebased branch, so it is that push.
+   force-with-lease in section 3. It is the pre-rebase head, except when `lastReason` is `ci`: that call had already
+   pushed the rebased branch, so it is that push.
 2. The rebase worktree is the one `git worktree list` shows on `<branch>`: normally the build agent's (the first of
    `worktrees`). If a rebase is in progress there (`git -C <it> rebase --abort` succeeds), an earlier merge agent
    died mid-rebase: carry on from the clean branch.
 3. **A reviewed change** (`resolutionReviewed` true): the rebase worktree holds the previous call's work, not yet on
-   the remote. After `reason: "conflict"` or `"gate"` that is the whole rebased branch, which diverges from
-   `origin/<branch>`; after `reason: "ci"` the rebase was pushed and only the fix is local, so the worktree is ahead
+   the remote. When `lastReason` is `conflict` or `gate` that is the whole rebased branch, which diverges from
+   `origin/<branch>`; when it is `ci` the rebase was pushed and only the fix is local, so the worktree is ahead
    of `origin/<branch>`. Either way this is expected. First handle each of `resolutionFindings` as the
    "Findings about the change itself" bullet says, committing in the rebase worktree (a finding that cannot be
    fixed parks), whatever happens next. Then, if `git -C <rebase worktree> merge-base --is-ancestor origin/main
@@ -64,13 +67,14 @@ The rebase happens on the issue branch itself, so that after the merge the local
    `--ff-only` there. When no worktree holds `<branch>`, add `merge-<n>` the same way. When the worktree holds commits
    `origin/<branch>` lacks, park: work exists only locally.
 5. If `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
-   section 3, step 1. Otherwise `git -C <rebase worktree> -c core.editor=true rebase origin/main`.
+   section 3, step 1. Otherwise it is behind, and as `merging.md` step 1 rebases before its first CI watch, so does
+   this agent: `git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase origin/main`.
 
 ## 3. Conflicts
 
 For each conflicted file (in a rebase, `--ours` is `main`, `--theirs` is the branch's commit), resolve it, then
-`git -C <rebase worktree> add <file>` and `git -C <rebase worktree> -c core.editor=true rebase --continue`, until
-the rebase ends:
+`git -C <rebase worktree> add <file>` and
+`git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase --continue`, until the rebase ends:
 
 - **List and registry lines** (`lints.toml`, `formatters.toml`, README lists and tables, `examples/consumer/` lint
   lists): keep both sides' entries. Where the file is sorted, keep it sorted; where it is in order of addition, put
@@ -98,7 +102,8 @@ is handled the same way as a batch PR.
 Then:
 
 1. Confirm `git -C <rebase worktree> log --format='%G?' origin/main..HEAD` prints only `G`; any other letter is
-   commit signing failing, a batch-level failure (`common.md`).
+   commit signing failing, a batch-level failure (`common.md`). Keep the range as written: GitHub's own merge
+   commits on `main` show `E`, so a wider range would halt on them.
 2. **Baseline:** `merging.md` step 2, "Baseline after a rebase", in the rebase worktree.
 3. **Code resolution:** when a rebase in this call made one, return `state: "needs-review"`, `reason: "conflict"`,
    `fixBase` (the branch's pre-rebase head, the old remote SHA from section 2 step 1: the reviewer compares the
@@ -126,11 +131,14 @@ does not review fixes after its last review round. A CI rerun is a `Summary:` li
 
 ## 5. Merge
 
-`merging.md` step 2, with two differences:
+`merging.md` step 2, with three differences:
 
 - Where it says to go to step 3 (after `MERGED`), go to section 6 here.
 - Where it says to rebase on `BEHIND` or `DIRTY`, go back to section 2, step 1; its limit on how often that happens
   holds within this call. Nothing counts across calls; the script's three merge calls per issue bound the rest.
+- Its shakedown question never applies to this agent: the script's `stopBeforeMerge` carries the shakedown and
+  stops an issue before any merge agent runs for it, so when this agent runs, the merge is approved. Skip the
+  question and do not read `.claude/backlog/config`.
 
 The moment `gh pr view` prints `MERGED`, write `state: merged` to `<main>/.claude/backlog/parallel/<n>.md`, before
 any cleanup.
@@ -164,10 +172,14 @@ every worktree in place (a later session resumes them through `leftovers.md`), a
 the note. If a rebase is in progress, `git -C <rebase worktree> rebase --abort` first, so the worktree is left on its
 branch. A batch-level failure (`common.md`) also sets `batchHalt`.
 
-When the rebase worktree's `HEAD` differs from `origin/<branch>` at the park, end the note with "The worktree
-`<path>` holds an unpushed, rebased `<branch>` that diverges from `origin/<branch>`.", and add "A resolution review
-passed it." when `resolutionReviewed` is true and every commit since that review handles one of
-`resolutionFindings`. `leftovers.md` keys its recommendation on those two sentences.
+When the rebase worktree's `HEAD` differs from `origin/<branch>` at the park, end the note with one of two
+sentences: "The worktree `<path>` holds an unpushed, rebased `<branch>` that diverges from `origin/<branch>`." when
+the rebase itself is unpushed, or "The worktree `<path>` holds a rebased `<branch>` that is ahead of
+`origin/<branch>` by an unpushed fix." when `lastReason` is `ci` and the only local commits are the fix (the rebase
+is already on the remote, so dropping the local work loses the fix, not the rebase). Add "A resolution review passed
+it." when `resolutionReviewed` is true and every commit since that review handles one of `resolutionFindings`.
+`leftovers.md` keys its recommendation on those sentences; the script writes the same two when it parks between
+calls.
 
 Whatever the state returned, set `mergeWorktree` to the rebase worktree whenever section 2 chose or added one, so a
 `merge-<n>` this call made reaches the issue's record; `reason`, `failure` and `fixBase` are empty unless the state

@@ -4,16 +4,22 @@
 #              issue JSON to a file and prints one TSV row per issue, so a
 #              session classifies from a compact table and reads a full body
 #              only for the issues it considers: the whole backlog's bodies run
-#              far past what one tool result shows.
-# @option --out <file> where to write the full JSON (default .claude/tmp/issues.json)
+#              far past what one tool result shows. A body over 16000 bytes is
+#              also written on its own to issue-<N>.md beside the JSON, since
+#              one tool result cuts it off too.
+# @option --out <file> where to write the full JSON (default: .claude/tmp/issues.json
+#         under the main checkout, so a run from a worktree still writes where
+#         the session reads; under the working directory outside a git repo)
 # @arg $@ issue numbers to index instead of every open issue
 # @stdout a header line, then per issue: number, state (OPEN; a named issue
 #         that is closed prints CLOSED, or MERGED when the number is in fact a
 #         pull request's), kind (bug, feature or ? for a
 #         judgment call), labels, title, repro (yes when the body says it
-#         reproduces something or gives steps to), refs (other issue numbers
-#         the body names), umbrella (yes when the body calls itself an umbrella
-#         or tracks sub-issues), bytes (body length)
+#         reproduces something, gives steps to, or reports a check failing on
+#         main or an audit flagging the repo), refs (other issue numbers the
+#         body names outside fenced code; with no issue named, only numbers
+#         that are themselves open issues), umbrella (yes when the body calls
+#         itself an umbrella or tracks sub-issues), bytes (body length)
 # @exitcode 0 the index was written
 # @exitcode 1 a gh call failed
 # @exitcode 2 wrong arguments
@@ -24,14 +30,21 @@ IFS=$'\n\t'
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
 readonly FIELDS='number,state,title,labels,body'
+# The Bash tool shows about this much of one result; a longer body is cut off.
+readonly LONG_BODY_BYTES=16000
 
 # The kind rules are the skill's: a `bug` label or a `fix:` title is a bug, a
 # `feat:` title or an `enhancement` label is a feature, anything else is a
 # judgment call the proposal names. The repro test wants a verb or a heading,
-# not the stem alone: "reproducible" is a feature's word, not a bug's.
+# not the stem alone: "reproducible" is a feature's word, not a bug's; a check
+# that fails on main or an audit that flags the repo is a reproduction too. A
+# `#N` inside fenced code is an example, not a reference, and with every open
+# issue indexed ($all_open) a number that is not one of them is closed or a
+# pull request, which the proposal's ordering must not read as a dependency.
 # shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
 readonly TABLE_JQ='
-  ["number", "state", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
+  (map(.number)) as $indexed
+  | ["number", "state", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
   (sort_by(.number)[]
     | (.body // "") as $body
     | ([.labels[].name]) as $labels
@@ -44,8 +57,10 @@ readonly TABLE_JQ='
          else "?" end),
         ($labels | join(",")),
         .title,
-        (if $body | test("reproduc(e|tion|es|ed)|steps to reproduce|repro:"; "i") then "yes" else "" end),
-        ([$body | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber | select(. != $self)]
+        (if $body | test("reproduc(e|tion|es|ed)|steps to reproduce|repro:|flags (this|the) repo|fails on `?main`?"; "i")
+         then "yes" else "" end),
+        ([$body | gsub("```[\\s\\S]*?```"; "") | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber
+          | select(. != $self) | select(($all_open | not) or IN($indexed[]))]
           | unique | map(tostring) | join(",")),
         (if ($body | test("- \\[[ xX]\\] [^\\n]*#[0-9]+")) or ($body | test("sub-issue|umbrella"; "i"))
          then "yes" else "" end),
@@ -73,10 +88,38 @@ function fetch() {
   done | jq --slurp '.'
 }
 
+# @description Print the default index path: .claude/tmp/issues.json under the
+#              main checkout (the parent of the git common dir, so a worktree
+#              resolves to the checkout the session reads from), or under the
+#              working directory outside a git repo.
+# @noargs
+function default_out() {
+  local common_dir
+  if common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
+    printf '%s/.claude/tmp/issues.json\n' "$(dirname "${common_dir}")"
+  else
+    printf '.claude/tmp/issues.json\n'
+  fi
+}
+
+# @description Write each body longer than LONG_BODY_BYTES to issue-<N>.md in
+#              the index's directory, for the Read tool to page.
+# @arg $1 json the index file
+function write_long_bodies() {
+  local -r json="$1"
+  local -r dir="$(dirname "${json}")"
+  local number
+  while IFS= read -r number; do
+    jq --raw-output --argjson n "${number}" '.[] | select(.number == $n) | .body' "${json}" \
+      > "${dir}/issue-${number}.md"
+  done < <(jq --raw-output --argjson max "${LONG_BODY_BYTES}" \
+    '.[] | select((.body // "") | utf8bytelength > $max) | .number' "${json}")
+}
+
 # @description Parse the arguments, write the JSON and print the table.
 # @arg $@ the script's arguments
 function main() {
-  local out='.claude/tmp/issues.json'
+  local out=''
   local -a issues=()
   while (($# > 0)); do
     case "$1" in
@@ -96,6 +139,9 @@ function main() {
         ;;
     esac
   done
+  if [[ -z "${out}" ]]; then
+    out="$(default_out)"
+  fi
   local json
   if ! json="$(fetch "${issues[@]}")"; then
     printf '%s: gh failed to list the issues\n' "${0##*/}" >&2
@@ -103,7 +149,12 @@ function main() {
   fi
   mkdir --parents "$(dirname "${out}")"
   printf '%s\n' "${json}" > "${out}"
-  jq --raw-output "${TABLE_JQ}" "${out}"
+  write_long_bodies "${out}"
+  local all_open='false'
+  if ((${#issues[@]} == 0)); then
+    all_open='true'
+  fi
+  jq --raw-output --argjson all_open "${all_open}" "${TABLE_JQ}" "${out}"
 }
 
 main "$@"
