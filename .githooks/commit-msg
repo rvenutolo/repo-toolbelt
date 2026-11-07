@@ -31,6 +31,12 @@ fi
 # @arg $1 message_file path to the commit message file
 function main() {
   local -r message_file="$1"
+  # Only a caller that sets IN_DEVSHELL outside the devShell gets here without
+  # commitlint; say so instead of failing with the shell's bare 127.
+  if ! command -v commitlint > '/dev/null' 2>&1; then
+    printf '%s: commitlint not found on PATH, though IN_DEVSHELL is set; unset it to enter the devShell\n' "${0##*/}" >&2
+    exit 1
+  fi
   commitlint --edit "${message_file}"
 }
 

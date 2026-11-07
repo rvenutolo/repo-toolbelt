@@ -36,6 +36,7 @@ function setup() {
 @test 'inside the devShell never hands commitlint to the wrapper' {
   rm -- "${STUB_BIN}/commitlint"
   run "${REPO_DIR}/.githooks/commit-msg" 'msg-file'
-  assert_failure
+  assert_failure 1
+  assert_output --partial 'commitlint not found on PATH'
   refute_output --partial 'devshell-ran'
 }
