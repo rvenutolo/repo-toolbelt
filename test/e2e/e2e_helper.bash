@@ -24,7 +24,7 @@ DOCKER_EXTRA=()
 # @noargs
 function require_image() {
   if [[ -z "${TOOLBELT_TEST_IMAGE:-}" ]]; then
-    printf 'TOOLBELT_TEST_IMAGE is not set; run ./.ci/in-devshell ./.ci/test-image\n' >&2
+    printf 'TOOLBELT_TEST_IMAGE is not set; run ./.ci/test-image\n' >&2
     return 1
   fi
 }
