@@ -4,7 +4,7 @@ description: >-
   Works the issue backlog with independent issues built concurrently by a workflow and merged one at a time on green
   CI, after one planning sitting. `plan` rehearses; `short` or `long` sizes the batch; issue numbers name it. Under
   shakedown it builds one issue, like /work-backlog; for two or three small bugs /work-backlog is as fast and simpler.
-  Needs the Workflow tool; start the session with permissions bypassed.
+  Needs the Workflow tool and a session started with permissions bypassed.
 argument-hint: "[plan] [short|long] [<issue>...]"
 disable-model-invocation: true
 ---
@@ -64,13 +64,14 @@ fix and merge procedures, so the controller does not.
 - **"The session" step 1:** the files `/work-backlog` steps 1–5 name as they come up (`leftovers.md`,
   `findings-walkthrough.md`, and `triage.md` when the stall check fires); leftover work finished with
   `/work-backlog`'s own flow reads what that flow reads.
-- **The permission mode (step 0) and "The run" step 2:** `/work-backlog` `permissions.md`.
+- **The permission mode (step 0):** `/work-backlog` `permissions.md`, for how a session tells it is bypassed.
 - **"The session" step 2:** `planning.md`, `/work-backlog` `choosing.md` (which `planning.md` builds on) and
   `halt-questions.md`; for a feature batch,
   `feature-flow.md` steps 1–5 and `sub-skill-overrides.md` (its brainstorming entries replace the hand-off and the
   hard gate, and the Fable review runs as a subagent of this session).
 - **"Ending":** `leftovers.md` "A parallel run's files"; `merging.md` for the shakedown merge (step 1);
-  `findings-walkthrough.md`; `report.md` (step 3); `bug-flow.md` and `sub-skill-overrides.md` for a "fix it now".
+  `findings-walkthrough.md`; `report.md` (step 3); `state.md` "Trimming at the end" (step 4); `bug-flow.md` and
+  `sub-skill-overrides.md` for a "fix it now".
 
 `common.md`, `agents.md` and `merge-queue.md` are the agents' instructions; read one only to answer a question about
 what an agent did.
@@ -78,7 +79,7 @@ what an agent did.
 ## How the session runs
 
 All of the user's part comes first, in one sitting: the batch OK, every feature brainstorm, one combined question
-round, the permission request and the agent-count estimate (`planning.md`). Then one workflow builds, reviews and
+round and the agent-count estimate (`planning.md`). Then one workflow builds, reviews and
 merges the batch with nobody watching. The user comes back to merged PRs, the findings walkthrough and the summary.
 
 Merging stays serial, because the `protect-main` ruleset requires a branch to be up to date with `main` and there is
@@ -97,20 +98,21 @@ run stopped with no completion record, and relaunches it with the same `scriptPa
 behave as it says; `short` and `long` are batch sizes here (a named exception below). Without one the proposal is the
 short batch. Named issues make the batch, so a size beside them is ignored.
 
-In plan-only mode, step 0's two checks report instead of asking (a missing Workflow tool and the permission mode go
-in the printed proposal), the preflight prints as `plan.md` step 1 says, and step 2 prints `planning.md`'s proposal
-(graph, cap, budgets, wall-clock estimate and agent count included, with `plan.md`'s `Run` section in place of
-`Reply`) with no brainstorm, no spec and no `current-session.md`. A feature batch's proposal names its families and
-the specs they would need. The run and "Ending" never start.
+In plan-only mode, step 0's two checks report instead of stopping (a missing Workflow tool and a session that is not
+bypassed go in `Rehearsal notes`, `plan.md`), the preflight prints as `plan.md` step 1 says, and step 2 prints
+`planning.md`'s proposal (graph, cap, budgets, wall-clock estimate and agent count included, with `plan.md`'s `Run` and
+`Rehearsal notes` sections in place of `Reply`) with no brainstorm, no spec and no `current-session.md`. Its
+`Permissions` section reads `bypass required`, since step 0 stops a session that is not bypassed. A feature batch's
+proposal names its families and the specs they would need. The run and "Ending" never start.
 
 ## Shakedown and budgets
 
 `/work-backlog` "Shakedown" and "Budgets" hold, carried into the run by its args ("The run" step 1):
 
-- **While the shakedown is on** (this skill's own key, `shakedown-parallel:`, a named exception below), the batch is
-  one issue (`planning.md` gives the cap) and `stopBeforeMerge` is true: the merge agent runs with `stopAtMerge`,
-  rebasing if behind, running the gate, pushing and waiting for green CI, then stops the issue as `ready-to-merge`
-  without merging and leaves its rebase worktree in place for "Ending" step 1.
+- **While the shakedown is on** (this skill's own key, `shakedown-parallel:`, a named exception below), the batch is one
+  issue (`planning.md` gives the cap and the rest of the short batch) and `stopBeforeMerge` is true: the merge agent
+  runs with `stopAtMerge`, rebasing if behind, running the gate, pushing and waiting for green CI, then stops the issue
+  as `ready-to-merge` without merging and leaves its rebase worktree in place for "Ending" step 1.
 - **The time budget** is `deadline`: `max-hours` from the launch time, computed as "Budgets" computes it from
   `started:`, right before launch, and "The run" step 3 writes that launch time as the `started:` line. A build agent
   that would start fresh after it skips its issue (`agents.md` "Build" step 2); the script cannot read the clock. The
@@ -138,13 +140,14 @@ reports as the script failing is handled as a lost run ("The run" step 4).
   run, so a longer batch costs the user no extra visit; only the serial merges grow with it, and the proposal's
   estimate shows that.
 - **A batch may mix bugs and features and hold unrelated families.** Replaces the bugs-first exclusivity and the
-  "Features" relatedness rule in `choosing.md`. Bugs-first stays only as a rule about what the batch holds (a backlog
-  with doable bugs puts them in the batch); the order is "Order"'s (`choosing.md`), by leverage, not by kind. Every
-  brainstorm and the one question round happen before the run, so unrelated work no longer means a second sitting,
-  and the dependency graph, not relatedness, keeps conflicting work apart. An issue's kind is decided as "Kinds" in
-  `choosing.md` says.
-- **Feature batches** get one brainstorm and spec per family, then one combined question round and one permission
-  request (`planning.md`). A mixed batch asks its bug halt questions in that round.
+  "Features" relatedness rule in `choosing.md`. Bugs-first stays as a rule about what the batch holds (a backlog with
+  doable bugs puts them in the batch) and about its order: bugs ahead of features wherever the graph allows, then
+  "Order" (`choosing.md`) by leverage within each kind, as "Kinds" in `choosing.md` ranks a wrong-now defect above
+  leverage. Every brainstorm and the one question round happen before the run, so unrelated work does not mean a
+  second sitting, and the dependency graph, not relatedness, keeps conflicting work apart. An issue's kind is
+  decided as "Kinds" in `choosing.md` says.
+- **Feature batches** get one brainstorm and spec per family, then one combined question round (`planning.md`). A
+  mixed batch asks its bug halt questions in that round.
 - **An umbrella issue builds one piece per batch.** The script runs one build per issue number, so a batch holds at
   most one piece of an umbrella issue, named by its `piece`; its PR says `Part of #N` unless the piece is the
   spec's last. Replaces the run of every piece in one session that "PRs" describes.
@@ -164,16 +167,15 @@ reports as the script failing is handled as a lost run ("The run" step 4).
   applies to it; from "Ending" on, the shakedown merge and a "fix it now" in the walkthrough enter a worktree as
   `/work-backlog` says. Replaces the re-enter step of "After a compaction" in `resume.md` during the run (the
   controller follows "On invocation" instead). Agents never enter or leave one either (`common.md`).
-- **Permissions are settled before planning, and a refusal is not an answer.** "The session" step 0 adds a
-  permission-mode question ahead of `/work-backlog`'s steps, and where `permissions.md` lets a serial run go on after
-  `skip the permissions`, here the run proceeds only when the session is bypassed or every rule string is matched
-  ("The run" step 2), so the parallel proposal's `Reply` line leaves that form out (`planning.md` "The proposal").
-  `permissions.md` "Workflow agents add" says why.
+- **A bypassed session is required.** Where `/work-backlog` step 0 offers `continue` outside bypass, "The session"
+  step 0 here stops with the blocked banner: workflow agents cannot answer a prompt, `.claude/` is a protected path
+  whose writes prompt outside bypass whatever the allow rules say (`permissions.md`), and every agent writes its
+  status files under a `.claude/tmp/`. So this skill has no permission request: the proposal's `Permissions` section
+  reads `bypassed`, and its `Reply` line leaves out every permission form (`planning.md` "The proposal").
 - **`OK, short` and `OK, long` replies.** The parallel `Reply` line adds them, so the user can take the other batch
   size the proposal names as its `Runner-up` without a second proposal round; a serial chunk has no second size.
 - **Its own shakedown key**, `shakedown-parallel:`, on while `.claude/backlog/config` does not say `off` and lifted
-  on its own ("Ending" step 5). Replaces `shakedown:` for this skill: the parallel merge queue is a different
-  procedure from the serial merge, so watching one does not vouch for the other.
+  on its own ("Ending" step 5); `/work-backlog` "Shakedown" gives the reason. Replaces `shakedown:` for this skill.
 - **The shakedown merge question is asked at "Ending"**, not at the time "The proposal" in `choosing.md` predicts
   from the OK: a workflow agent cannot ask anyone, so only the merge itself moves to the controller, and the
   shakedown still exercises the merge queue up to it. The merge agent stops the issue as `ready-to-merge` on green
@@ -187,8 +189,9 @@ reports as the script failing is handled as a lost run ("The run" step 4).
 
 ### For workflow agents
 
-Recorded, with their reasons, in `common.md` "Exceptions to `/work-backlog`", which the agents read; the controller
-needs none of them.
+Recorded, with their reasons, in `common.md` "Exceptions to `/work-backlog`", which the agents read. The controller
+needs none of them except its last entry's note that the controller, which can dispatch, still runs
+superpowers:requesting-code-review where the serial flow calls for it.
 
 ## State
 
@@ -210,7 +213,8 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
   the run and completed by the controller after it ("The run" step 5). An issue with no file has not reached its
   first review. Lines `state: ready|ready-to-merge|pr open, not merged|merged|parked|skipped` (`ready-to-merge`:
   reviewed, rebased, gated and green, waiting for the shakedown's merge OK; `pr open, not merged`: the user said no to
-  that merge once; `skipped`: the user closed the issue or its PR mid-run, or a budget kept it from starting),
+  that merge once; `skipped`: the user closed the issue or its PR mid-run, a budget kept it from starting, or its
+  prerequisite skipped or stopped as `ready-to-merge`, as "Shakedown and budgets" says),
   `branch:`, `pr:`, `plan:` (repo-relative), `worktrees:` (absolute paths of every worktree the issue's agents
   used), `ruling:` (one per ruling) and `park-note:`, which holds the record's `note`, for a parked or skipped
   issue.
@@ -229,12 +233,13 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
      guideline). Only if it is in neither, stop with the blocked banner and recommend `/work-backlog`. The preflight
      cannot see the session's tools, so this check is the session's own.
    - **The permission mode.** Unless the session runs with permissions bypassed (`permissions.md` says how a session
-     tells), recommend with the question banner restarting in bypass mode now (`planning.md` "The
-     permission request" says why), or going on and adding allow rules later. A restart after planning also works
-     ("On invocation"), but costs the user a second visit. In plan-only mode ("Arguments"), both checks are reported
-     in the proposal, not asked.
+     tells), stop with the blocked banner and ask the user to restart the session with permissions bypassed and invoke
+     the skill again ("A bypassed session is required" under "Named exceptions to `/work-backlog`" says why). This
+     replaces `/work-backlog` step 0. In plan-only mode ("Arguments"), both checks are reported in `Rehearsal notes`
+     (`plan.md`), not acted on.
 1. **`/work-backlog` steps 1–5:** preconditions, log, unfinished work, leftover findings, stall check, with
-   `backlog-preflight` as that step runs it. Leftover work found here is finished with `/work-backlog`'s own flow,
+   `backlog-preflight` as that step runs it. Step 1's permission-rule question never fires here, since that step skips
+   it in a bypassed session. Leftover work found here is finished with `/work-backlog`'s own flow,
    worktrees included, before planning starts; the session is back in the main checkout before step 2. From step 2
    on it stays there: a session isolated in a worktree is refused `git -C` on the main checkout.
 2. **Plan the batch** with the user (`planning.md`, whose "Writing it down" writes `current-session.md` as it goes).
@@ -256,13 +261,10 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
    `current-session.md` records them, empty when none do. The script rejects malformed args before any agent
    starts. Record nothing in `current-session.md` yet: the `workflow-*` lines are written together in step 3, so a
    restart between here and the launch finds a planned batch, not a run.
-2. **Check before launching.** Nobody will answer a prompt (`permissions.md` "Workflow agents add" says what one
-   costs).
-   - **Permissions:** `/work-backlog` `permissions.md`, its "Rule strings" and "Workflow agents add", checked with
-     the re-read right before the unattended part it describes. The run proceeds when the session runs with
-     permissions bypassed or every rule string is matched; otherwise ask the user to add the missing ones, naming
-     them, or to restart in bypass mode ("On invocation" picks the batch up again). Workflow agents run with the
-     session's permission mode and allow rules.
+2. **Check before launching.** Nobody will answer a prompt.
+   - **Permissions:** the session still runs with permissions bypassed (step 0's test). Workflow agents run with the
+     session's permission mode, so when it is not, stop with the blocked banner and ask the user to restart in
+     bypass mode ("On invocation" picks the batch up again).
    - **Signing and local `main`:** rerun `backlog-preflight`, as `permissions.md` "When to ask" says; any `FAIL`
      stops the launch. Workflow worktrees start from `origin/main`, so the user's local commits never reach a build,
      but the merge queue's pull of `main` would refuse them.
@@ -272,8 +274,10 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
    `workflow-script: .claude/skills/work-backlog-parallel/run.workflow.js`, `workflow-args:` with the args path,
    `workflow-run: <runId>` and `started: <time>` together, the time being the one step 1 computed `deadline` from, so
    `report.md`'s `Timings` measure this run as they measure a serial one. Then wait for the completion
-   notification; do not poll. A run that fails with
-   "run-args.json is invalid" started no agent: write no result, correct the file, drop the `workflow-*` and
+   notification; do not poll. Tell the user, in the message that reports the launch, that skipping a stuck agent from
+   `/workflows` takes two skips: the script cannot tell a skip from an API failure, so it retries the agent once, then
+   parks the issue (after a batch halt it is not retried), and each such park spends the parked budget. A run that fails
+   with "run-args.json is invalid" started no agent: write no result, correct the file, drop the `workflow-*` and
    `started:` lines and launch again. A result that reports the script itself failing is a lost run: go to step 4's
    trace check (the search for PRs and `wf_*` worktrees), skipping its resume advice.
    Any other result: first write it verbatim to `.claude/backlog/parallel/result.json` and record `workflow-result:`
@@ -286,10 +290,10 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
    recorded `workflow-run`.
    - **The run's own session** (resumed with `claude --resume`; `/workflows` lists the run as stopped, since no
      completion record was found): relaunch with the same `scriptPath`, the same `args` and `resumeFromRunId` set to
-     the recorded `workflow-run`, and record the run id the relaunch returns in place of the old one. Replay is
-     cached up to the first call whose order or inputs changed; the rest re-run live, which is safe because every
-     agent reconciles first against git and GitHub. Concurrent issues interleave by timing, so a resume may re-run
-     more agents live than had finished.
+     the recorded `workflow-run`, and record the run id the relaunch returns in place of the old one. When
+     `/workflows` still lists the old run as running, the user stops it there first, since the tool resumes only a
+     stopped run. Each completed agent call whose prompt and options are unchanged returns its cached result; every
+     other call re-runs live, which is safe because every agent reconciles first against git and GitHub.
    - **A new session** (`/workflows` does not list the run), or a relaunch the tool rejects ("journal … is not on
      disk"): the run cannot be resumed. Tell the user that resuming the old session with `claude --resume` would
      have replayed it, then check for traces of the run:
@@ -338,11 +342,12 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
       `BEHIND` here means `main` moved after it stopped.
    5. Its step 2's shakedown question, on green: show the PR and what its review settled, recommending yes unless
       the review left something open.
-   6. `merging.md` steps 2–4, with four differences: its shakedown question is sub-step 5's, not asked again, and
-      on no the record is only the `<N>.md` line below, not a `current-session.md` line; the review stage was its
-      review, so it gets no second one (a merge-time fix made here is still reviewed as "Merge-time fixes" in
-      `merging.md` says, since this session can dispatch); step 3's record is this issue's `<N>.md`
-      `state: merged`, not a `current-session.md` line; step 4 removes every path on the `worktrees:` line.
+   6. `merging.md` steps 2–4, with four differences: its shakedown question is sub-step 5's, not asked again unless step
+      2 rebases on `BEHIND` or `DIRTY`, which asks again as `merging.md` step 2 says, since the user approved a
+      different head; on no the record is only the `<N>.md` line below, not a `current-session.md` line; the review
+      stage was its review, so it gets no second one (a merge-time fix made here is still reviewed as "Merge-time fixes"
+      in `merging.md` says, since this session can dispatch); step 3's record is this issue's `<N>.md` `state: merged`,
+      not a `current-session.md` line; step 4 removes every path on the `worktrees:` line.
 
    Its spec and `.claude/CLAUDE.md` rulings are then applied as above. On no, write `state: pr open, not merged` to
    its `<N>.md`; the PR stays open as this skill's unfinished work, and the summary names it. A later session's
@@ -368,7 +373,8 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
    note and recommended answer, then every `ready-to-merge` or `pr open, not merged` issue left unmerged, each with
    its note, then the numbers of the issues a budget skipped; those skips are described where `report.md` puts them,
    under `Budgets and shakedown`; `Session notes` and `Consumer-impacting changes` take every record's `rulings`
-   line that starts `Summary:` (`common.md` "Summary items", which takes the kinds from `report.md`); `Leftovers`
+   line that starts `Summary:` (`common.md` "Summary items", which takes the kinds from `report.md`); `Rulings` takes
+   every record's other `rulings` lines; `Leftovers`
    takes every `leftInPlace` entry and every path a merged issue's `worktrees:` line names that still exists (a
    merge agent that died after the merge). Each parked issue's entry names the answer step 2 recorded. Write these
    items to
@@ -378,16 +384,14 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
 4. **Log, then trim or delete `current-session.md`.** First append `done` to the `session-log.md` line the
    `session-date:` line names, as `/work-backlog` step 9 says, while `current-session.md` still holds it. Then sort the
    run's worktrees as `leftovers.md` "A parallel run's files" says. Then, with parked or `pr open, not merged` issues,
-   keep the `session-date:` and flow lines and, for those issues only, their issue lines (`piece` and `kind` included),
-   halt answers, spec paths, plan paths (each parked `<N>.md`'s `plan:` line, copied in as `/work-backlog` records
-   plans), allowed commands, park notes and `park-answer` lines, plus every `#<N> left to user` line, without
-   `workflow-*` or `cap:` lines; a later session of either skill resumes them through `leftovers.md`. With none, delete
-   it. Delete every `<N>.md` of a merged issue, `result.json` and `run-args.json`, and `summary.md` once the summary
-   that reads it has been given: here after step 3; when a `/work-backlog` session runs this step through
-   `leftovers.md`, leave it for that session's step 9.
-5. **Shakedown lift.** While `shakedown-parallel:` is on, ask the follow-up `/work-backlog` "Shakedown" describes
-   after step 4, so a session that dies waiting for the answer has already logged `done`; on yes, write
-   `shakedown-parallel: off` to the config.
+   trim `current-session.md` as "Trimming at the end" in `/work-backlog` `state.md` says, with three additions: drop
+   every `workflow-*` and `cap:` line, keep each kept issue's `park-answer` line, and copy in each parked `<N>.md`'s
+   `plan:` line as `/work-backlog` records plans; a later session of either skill resumes them through `leftovers.md`.
+   With none, delete it. Delete every `<N>.md` of a merged issue, `result.json` and `run-args.json`, and `summary.md`
+   once the summary that reads it has been given: here after step 3; when a `/work-backlog` session runs this step
+   through `leftovers.md`, leave it for that session's step 9.
+5. **Shakedown lift.** While `shakedown-parallel:` is on, ask the follow-up `/work-backlog` "Shakedown" describes,
+   after step 4 as it says; on yes, write `shakedown-parallel: off` to the config.
 
 ## Never
 

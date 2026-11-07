@@ -159,8 +159,8 @@ again:
 - `reason: conflict`: `fixBase` is the branch's pre-rebase head. A plain diff against `origin/main` would show the
   branch's whole change to those files and hide a dropped `main`-side line, so compare the branch before and after
   the rebase: first `git -C <mergeWorktree> merge-base origin/main <fixBase>` to get `<base>`, then
-  `git -C <mergeWorktree> range-diff <base>..<fixBase> origin/main..HEAD` with that SHA written out (a `$(…)` inside
-  the command would not match its allow rule), then read the result with
+  `git -C <mergeWorktree> range-diff <base>..<fixBase> origin/main..HEAD` with that SHA written out, so the
+  command shows the SHA it compared, then read the result with
   `git -C <mergeWorktree> diff origin/main HEAD -- <files>`. Judge
   against what each side's PR meant (`gh pr view <pr>` and the `main` commits that touched those files). A wrong or
   lossy resolution is a `changeFindings` entry.
@@ -176,7 +176,11 @@ Inputs: `n`, `round`, `kind`, `branch`, `pr`, `spec` (repo-relative, empty for a
 `plan` (repo-relative, or empty), `changeFindings`, `date`, `main`. `haltAnswers` binds you as it binds a build
 agent; for an umbrella piece, a finding asking for another piece's work is dropped with a ruling.
 
-1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits carry a
+1. **Reconcile and check out:** first `gh pr view <pr> --json state --jq .state` and
+   `gh issue view <n> --json state --jq .state`. A `MERGED` PR returns `state: "merged"` at once (the script then
+   runs the merge agent, whose section 1 takes it to the pull and cleanup); a `CLOSED` PR or a `CLOSED` issue
+   returns `state: "skipped"` with a `parkNote` saying which the user closed, changing nothing. Otherwise
+   `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits carry a
    `Review-round: <round>` trailer (`common.md` "Exceptions to `/work-backlog`"); a commit on the branch
    with this round's trailer
    means a resumed fix: continue from the findings it does not cover. Copy `<main>/.claude/CLAUDE.md` and
@@ -193,6 +197,7 @@ agent; for an umbrella piece, a finding asking for another piece's work is dropp
    message, the other trailers directly under it (a trailer above a blank line is body text). First add any new
    rulings, not the `Summary:` lines, to the PR body (`common.md` "PR bodies"), then
    `git push origin HEAD:refs/heads/<branch>` (the pre-push gate runs). With no commits, only the body edit.
-4. **Return** `state: "ready"`, `worktree`, `rulings`, `findings`, `changed` (true when you pushed commits) and
+4. **Return** `state: "ready"` (or the step 1 state), `worktree`, `rulings`, `findings`, `changed` (true when you
+   pushed commits) and
    `deadlinePassed: false` (the deadline is a build agent's check only).
    With `changed` false, the script skips the next review round: the code it would review is unchanged.

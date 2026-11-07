@@ -40,7 +40,8 @@ what gets built, or when it is a merge under shakedown; everything else the sess
 
 The invocation's arguments, in any order:
 
-- **`plan`:** a read-only rehearsal that changes nothing; `plan.md` says what each step does instead.
+- **`plan`:** a rehearsal that changes nothing but remote-tracking refs and scratch files outside the repo; `plan.md`
+  says what each step does instead.
 - **Issue numbers:** the chunk is exactly these issues, so step 6 skips choosing and classifies only them
   (`backlog-index <N>...`, `choosing.md`). Each must still be open and doable: a named number whose `state` column is
   not `OPEN` (a closed issue, or a pull request's number) is dropped with a note in the proposal. The bugs-first rule
@@ -97,9 +98,9 @@ creates the directory and the first two files if any is missing.
 
 - `session-log.md`: one line per session with its open-issue count, read by the stall check (step 5) and the trend line.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision (`findings-walkthrough.md`).
-- `current-session.md`: the resume record: the approved chunk, its answers, and how far each issue got. Step 6
-  writes it (or `findings-walkthrough.md` step 6, earlier), step 3 reconciles it, step 9 deletes it, and `resume.md`
-  reads it. One a parallel run owns is sorted by `leftovers.md`.
+- `current-session.md`: the resume record: the approved chunk, its answers, and how far each issue got. Step 6 writes it
+  (or `findings-walkthrough.md` step 6, earlier), step 3 reconciles it, step 9 deletes or trims it (`state.md` "Trimming
+  at the end"), and `resume.md` reads it. One a parallel run owns is sorted by `leftovers.md`.
 - `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State"). This
   skill writes them only when `leftovers.md` records a finished run's result, and folds any it finds.
 - `config`: the user's settings for both skills ("Shakedown", "Budgets"), written only on the user's word; never a
@@ -119,17 +120,25 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
 
 ## The session
 
-1. **Preconditions.** First run `permission-diff` over the "Run while the user is there" rules (`permissions.md`):
-   when any is missing, ask once with the question banner, `write the rules` (recommended) or `continue`, so a first
-   run meets one question instead of a prompt per command before the proposal. Then `git status --porcelain` prints
-   nothing; then, after `git switch main` (the user's branch stays as it was, checked out nowhere), run
+0. **Permission mode.** Unless the session runs with permissions bypassed (`permissions.md` says how a session
+   tells), ask once with the question banner: `restart bypassed` (recommended, since a run not bypassed stalls at its
+   first state-file write until the user answers; `permissions.md` says why) or `continue`. `continue` works when the
+   user answers the first `.claude/` write prompt with "Yes, and allow Claude to edit files in this project's .claude
+   folder for this session", which covers the rest of the session; other prompts come as the allowlists leave them.
+   With `plan` this is reported, not asked (`plan.md`).
+1. **Preconditions.** First, unless the session runs with permissions bypassed, run `permission-diff` over the "Run
+   while the user is there" rules (`permissions.md`): when any is missing, ask once with the question banner, `write the
+   rules` (recommended) or `continue`, so a first run meets one question instead of a prompt per command before the
+   proposal. Then `git status --porcelain` must print nothing before `git switch main`, since a switch would carry
+   uncommitted work onto `main`; after the switch (the user's branch stays as it was, checked out nowhere), run
    `<main>/.claude/skills/work-backlog/backlog-preflight`: one `PASS`, `WARN` or `FAIL` line per check (auth, clean
    tree, `main` current with `origin/main`, the signing key, the superpowers version the overrides quote, the config
    file, the notification hook, and more), so every prerequisite a run needs is learned here, not from a failed step
-   hours later. A `FAIL` line is a blocked banner quoting it; `WARN` lines ride in the proposal (`choosing.md` "The
-   proposal"). Then `git fetch --prune origin` and `git pull --ff-only` must succeed; the prune is what later marks a
-   merged branch's upstream `[gone]`. If any of these fails, stop with the blocked banner before doing anything else.
-   Every later `gh` call is retried as "Failed `gh` call" ("Terms") says.
+   hours later. A `FAIL` line is a blocked banner quoting it; `WARN` lines appear only in the proposal (`choosing.md`
+   "The proposal"), and the `PASS` lines are not shown, since a page of them buries the one that matters. Then `git
+   fetch --prune origin` and `git pull --ff-only` must succeed; the prune is what later marks a merged branch's upstream
+   `[gone]`. If any of these fails, stop with the blocked banner before doing anything else. Every later `gh` call is
+   retried as "Failed `gh` call" ("Terms") says.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
    `current-session.md`: its existence means unfinished work; step 3 reads it). Append `YYYY-MM-DD open=N` to
    `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless this session
@@ -161,8 +170,9 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
    `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that
    date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it
    (leave it as it is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a
-   `#<N> left to user` line: trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so
-   the next session's step 3 still knows the first "no" was given.
+   `#<N> left to user` line: trim it as `state.md` "Trimming at the end" says, so the next session's step 3 still
+   knows the first "no" was given. Only then send the shakedown-lift follow-up ("Shakedown"), so a session that dies
+   waiting for that answer has already logged `done`.
 
 ## Choosing the chunk
 
@@ -206,13 +216,14 @@ those steps refer to.
     name the branch `worktree-<name>` with `/` turned into `+`, which breaks the branch convention. Both tools'
     descriptions ask for a direction from the user or the project before use; this skill is that direction, so the
     calls are never proactive.
-  - Copy, right after entering and before any subagent is dispatched: `.claude/CLAUDE.md`, `.claude/rules/` and,
-    for a feature chunk, the chunk's spec, at the same paths (`mkdir --parents docs/superpowers/specs
-    docs/superpowers/plans` first). They are local files ("State") and so absent in a new worktree. The copies are
-    throwaway: a change to the spec, the plan, a rule or rule override, or `.claude/CLAUDE.md` is made in the main
-    checkout's file ("Leaving to write") and copied again; a change made only in the worktree dies with it. A change
-    that makes `.claude/CLAUDE.md` wrong (a lint, formatter, command or layout it describes) updates it this way, in
-    the same issue's work, as the global docs rule asks of every doc.
+  - Copy, right after entering and before any subagent is dispatched: `.claude/CLAUDE.md`, `.claude/rules/` and, for a
+    feature chunk, the chunk's spec, at the same paths (`mkdir --parents docs/superpowers/specs docs/superpowers/plans`
+    first), each as `cp <main>/<path> <path>` (`cp --recursive <main>/.claude/rules .claude/` for the directory), the
+    forms the allow rules in `permissions.md` name. They are local files ("State") and so absent in a new worktree. The
+    copies are throwaway: a change to the spec, the plan, a rule or rule override, or `.claude/CLAUDE.md` is made in the
+    main checkout's file ("Leaving to write") and copied again; a change made only in the worktree dies with it. A
+    change that makes `.claude/CLAUDE.md` wrong (a lint, formatter, command or layout it describes) updates it this way,
+    in the same issue's work, as the global docs rule asks of every doc.
   - Then run the baseline tests, `./run-tests` ("Long commands"), for bugs and features alike: a
     failure that was already on `main` would otherwise be blamed on the change. Judge a red baseline as the
     using-git-worktrees entry of `sub-skill-overrides.md` says.
@@ -359,10 +370,11 @@ because a run that merged serially has not exercised its merge queue; lifting on
 a chunk is one issue: form and order the chunk as usual, then take its first issue as the chunk and name the rest as the
 runner-up, ahead of the runner-up chunk (`choosing.md` "The proposal"); with named issues, the first named bug, or the
 first named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the question
-banner once CI is green, recorded as `resume.md` "Halting" says. After the summary, a question-banner follow-up, not
-part of the summary since it waits for an answer, offers to lift it; on the user's yes, write the skill's own key off
-(`shakedown: off` here) to the config (create the file, or replace the key's line). The user may also turn it off or on
-with the chunk OK. Turned off with the OK: write `shakedown: off` then, and send a full-size proposal (its halt
+banner once CI is green, recorded as `resume.md` "Halting" says. After the summary, once step 9 has logged `done` and
+deleted or trimmed `current-session.md`, a question-banner follow-up, not part of the summary since it waits for an
+answer, offers to lift it; on the user's yes, write the skill's own key off (`shakedown: off` here) to the config
+(create the file, or replace the key's line). The user may also turn it off or on with the chunk OK. Turned off with
+the OK: write the skill's own key off then, and send a full-size proposal (its halt
 questions included) as a follow-up before starting (`permissions.md` "When to ask" says why a follow-up is allowed).
 Turned on: the chunk is its first issue.
 
@@ -406,5 +418,6 @@ after the current issue merges or halts. The proposal states `max-hours` and sha
 | "`gh pr checks` errored right after the PR opened" | "No checks reported" means none has started; wait, run again. |
 | "The leftover ledger has open tasks; sweep and merge" | Open tasks mean the plan resumes first, then the sweep. |
 | "The user said the commands are allowed, so no prompt" | Only an allow rule or bypass mode does; `permissions.md`. |
+| "An `Edit(.claude/**)` rule covers the state files" | `.claude/` is protected: bypass, or step 0's session answer. |
 | "A body edit after the push is harmless" | It cancels the CI run the push started; edit before the push ("PRs"). |
 | "`cp` into the main checkout works from here" | The guard misses Bash; leave first ("Leaving to write"). |

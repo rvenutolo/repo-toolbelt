@@ -26,7 +26,10 @@ An issue is a bug when it has the `bug` label, its title starts `fix:`, or its b
 now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. The body counts because
 few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable
 review. A check that fails on `main` today, or a config whose present value is wrong, is a reproduction; a `ci:` or
-`chore:` title with no `bug` or `enhancement` label is a judgment call. The `kind` column decides only the first two
+`chore:` title with no `bug` or `enhancement` label is a judgment call. An issue that asks for a design decision (a
+choice between approaches it lays out, or a "decide whether" question) is a feature even when its body names a
+symptom, since the decision needs the brainstorm, and a bug flow would make it alone, unasked. The `kind` column
+decides only the first two
 (`bug`, or `feature` from a `feat:` title or the `enhancement` label); `?` is neither. The proposal names every
 judgment call among the issues in its `Chunk` and `Runner-up` sections, so the user can correct it with the chunk OK:
 a bug found from its body alone, and a `?` row. An issue whose kind follows from its label or title is not named, nor
@@ -46,7 +49,9 @@ the user acts.
 - **Order:** by implementation sequence as the global "Prioritizing Work Items" rule defines it: what unblocks other
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size. The
   first factor counts any open issue the item unblocks, in the chunk or not, and a prerequisite internal to the chunk
-  that no issue names (a shared helper the pieces need) counts under it too.
+  that no issue names (a shared helper the pieces need) counts under it too. Between candidate chunks, a related group
+  goes ahead of a single unrelated issue unless that issue ranks higher on the first factor: the group's members
+  unblock or speed each other, which a lone issue's second or third factor does not outweigh.
 - **Size:** two to three PRs; one while shakedown is on ("Shakedown"); at most two with the `short` argument and at most
   four with `long` ("Arguments"), which shakedown ignores. Each PR waits on its own CI run and merges before the next
   starts, and the findings walkthrough still follows, so more than three rarely finishes; `long` allows four for a
@@ -91,7 +96,7 @@ is long when the backlog is; every section is present, `none` when empty.
   repo, left out of the chunk and named with what the user would have to do.
 - `Seen and left alone`: the user's own work step 3 saw, or `none`; then a `Cleaned up:` line naming every merged
   branch and worktree step 3 deleted (`leftovers.md` "Done"), so a deletion the user did not ask for is seen before
-  the OK, not only in the summary.
+  the OK, not only in the summary; `Would clean up:` in a `plan` rehearsal, which deletes nothing (`plan.md`).
 - `Backlog`: the trend, as `Backlog: <prev> → <now> open since <date>`, from the `open=` and date of the last
   `session-log.md` line before this session's and the count step 2 took (not `backlog-index`'s row count, which
   covers only the named issues when the arguments name some), or `Backlog: <now> open, first session` when this
@@ -102,7 +107,8 @@ is long when the backlog is; every section is present, `none` when empty.
   about <N> minutes`, so the user knows to stay or come back: N is the `Timings` span from `started:` to the merge
   question in the last report under `.claude/backlog/reports/` whose opening `Skill:` line names this skill and this
   chunk's flow (`report.md`), else 45. Then
-  every `WARN` line `backlog-preflight` printed in step 1, each prefixed `Preflight:`.
+  every `WARN` line `backlog-preflight` printed in step 1, each prefixed `Preflight:`. This is the one place a real run
+  shows a `WARN`, so each appears once.
 - `Halt questions`: for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md`
   lists the kinds that recur, each with its default answer), one per line as
   `Q<k>: <question> Recommended: <answer> (<reason>)`. The OK on the chunk answers them. A feature chunk asks them in
