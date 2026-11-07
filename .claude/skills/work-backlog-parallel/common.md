@@ -42,13 +42,17 @@ working, and nothing that arrives after your final message changes it.
   Decisions that do not change what gets built are `Ruling:` lines, returned in `rulings`. A conflict with a copied
   rule is not a park: the "Copied rules" bullet settles it.
 - **Batch-level failures** are not yours to park. They are these of the blocked banners `/work-backlog` `SKILL.md`
-  "How the session runs" lists: a failed `gh` call (after its one retry a minute later), commit signing failing
-  (`permissions.md` "Signing"), Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 right before the one step
-  that needs a container (`/work-backlog` `SKILL.md` "How the session runs" names it; the check runs nowhere else);
+  "How the session runs" lists: a failed `gh` call ("Terms"), commit signing failing (`permissions.md` "Signing"),
+  Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 right before the one step that needs a container
+  (`/work-backlog` `SKILL.md` "How the session runs" names it; the halt happens there and nowhere else, and the
+  preflight's `ip-forward` line is only a warning);
   plus a red baseline that is `main`'s own (the using-git-worktrees entry of `sub-skill-overrides.md`; a
   flaky one is a finding there, and parks the issue only if it keeps the work from going on). Each would stop every
   other agent too: the red baseline because every isolated worktree starts from the same `origin/main`. Return
   `state: "parked"` with `batchHalt` set to the cause and a `parkNote` naming it.
+- **Halt answers bind every role.** `haltAnswers` in your inputs holds the user's answers to the questions that
+  bear on this issue: never re-decide one and never park on a question one answers. A reviewer still raises a
+  finding that goes against an answer, naming it, and the fix agent rules on it by citing the answer.
 - **Findings:** the "Subagents" bullet governs, and findings about the change itself are handled as their bullet
   says. Every other finding goes in `findings`, unjudged; the controller judges it. The fields map onto
   `pending-findings.md`'s entry format one to one: `symptom` is the entry's heading line, `file` is `File:`,

@@ -10,8 +10,11 @@ inputs as JSON.
 | Review | the main checkout, not isolated | `<main>/.claude/backlog/parallel/`, `<main>/docs/superpowers/plans/` |
 | Fix | its own isolated worktree | that worktree, the branch (by push), the PR body |
 
-An isolated worktree starts from `origin/main` as the main checkout last fetched it (Claude Code's default
-`worktree.baseRef: fresh`), never from the main checkout's `HEAD`, so the user's local commits never reach it.
+An isolated worktree starts from `origin/main` fetched fresh when it is made (Claude Code's default
+`worktree.baseRef: fresh`), never from the main checkout's `HEAD`, so the user's local commits never reach it. Claude
+Code removes an isolated worktree when its agent ends if it holds no commit and no tracked or untracked file outside
+the ignored ones (the copied instruction files, plans, ledgers and `.claude/tmp/` are ignored), and deletes its own
+`worktree-*` branch with it; a worktree with work in it stays.
 
 ## Build
 
@@ -22,11 +25,13 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
 
 1. **Reconcile.** An earlier agent may have started this issue (a resumed run re-runs agents that were mid-run).
    - `gh pr list --state all --limit 1000 --search "#<n> in:body" --json number,state,headRefName,body`, keeping
-     PRs whose body ends with `Backlog-Session: <date>` and has a line that is exactly `Closes #<n>` or
-     `Part of #<n>` (the "PRs" bullet says why exactly). The search matches the bare number anywhere in a body, so
-     the default limit of 30 can drop this issue's own PR behind unrelated matches.
+     PRs whose body has a line that is exactly `Backlog-Session: <date>` (the marker, "Terms") and a line that is
+     exactly `Closes #<n>` or `Part of #<n>` (the "PRs" bullet says why exactly). The search matches the bare number
+     anywhere in a body, so the default limit of 30 can drop this issue's own PR behind unrelated matches.
    - A `MERGED` one with `Closes #<n>`, or with `Part of #<n>` for this `piece` (its title or body names the piece):
-     return `state: "merged"`. A merged `Part of #<n>` PR for another piece is an earlier piece, not this build.
+     return `state: "merged"` with its `branch` and `pr`; the script then runs the merge agent, whose section 1 takes
+     a `MERGED` PR straight to the pull and cleanup. A merged `Part of #<n>` PR for another piece is an earlier
+     piece, not this build.
    - An `OPEN` one is a finished build, since a build agent opens its PR only at step 4. Return `state: "ready"` at
      once, building nothing (a bug whose fix is already on the branch would no longer reproduce and park as "not a
      bug"): `branch` its `headRefName`, `pr` its number, `rulings` the body's `Ruling:` lines, no `findings`. `worktree`
@@ -55,11 +60,13 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
    `gh issue view <n> --json state,title,body,comments`: `CLOSED` returns `state: "skipped"` with a `parkNote`
    saying the user closed it, so the record can be told from a skip whose note was forgotten. The comments bind you
    as "Comments" in `choosing.md` says, and `haltAnswers` binds you too: never re-decide a question it answers.
-   Rename the branch with `git branch --move <type>/<n>-<description>` (the "Branches" bullet; the worktree starts
-   on its own `worktree-<runId>-<k>` branch, which this renames, so the command has a branch to move). Copy the
-   instruction files, and for a feature `<main>/<spec>`, as the "Worktrees" bullet says, reading each from
-   `<main>/` and with `.claude` added to its `mkdir --parents` (this worktree lacks that directory too); read the
-   copied rules that apply to the files you will change. A change the issue makes to what `.claude/CLAUDE.md` says
+   The worktree starts on its own `worktree-<runId>-<k>` branch. Rename it with
+   `git branch --move <type>/<n>-<description>` (the "Branches" bullet) right before your first commit (the bug's
+   `test:` commit in `bug-flow.md` step 4, or the plan's first task commit), not earlier: a park before any commit
+   then leaves an unchanged worktree that Claude Code removes with its `worktree-*` branch, where a renamed branch
+   with no commits would outlive it and read to every later session as the user's. Copy the instruction files, and
+   for a feature `<main>/<spec>`, as the "Worktrees" bullet says, reading each from `<main>/`; read the copied rules
+   that apply to the files you will change. A change the issue makes to what `.claude/CLAUDE.md` says
    is a `Ruling:` naming the edit (`/work-backlog-parallel` `SKILL.md` "Named exceptions"), never an edit here. Then
    run the baseline the "Worktrees" bullet names, before changing anything; red is never fixed as part of this
    issue.
@@ -100,7 +107,8 @@ in `merge-queue.md`.
 
 ## Review
 
-Inputs: `n`, `round` (1 or 2), `kind`, `spec` (repo-relative, empty for a bug), `branch`, `pr`, `headWorktree`
+Inputs: `n`, `round` (1 or 2), `kind`, `spec` (repo-relative, empty for a bug), `piece`, `haltAnswers`, `branch`,
+`pr`, `headWorktree`
 (where the latest commit was made), `plan` (the build agent's repo-relative plan path, or empty), `worktrees` (every
 worktree path the issue's agents used so far), `build` (the latest build or fix agent's output, verbatim), `main`.
 
@@ -123,15 +131,16 @@ worktree path the issue's agents used so far), `build` (the latest build or fix 
    that instruction in. Fill the template's placeholders:
    - `[DESCRIPTION]`: the PR's title and body (`gh pr view <pr> --json title,body`).
    - `[PLAN_OR_REQUIREMENTS]`: the issue, body and comments (`gh issue view <n> --json title,body,comments`, since
-     the `--comments` form drops the body off a terminal, as "Comments" in `choosing.md` says) and, for a feature,
-     `<main>/<spec>` and `<main>/<plan>`.
+     the `--comments` form drops the body off a terminal, as "Comments" in `choosing.md` says), `haltAnswers`, and,
+     for a feature, `<main>/<spec>` and `<main>/<plan>`. For an umbrella piece (`piece` set) the requirement is only
+     that piece's part of the spec: the other pieces are later PRs, never a missing-work finding.
    - `[BASE_SHA]`: `git merge-base origin/main origin/<branch>`, after `git fetch origin <branch>` in the main
      checkout (your issue's branch, which "Shared state is not yours" in `common.md` allows).
    - `[HEAD_SHA]`: `origin/<branch>`, inspected with `git diff` and `git show` only. The pushed branch, not
      `headWorktree`, is what merges, and a writer's worktree may already be gone.
 
    Raise every finding, a ruled-on one included, as the "Subagents" bullet says; the fix agent answers a settled one
-   by citing its ruling. Edit no file in any issue worktree.
+   by citing its ruling, or the halt answer that settles it. Edit no file in any issue worktree.
 3. **Sort** each finding: about the change itself (a hole in this PR's code or tests) goes in `changeFindings`;
    anything else is appended to `<n>-findings.md` and listed in `otherFindings`. Each "Declined to judge" line
    `code-reviewer.md` produces goes in `changeFindings` with its summary starting `Declined to judge:` and `file`
@@ -163,8 +172,9 @@ A finding outside that change follows step 3 and is not this review's business b
 
 ## Fix
 
-Inputs: `n`, `round`, `kind`, `branch`, `pr`, `spec` (repo-relative, empty for a bug), `plan` (repo-relative, or
-empty), `changeFindings`, `date`, `main`.
+Inputs: `n`, `round`, `kind`, `branch`, `pr`, `spec` (repo-relative, empty for a bug), `piece`, `haltAnswers`,
+`plan` (repo-relative, or empty), `changeFindings`, `date`, `main`. `haltAnswers` binds you as it binds a build
+agent; for an umbrella piece, a finding asking for another piece's work is dropped with a ruling.
 
 1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits carry a
    `Review-round: <round>` trailer (`/work-backlog-parallel` `SKILL.md` "Named exceptions"); a commit on the branch

@@ -13,9 +13,10 @@ disable-model-invocation: true
 One run of this skill is one backlog session. The aim is a backlog that shrinks: the session closes issues and never
 refills the queue with work nobody needs. Only the user's decision opens an issue.
 
-The user's global instructions and this repo's `.claude/CLAUDE.md` and `.claude/rules/` still apply, with two
-exceptions this skill makes on purpose: `sub-skill-overrides.md` (its first two entries apply to every session) and
-"Copied rules" under "Doing the work".
+The user's global instructions and this repo's `.claude/CLAUDE.md` and `.claude/rules/` still apply. Where this skill
+settles something one of them would stop to ask the user about, this skill's answer wins, since nobody is there to
+answer during the unattended part; the main cases are `sub-skill-overrides.md` (its first two entries apply to every
+session), "Copied rules" under "Doing the work" and "Out-of-scope findings".
 
 `resume.md` says what to do after a compaction, how a halt is recorded, and what a session that ends early leaves;
 `state.md` gives the state files' formats. Read `resume.md` first after a compaction.
@@ -33,9 +34,9 @@ what gets built, or when it is a merge under shakedown; everything else the sess
 - **Either:** a question-banner halt when a decision changes what gets built (a not-a-bug finding, `bug-flow.md`
   step 3, is one), and a blocked-banner halt when something outside the session's control stops it: a failed `gh`
   call, what `merging.md` and "Long commands" name, commit signing that fails, or Docker unreachable or
-  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/test-image`, the one step that needs a
-  container (the user's global Docker rule forbids running one then; that check runs there and nowhere else). Both
-  are recorded as `resume.md` "Halting" says.
+  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/test-image`, the one step that needs a container (the
+  user's global Docker rule forbids running one then; the halt on it happens there and nowhere else, and the
+  preflight's `ip-forward` line is only a WARN). Both are recorded as `resume.md` "Halting" says.
 
 ## Arguments
 
@@ -56,6 +57,10 @@ The invocation's arguments, in any order:
 ## Terms
 
 - **Chunk:** the set of issues the user approves for this session ("Choosing the chunk").
+- **Failed `gh` call:** a `gh` command that still errors after one retry a minute later (a `sleep 60` in the
+  background, "Long commands"). A long run meets transient network errors, so every `gh` call this skill makes gets
+  that retry; a failed one is a blocked-banner halt, never a count logged or work chosen from a partial or guessed
+  result.
 - **Approval:** what authorizes the unattended part, every push and merge included, except that while shakedown is
   on each merge also waits for its own OK (`merging.md` step 2). For a bug chunk, the chunk OK; for a feature chunk,
   the chunk OK plus the question round of `feature-flow.md` step 5, before which nothing is pushed or merged.
@@ -81,8 +86,10 @@ The invocation's arguments, in any order:
 - **`Ruling:`:** one line recording a decision the session made where a sub-skill would have asked the user. Every
   ruling goes in the PR body ("PRs"). Calls made before approval (`feature-flow.md` steps 3 and 4) are recorded in
   the spec instead; they are design decisions, not rulings.
-- **The marker:** the line `Backlog-Session: YYYY-MM-DD`, with the session's `session-date:` (`state.md`), that ends
-  every PR body this skill writes; the user never writes it, so it tells this skill's PRs from the user's.
+- **The marker:** the line `Backlog-Session: YYYY-MM-DD`, with the session's `session-date:` (`state.md`), the last
+  line of every PR body this skill writes; the user never writes it, so it tells this skill's PRs from the user's. A
+  PR is this skill's when its body has a line that is exactly `Backlog-Session: <date>`, wherever it stands, since a
+  tool may append a line after it.
 
 ## State
 
@@ -108,24 +115,26 @@ from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=
 state files are written there and nowhere else, and only from the main checkout ("Leaving to write"); reading them
 from inside a worktree is fine.
 
-Every line appended to `current-session.md` after its first starts with the UTC time, and one `at:` line names the
-file and step the session is in, rewritten at each step (`state.md`), so a dead session's record says when it stopped
-and where. `<main>/.claude/skills/work-backlog/backlog-status` reads these files, the parallel run's files, the
-session's open PRs and the worktrees, and prints a session's state; it is read-only and runs from any terminal, so the
-user can watch an unattended run without touching the session, and `leftovers.md` opens with it.
+Every line appended to `current-session.md` after its first starts with the UTC time, and one `at:` line names the file
+and step the session is in, rewritten at each step (`state.md`), so a dead session's record says when it stopped and
+where. `<main>/.claude/skills/work-backlog/backlog-status` reads these files, the parallel run's files, the session's
+open PRs, the worktrees and the local branches merged and not merged into `main`, and prints a session's state; it is
+read-only and runs from any terminal, so the user can watch an unattended run without touching the session, and
+`leftovers.md` opens with it.
 
 ## The session
 
-1. **Preconditions.** `git status --porcelain` prints nothing; then, after `git switch main` (the user's branch stays
-   as it was, checked out nowhere), run `<main>/.claude/skills/work-backlog/backlog-preflight`: one `PASS`, `WARN` or
-   `FAIL` line per check (auth, clean tree, `main` current with `origin/main`, the signing key, the superpowers
-   version the overrides quote, the config file, the notification hook, and more), so every prerequisite a run needs
-   is learned here, not from a failed step hours later. A `FAIL` line is a blocked banner quoting it; `WARN` lines
-   ride in the proposal (`choosing.md` "The proposal"). Then `git fetch --prune origin` and `git pull --ff-only` must
-   succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any of these fails, stop with the
-   blocked banner before doing anything else. Every later `gh` call this skill makes gets one retry after a minute (a
-   long run meets transient network errors); if it fails again, stop with the blocked banner, never logging a count or
-   choosing work from a partial or guessed result.
+1. **Preconditions.** First run `permission-diff` over the "Run while the user is there" rules (`permissions.md`):
+   when any is missing, ask once with the question banner, `write the rules` (recommended) or `continue`, so a first
+   run meets one question instead of a prompt per command before the proposal. Then `git status --porcelain` prints
+   nothing; then, after `git switch main` (the user's branch stays as it was, checked out nowhere), run
+   `<main>/.claude/skills/work-backlog/backlog-preflight`: one `PASS`, `WARN` or `FAIL` line per check (auth, clean
+   tree, `main` current with `origin/main`, the signing key, the superpowers version the overrides quote, the config
+   file, the notification hook, and more), so every prerequisite a run needs is learned here, not from a failed step
+   hours later. A `FAIL` line is a blocked banner quoting it; `WARN` lines ride in the proposal (`choosing.md` "The
+   proposal"). Then `git fetch --prune origin` and `git pull --ff-only` must succeed; the prune is what later marks a
+   merged branch's upstream `[gone]`. If any of these fails, stop with the blocked banner before doing anything else.
+   Every later `gh` call is retried as "Failed `gh` call" ("Terms") says.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
    `current-session.md`: its existence means unfinished work; step 3 reads it). Append `YYYY-MM-DD open=N` to
    `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless today's line
@@ -146,27 +155,27 @@ user can watch an unattended run without touching the session, and `leftovers.md
    stalls by design while the user files faster than a session closes, so an unasked triage would cost a long sitting
    for nothing.
 6. **Choose the chunk.** Read `.claude/backlog/config` ("Shakedown", "Budgets"): an unreadable value is the default,
-   said in the proposal. Choose the chunk, or take the issues the arguments name ("Arguments"), propose it as
-   `choosing.md` says, and wait for the user's reply from its `Reply` line (`triage` runs `triage.md`, then the
-   proposal is sent again); with `plan`, print the proposal and end there instead. Then write
-   `current-session.md` with its `session-date:` (the date of the line step 2 appended), the `flow:` and `issue`
-   lines (`state.md`), the halt answers, the allowed commands and, for a bug chunk, the `started:` line ("Budgets"),
-   since the OK begins the unattended part;
-   a file that already exists is added to as `leftovers.md` says, and one a running parallel run owns means this
-   session chooses no chunk and goes to step 8 (`leftovers.md` "A parallel run's files").
+   and the preflight's `WARN config` line says so in the proposal. Choose the chunk, or take the issues the arguments
+   name ("Arguments"), propose it as `choosing.md` says, and wait for the user's reply from its `Reply` line (`triage`
+   runs `triage.md`, then the proposal is sent again); with `plan`, print the proposal and end there instead. Then write
+   `current-session.md` with its `session-date:` (the date of the line step 2 appended), the `flow:` and `issue` lines
+   (`state.md`), the halt answers, the allowed commands and, for a bug chunk, the `started:` line ("Budgets"), since the
+   OK begins the unattended part; a file that already exists is added to as `leftovers.md` says, and one a running
+   parallel run owns means this session chooses no chunk and goes to step 8 (`leftovers.md` "A parallel run's files").
 7. **Do the work** (below), one PR per issue, merging each on green CI.
-8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
-9. **Summary.** Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the
-   `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies
-   that date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run
-   owns it (leave it as it is) or left parked issues in it (trim it to them, as `/work-backlog-parallel`'s "Ending"
-   step 4 says).
+8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`. 9. **Summary.**
+Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the `session-log.md` line
+step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that date into
+`session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it (leave it as it
+is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a `#<N> left to user` line:
+trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so the next session's step 3
+still knows the first "no" was given.
 
 ## Choosing the chunk
 
 `choosing.md` holds the detail; in short: run `backlog-index`, classify from its rows (bug by label, `fix:` title or a
 body that reproduces something wrong now; otherwise a feature), bugs first when any doable bug is open, related
-issues together in dependency order, two to four PRs (one under shakedown; `short` or `long` narrows it), then one
+issues together in dependency order, two to three PRs (one under shakedown; `short` or `long` sets it), then one
 proposal message in a fixed layout with the runner-up, the trend, the halt questions, the permission request and the
 reply forms. The user's OK on it is the approval ("Terms").
 
@@ -234,9 +243,9 @@ those steps refer to.
   `timeout`, so the command's own allow rule still applies). Exit 124 means it hung: a blocked-banner halt naming the
   command and its last output, never a silent rerun. A step that says to wait a minute runs `sleep 60` with
   `run_in_background` and goes on when its completion notification arrives; never a foreground `sleep`, which the
-  harness blocks. `git commit` is a long command of another kind: the commit-msg hook runs commitlint through the
-  devShell, minutes the first time, so run it in the foreground with the Bash tool `timeout: 600000`, with no
-  `timeout 30m` and no background.
+  harness blocks. `git commit` is a long command of another kind: both commit hooks run through the devShell (the
+  pre-commit hook also builds the runner, the commit-msg hook runs commitlint), minutes the first time, so run it in the
+  foreground with the Bash tool `timeout: 600000`, with no `timeout 30m` and no background.
 - **Copied rules:** a conflict with a copied rule in `.claude/rules/` that only surfaces during the unattended part
   is settled by satisfying the rule, and named in the summary. `.claude/CLAUDE.md` asks the user about such a
   conflict, but nobody is there to answer, and satisfying the rule is the choice that never needs undoing. A conflict
@@ -250,10 +259,11 @@ those steps refer to.
   unfinished work stays findable.
   - The body uses only `Closes #N` or `Part of #N`, never another closing keyword, each on a line by itself, because
     both skills tie a PR to its issue by matching that whole line (a substring match would take a PR for a longer
-    issue number as this one's). It ends with the marker. Every line of the body is at most 100 characters while
-    `.commitlintrc.yml` leaves commitlint's footer rule at its inherited 100: the merge commit's message is the PR
-    body, and that rule reads every line after the first `Word:` line as footer. Wrap a long ruling onto
-    continuation lines indented two spaces.
+    issue number as this one's). It ends with the marker: an attribution line (such as "Generated with Claude Code")
+    goes above the `Closes #N` or `Part of #N` line, never after the marker. Every line of the body is at most 100
+    characters while `.commitlintrc.yml` leaves commitlint's footer rule at its inherited 100: the merge commit's
+    message is the PR body, and that rule reads every line after the first `Word:` line as footer. Wrap a long ruling
+    onto continuation lines indented two spaces.
   - The body carries every `Ruling:` the work made (from the ledger for plan-driven work, from the session's own
     calls otherwise), since nothing else survives the worktree. A ruling made after the PR opened is added with
     `gh pr edit <number> --body` (read the body first and add the rulings above the marker, so nothing already there
@@ -282,7 +292,9 @@ those steps refer to.
     and the cap bounds what an unattended run spends. Round-two findings about the change itself are handled as the
     next item says, with no further review; anything else still goes through the filing bar and "Out-of-scope
     findings" (a same-PR fix made after round two also gets no review). A merge-time fix is the exception: one scoped
-    pass, as `merging.md` "Merge-time fixes" says.
+    pass, as `merging.md` "Merge-time fixes" says. Record `#<N> review round <k>` in `current-session.md` as each
+    round starts (`state.md`), with the round's other writes where it has any, so a compaction does not reset the
+    cap to round one.
   - A leftover PR is reviewed as `leftovers.md` says.
 - **Findings about the change itself** (a hole in the session's own fix, a gap in its own new test, a finding a plan
   sub-skill parked or deferred) are fixed in the branch, given a known-gap comment, or dropped. They never become an
@@ -295,7 +307,10 @@ those steps refer to.
   PR, leave a `TODO` or decide for itself what is worth reporting. The filing bar is the controller's to apply,
   after the report; a reviewer told what not to flag reviews with a blind spot (`sub-skill-overrides.md`). A
   reviewer inspects the branch with `git diff` and `git show`, never by adding a worktree of its own, which the next
-  session's step 3 would report as the user's work.
+  session's step 3 would report as the user's work. The prompt also says: `git commit` and every `./.ci/in-devshell`
+  command run in the foreground with the Bash tool `timeout: 600000`, never backgrounded and never retried while one
+  may still be running. The user's two-minute default timeout would otherwise background them, and a subagent that
+  retries a commit meets the first one's `index.lock`, or reports a task done before its tests finish.
 
 ## The filing bar
 
@@ -316,7 +331,8 @@ by the user's choice in `findings-walkthrough.md`.) The bar judges findings abou
 A finding that passes the bar but lies outside the chunk:
 
 - **Same PR** when it is a bug, the fix is under about 20 changed lines plus its test, and the fix lands in files or a
-  shared helper the PR already changes: its own `test:` commit, then its own `fix:` commit.
+  shared helper the PR already changes: its own `test:` commit, then its own `fix:` commit. The limits keep the PR one
+  reviewable change whose revert takes nothing unrelated; judge a case near them by that.
 - **Otherwise** append it to `pending-findings.md` in the main checkout ("Leaving to write" from a worktree) the
   moment it is found (at the ledger sweep for plan-driven work, "Review"), and carry on.
 
@@ -342,14 +358,16 @@ session that ends before the chunk is done leaves what `resume.md` "Ending early
 
 Until the user has watched one run go through end to end, an unattended merge is a step taken on trust, so both
 backlog skills start in shakedown: `shakedown: on` is the default while `.claude/backlog/config` does not say `off`
-(step 6 reads the file). While it is on, a chunk is one issue: form and order the chunk as usual, then take its
-first issue as the chunk and name the rest as the runner-up; with named issues, the first named bug, or the first
-named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the question banner
-once CI is green, recorded as `resume.md` "Halting" says. After the summary, a question-banner follow-up offers to
-lift it ("Banners"); on the user's yes, write `shakedown: off` to the config (create the file, or replace the key's
-line). The user may also turn it off or on with the chunk OK. Turned off with the OK: write `shakedown: off` then,
-and send a full-size proposal (its halt questions included) as a follow-up before starting (`permissions.md` "When
-to ask" says why a follow-up is allowed). Turned on: the chunk is its first issue.
+(step 6 reads the file). `/work-backlog-parallel` reads its own key, `shakedown-parallel:`, with the same default,
+because a run that merged serially has not exercised its merge queue; lifting one never lifts the other. While it is
+on, a chunk is one issue: form and order the chunk as usual, then take its first issue as the chunk and name the rest
+as the runner-up, ahead of the runner-up chunk (`choosing.md` "The proposal"); with named issues, the first named
+bug, or the first named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the
+question banner once CI is green, recorded as `resume.md` "Halting" says. After the summary, a question-banner follow-up
+offers to lift it ("Banners"); on the user's yes, write the skill's own key off (`shakedown: off` here) to the config
+(create the file, or replace the key's line). The user may also turn it off or on with the chunk OK. Turned off with the
+OK: write `shakedown: off` then, and send a full-size proposal (its halt questions included) as a follow-up before
+starting (`permissions.md` "When to ask" says why a follow-up is allowed). Turned on: the chunk is its first issue.
 
 ## Budgets
 

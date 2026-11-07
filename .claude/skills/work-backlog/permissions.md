@@ -13,6 +13,8 @@ session can be started in another mode.
 
 ## When to ask
 
+- In step 1 of "The session", before the preflight, when a "Run while the user is there" rule is missing
+  (`write the rules` / `continue`), so the first run's listings do not each prompt on their own.
 - With the chunk proposal (bugs) or in the question round (features, `feature-flow.md` step 5). A "fix it now" from
   `findings-walkthrough.md` asks first if this session has not asked yet.
 - Again right before the unattended part starts (the chunk OK for bugs, the answered question round for features, the
@@ -103,6 +105,10 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   ("Budgets" in `SKILL.md`), and the parallel run's `deadline`.
 - `Bash(jq *)` (all): reading an issue body from the index ("The index" in `choosing.md`) and a PR body before an
   edit.
+- `Bash(rm <main>/.claude/backlog/current-session.md)` and `Bash(rm <main>/.claude/backlog/parallel/*)` (all), with
+  `<main>` written out: step 9's delete of `current-session.md`, and the deletes of the parallel run's files
+  (`leftovers.md` "A parallel run's files", `/work-backlog-parallel` "Ending"), which run after the work is done and
+  would otherwise prompt with nobody there.
 - `Bash(echo *)` and `Bash(ls *)` (all): a background command's exit status written to a file and the check for an
   existing status file (`/work-backlog-parallel` `common.md` "Long commands"), and the listing of a directory before
   a delete.
@@ -141,7 +147,7 @@ permission request"):
 - The merge agent runs its git in the rebase worktree as `git -C <rebase worktree> …`, which no rule above matches.
   Each form is its own rule, for the reason the `git -C` bullet above gives, and only the forms `merge-queue.md` and
   `agents.md` "Review" use are named:
-  - `Bash(git -C * -c core.editor=true -c rerere.enabled=false rebase *)`
+  - `Bash(git -C * -c rerere.enabled=false rebase *)`
   - `Bash(git -C * rebase --abort)`
   - `Bash(git -C * switch *)`
   - `Bash(git -C * merge --ff-only *)`
@@ -178,5 +184,6 @@ printf x | ssh-keygen -Y sign -n git -f "$(git config --get user.signingkey)" >/
 ```
 
 A non-zero exit means the agent does not hold the key: say so in the request. `ssh-add -L` cannot show a key's
-lifetime, so the request also asks the user to confirm the key was loaded with no lifetime that could expire during
-the run. Commit signing that fails mid-run is a blocked-banner halt.
+lifetime, so `backlog-preflight` prints `agent-key` as a `WARN` asking the user to confirm the key was loaded with
+no lifetime that could expire during the run; as a `WARN` it rides in the proposal's `Preflight:` lines, so it is
+asked even when the permission request is left out. Commit signing that fails mid-run is a blocked-banner halt.

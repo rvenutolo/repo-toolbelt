@@ -27,7 +27,7 @@ background.
    - A non-zero exit saying `no checks reported on the '<branch>' branch` means no check has started yet, which
      happens right after the PR opens (`--watch` fails the same way; `gh` never prints `[]` here): wait a minute and
      run again, up to three times. Still none means CI did not trigger for this PR (blocked banner, saying so); it is
-     not a failed `gh` call, which is a `gh` command that errors.
+     not a failed `gh` call ("Terms" in `SKILL.md`), which is a `gh` command that errors.
    - A `fail` bucket is a check to fix: fix the cause ("Merge-time fixes" below) and push again. A coverage-ratchet
      failure is fixed by a test where one is possible, otherwise by a new signed commit (never an amend: it rewrites
      the pushed head, which needs a force push and discards the review and CI that head already had) that raises the
@@ -37,18 +37,18 @@ background.
      check runs, or a job that hangs until its timeout), gets one `gh run rerun <run-id> --failed`, with the id from
      `gh run list --branch <branch> --workflow ci.yml --limit 1 --json databaseId --jq '.[0].databaseId'`, then this
      step repeats once from the watch. If CI is still red after the rerun, blocked banner.
-   - A non-zero exit with no JSON and any other message is a failed `gh` call (blocked banner).
+   - A non-zero exit with no JSON and any other message is a `gh` command that errored: retry it once a minute later,
+     and if it errors again it is a failed `gh` call ("Terms" in `SKILL.md`), a blocked banner.
 2. **Merge.** First `gh pr view <number> --json state --jq .state`: `MERGED` means a resumed session is past this step:
    go to step 3 (step 0 also catches this when it runs first). While shakedown is on ("Shakedown" in `SKILL.md`), ask
    first with the question banner whether to merge, naming the PR and its green checks, and record the halt and its
-   answer as "Halting" in `resume.md` says. On "no": `ExitWorktree` with `action: keep`, record `pr open, not merged`
-   against the
-   issue in `current-session.md`, leave the PR, worktree and branch for the next session's step 3, name the PR in
-   the summary, and go on with the next issue that does not depend on this one (a dependent would start from `main`
-   without it, so it waits for the next session); steps 3 and 4 are the merge path and do not run. The PR stays this
-   skill's unfinished work: the next session's step 3 asks once more and, on a second no, leaves it to the user and
-   goes on to choose a chunk. Coming back here after
-   a `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
+   answer as "Halting" in `resume.md` says. On "no": `ExitWorktree` with `action: keep`, record `#<N> pr open, not
+   merged` in `current-session.md` (`state.md`), leave the PR, worktree and branch for the next session's step 3, name
+   the PR in the summary, and go on with the next issue that does not depend on this one (a dependent would start from
+   `main` without it, so it waits for the next session); steps 3 and 4 are the merge path and do not run. The PR stays
+   this skill's unfinished work: the next session's step 3 asks once more and, on a second no, records `#<N> left to
+   user` (`leftovers.md` "To resume"), leaves it to the user and goes on to choose a chunk. Coming back here after a
+   `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
    allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local branch is
    checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go
    straight to step 3, which records the merge; a compaction before that record is caught by this `MERGED` check. A
@@ -60,8 +60,8 @@ background.
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
      `git -c rerere.enabled=false rebase origin/main` (every rebase in both backlog skills carries
      `-c rerere.enabled=false`, and here the abort does too, so one rule covers both: the user's git config enables
-     rerere with autoupdate, which replays a recorded resolution and stages it, so a conflict would be resolved and
-     hidden before any rule here sees it), regenerate
+     rerere with autoupdate, which replays a recorded resolution and stages it; the rebase still stops, but the
+     conflicted-file listing comes back empty and hides what a rule here must judge), regenerate
      the baseline when "Baseline after a rebase" below says so,
      confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
      push with `timeout 30m git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full
@@ -69,8 +69,10 @@ background.
      a fix for a gate failure here is a merge-time fix, "Merge-time fixes" below), and go back to step 1 for the new
      CI run. A rebase
      that conflicts is a change the user must see: `git -c rerere.enabled=false rebase --abort`, blocked banner. Never
-     `gh pr update-branch`; it rewrites the commits unsigned. The third `BEHIND` or `DIRTY` on one PR is a blocked
-     banner: `main` is moving faster than CI, and the user decides when to try again.
+     `gh pr update-branch`; it rewrites the commits unsigned. Record `#<N> merge retry <k>` with each such rebase
+     (`state.md`; one round trip out of the worktree, "Leaving to write" in `SKILL.md`), so a compaction does not
+     reset the count. The third `BEHIND` or `DIRTY` on one PR is a blocked banner: `main` is moving faster than CI, and
+     the user decides when to try again.
    - `DIRTY`: the branch conflicts with `main` (a Renovate merge touched the same file). Take the `BEHIND` path; the
      rebase conflicts and ends in its blocked banner, or resolves cleanly and runs CI again.
    - `UNSTABLE`, or any status not named here: blocked banner naming the status.
@@ -83,7 +85,8 @@ background.
    failure after a rebase in step 2) gets one superpowers:requesting-code-review pass scoped to the fix, with the base
    at the commit the fix was made on, before it is pushed: a base at the last pushed head would, after a rebase, also
    show every commit `main` gained. The fix rounds of "Review" in `SKILL.md` are over by now, so nothing else reviews
-   it. The third such fix on one PR is a blocked banner: a change that keeps failing at merge time needs the user.
+   it. Record `#<N> merge-time fix <k>` with each, as the retries are recorded. The third such fix on one PR is a
+   blocked banner: a change that keeps failing at merge time needs the user.
 
    **Baseline after a rebase.** A rebase never leaves a text-merged `.coverage-baseline.txt` ("Never" in
    `SKILL.md`). Regenerate it when the rebase took `main`'s copy in a conflict (the case `merge-queue.md`
@@ -98,7 +101,7 @@ background.
    file is committed as a new signed commit, never an amend, and a unit whose line rises carries the
    `Coverage-Drop:` trailer exactly as README "Recording a rise" says.
 3. **Leave, record and pull.** `ExitWorktree` with `action: keep` (it cannot remove a worktree entered by `path`).
-   From the main checkout, record the merge in `current-session.md` if it is not there yet, so a compaction from
+   From the main checkout, record `#<N> merged` in `current-session.md` if it is not there yet, so a compaction from
    here on does not lead to a second merge attempt. Then `git pull --ff-only`, so the merge is on local `main`. If
    the pull is refused (the user has committed on or dirtied local `main`), run `git fetch --prune origin` instead,
    leave `main` as the user left it, and say in the summary that the next session's preconditions will fail until
@@ -109,4 +112,4 @@ background.
    place and name it in the summary; never pass `--force` or `-D`. The next session's step 3 classifies it once
    `main` is current. A PR built by a parallel run has several worktrees, listed on its `<N>.md` `worktrees:` line:
    remove each by its own path and delete each `worktree-<runId>-<k>` branch they held, as `merge-queue.md` section
-   6 does. Record the cleanup in `current-session.md`.
+   6 does. Record `#<N> worktree removed` in `current-session.md`.

@@ -6,11 +6,12 @@
 #              line, PASS, WARN or FAIL, in a fixed order; a FAIL is something
 #              the session cannot work around, a WARN something the proposal
 #              should mention. Read-only apart from `git fetch origin main`.
-# @option --parallel add the checks only /work-backlog-parallel needs
+# @noargs
 # @stdout one `PASS|WARN|FAIL <check>: <detail>` line per check, in order:
 #         config-dir, gh-auth, clean-tree, on-main, main-current, signing,
-#         agent-key, ip-forward, superpowers, config, notification-hook, state
-#         and, with --parallel, workflow-tool; then `preflight: <n> fail, <m> warn`
+#         agent-key, ip-forward, superpowers, config (one WARN per ignored line,
+#         then its PASS), notification-hook, state; then
+#         `preflight: <n> fail, <m> warn`
 # @exitcode 0 no check failed
 # @exitcode 1 a check failed
 # @exitcode 2 wrong arguments, CLAUDE_CONFIG_DIR unset, or not inside a git repository
@@ -43,7 +44,7 @@ MAIN=''
 # @description Print the usage line to stderr and exit 2.
 # @noargs
 function usage() {
-  printf 'usage: %s [--parallel]\n' "${0##*/}" >&2
+  printf 'usage: %s\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -144,7 +145,8 @@ function check_signing() {
 }
 
 # @description The agent lists the key's public half. Its lifetime cannot be
-#              read, so the detail always asks the user to confirm it.
+#              read, so the check is always a WARN asking the user to confirm
+#              it, which carries it into the proposal.
 # @noargs
 function check_agent_key() {
   local key pub listed public_key
@@ -165,7 +167,7 @@ function check_agent_key() {
   public_key="$(cut --delimiter=' ' --fields=1,2 "${pub}")"
   listed="$(cut --delimiter=' ' --fields=1,2 <<< "${listed}")"
   if [[ -n "${public_key}" ]] && grep --quiet --fixed-strings --line-regexp "${public_key}" <<< "${listed}"; then
-    report PASS agent-key "listed by ssh-add -L; ${LIFETIME_NOTE}"
+    report WARN agent-key "listed by ssh-add -L; ${LIFETIME_NOTE}"
   else
     report WARN agent-key "not listed by ssh-add -L; ${LIFETIME_NOTE}"
   fi
@@ -202,7 +204,9 @@ function check_superpowers() {
   fi
 }
 
-# @description Every line of .claude/backlog/config is a known key with a valid value.
+# @description Every line of .claude/backlog/config is a known key with a
+#              valid value, a comment or blank. A bad line is a WARN, never a
+#              FAIL: the session reads the default in its place.
 # @noargs
 function check_config() {
   local -r file="${MAIN}/.claude/backlog/config"
@@ -213,14 +217,14 @@ function check_config() {
   local line key value valid n=0 keys=0
   while IFS= read -r line || [[ -n "${line}" ]]; do
     n=$((n + 1))
-    if [[ -z "${line}" ]]; then
+    if [[ -z "${line}" || "${line}" == '#'* ]]; then
       continue
     fi
     key="${line%%: *}"
     value="${line#*: }"
     valid='false'
     case "${key}" in
-      shakedown)
+      shakedown | shakedown-parallel)
         if [[ "${value}" == 'on' || "${value}" == 'off' ]]; then
           valid='true'
         fi
@@ -233,8 +237,9 @@ function check_config() {
       *) ;; # coverage-exempt: an empty case arm; bash runs nothing on it for kcov to see
     esac
     if [[ "${valid}" != 'true' || "${line}" != "${key}: ${value}" ]]; then
-      report FAIL config "line ${n} \"${line}\" is not shakedown|max-hours|max-parked: <value>"
-      return
+      report WARN config \
+        "line ${n} \"${line}\" ignored; default used (keys: shakedown|shakedown-parallel|max-hours|max-parked)"
+      continue
     fi
     keys=$((keys + 1))
   done < "${file}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
@@ -276,16 +281,9 @@ function check_state() {
   report PASS state "current-session.md ${record}; parallel: ${parallel} ${noun}; pending findings: ${findings}"
 }
 
-# @description The Workflow tool cannot be seen from a shell.
-# @noargs
-function check_workflow_tool() {
-  report WARN workflow-tool 'cannot be checked from a shell; the session confirms the Workflow tool is listed'
-}
-
 # @description Run every check in order and print the count.
-# @arg $1 parallel `true` when --parallel was given
+# @noargs
 function main() {
-  local -r parallel="$1"
   local common_dir
   if ! common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
     printf '%s: not inside a git repository\n' "${0##*/}" >&2
@@ -304,26 +302,17 @@ function main() {
   check_config
   check_notification_hook
   check_state
-  if [[ "${parallel}" == 'true' ]]; then
-    check_workflow_tool
-  fi
   printf 'preflight: %s fail, %s warn\n' "${FAILS}" "${WARNS}"
   if ((FAILS > 0)); then
     exit 1
   fi
 }
 
-if (($# > 1)) || { (($# == 1)) && [[ "$1" != '--parallel' ]]; }; then
+if (($# != 0)); then
   usage
 fi
 if [[ -z "${CLAUDE_CONFIG_DIR:-}" ]]; then
   printf '%s: CLAUDE_CONFIG_DIR is not set\n' "${0##*/}" >&2
   exit 2
 fi
-PARALLEL='false'
-if (($# == 1)); then
-  PARALLEL='true'
-fi
-readonly PARALLEL
-
-main "${PARALLEL}"
+main
