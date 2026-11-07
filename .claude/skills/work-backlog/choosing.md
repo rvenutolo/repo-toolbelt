@@ -18,7 +18,7 @@ comments too ("Comments" below) before classifying, since a kind or a size can l
 would cut off (`bytes` past about 16000) the script also writes to `.claude/tmp/issue-<N>.md`: read that with the
 Read tool, which pages. `refs` (open issues only when the whole backlog is indexed; every reference when issues are
 named) and `umbrella` show the dependencies and umbrella issues "Order" below and the proposal need. A non-zero exit
-is a failed `gh` call (`SKILL.md` step 1).
+is a failed `gh` call ("Terms").
 
 ## Kinds
 
@@ -26,12 +26,14 @@ An issue is a bug when it has the `bug` label, its title starts `fix:`, or its b
 now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. The body counts because
 few issues carry the label, and a three-line fix sent down the feature flow costs a brainstorm, a spec and a Fable
 review. A check that fails on `main` today, or a config whose present value is wrong, is a reproduction; a `ci:` or
-`chore:` title is a judgment call the proposal names. The `kind` column decides only the first two (`bug`, or
-`feature` from a `feat:` title or the `enhancement` label); `?` is neither. The proposal names every issue whose kind
-was a judgment call, so the user can correct it with the chunk OK: a bug found from its body alone, and a `?` row. An
-issue whose kind follows from its label or title is not named. A kind the OK corrects re-sorts the chunk: the issue
+`chore:` title with no `bug` or `enhancement` label is a judgment call. The `kind` column decides only the first two
+(`bug`, or `feature` from a `feat:` title or the `enhancement` label); `?` is neither. The proposal names every
+judgment call among the issues in its `Chunk` and `Runner-up` sections, so the user can correct it with the chunk OK:
+a bug found from its body alone, and a `?` row. An issue whose kind follows from its label or title is not named, nor
+is an issue the proposal does not show. A kind the OK corrects re-sorts the chunk: the issue
 follows the corrected flow, and a chunk now holding both kinds splits as "Arguments" says, bugs this chunk and
-features the runner-up. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is features. A
+features the runner-up. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is features:
+a bug is wrong now and a feature adds, so a wrong-now defect outranks the leverage "Order" weighs. A
 bug the session cannot do at all ("The proposal" below) does not count, or it would block every later chunk until
 the user acts.
 
@@ -45,11 +47,11 @@ the user acts.
   items, then what speeds up the feedback loop, then what retires risk. Not by product value, and not by size. The
   first factor counts any open issue the item unblocks, in the chunk or not, and a prerequisite internal to the chunk
   that no issue names (a shared helper the pieces need) counts under it too.
-- **Size:** two to four PRs; one while shakedown is on ("Shakedown"); at most two with the `short` argument and at
-  most four with `long` ("Arguments"), which shakedown ignores. Each PR waits on its own CI run and merges before the
-  next starts, and the findings walkthrough still follows, so more than four rarely finishes in a session. When a
-  family is bigger, propose the part that fits; the rest stays open for the next session, and the spec covers only the
-  proposed part, with a shared helper designed so the rest can reuse it.
+- **Size:** two to three PRs; one while shakedown is on ("Shakedown"); at most two with the `short` argument and at most
+  four with `long` ("Arguments"), which shakedown ignores. Each PR waits on its own CI run and merges before the next
+  starts, and the findings walkthrough still follows, so more than three rarely finishes; `long` allows four for a
+  session the user means to leave running. When a family is bigger, propose the part that fits; the rest stays open for
+  the next session, and the spec covers only the proposed part, with a shared helper designed so the rest can reuse it.
 - **Combined changes:** an issue body or comment that asks for its change to land together with another's still
   gets one PR per issue ("PRs"): order the two by the dependency between them, and say so in the proposal. The
   partner is classified with its requester when the body rule allows (a `?` row asked to land with a bug is a bug);
@@ -82,11 +84,14 @@ is long when the backlog is; every section is present, `none` when empty.
     ("PRs") unless the user opts in the proposal to have the sub-issues opened instead;
   - when the chunk holds several independent issues and a long unattended run, that `/work-backlog-parallel` would
     finish it sooner.
-- `Runner-up`: the runner-up chunk and why it lost, so the user can swap with one word, or `none` when no other chunk
-  could be formed (every doable issue of the chosen kind is already in this one); and any issue the session cannot
+- `Runner-up`: while shakedown is on, first the rest of the chunk it trimmed; then the runner-up chunk and why it
+  lost, so the user can swap with one word, or `none` when no other chunk could be formed (every doable issue of the
+  chosen kind is already in this one); and any issue the session cannot
   do at all, such as one that needs a setting only the user can change in a GitHub App's settings or in another
   repo, left out of the chunk and named with what the user would have to do.
-- `Seen and left alone`: the user's own work step 3 saw, or `none`.
+- `Seen and left alone`: the user's own work step 3 saw, or `none`; then a `Cleaned up:` line naming every merged
+  branch and worktree step 3 deleted (`leftovers.md` "Done"), so a deletion the user did not ask for is seen before
+  the OK, not only in the summary.
 - `Backlog`: the trend, as `Backlog: <prev> → <now> open since <date>`, from the `open=` and date of the last
   `session-log.md` line before this session's and the count step 2 took (not `backlog-index`'s row count, which
   covers only the named issues when the arguments name some), or `Backlog: <now> open, first session` when this
@@ -94,9 +99,10 @@ is long when the backlog is; every section is present, `none` when empty.
   When step 5 found a stall, the line ends `, stalled over three sessions`.
 - `Budgets and shakedown`: the time budget and whether shakedown is on ("Budgets", "Shakedown"), so the user can
   change either with the OK. While shakedown is on, the line `Shakedown: one issue; expect the merge question in
-  about <N> minutes`, so the user knows to stay or come back: N is the last report's `Timings` span from the OK to
-  the merge question when a report exists under `.claude/backlog/reports/` (`report.md`), else 45. Then every `WARN`
-  line `backlog-preflight` printed in step 1, each prefixed `Preflight:`.
+  about <N> minutes`, so the user knows to stay or come back: N is the `Timings` span from `started:` to the merge
+  question in the last report under `.claude/backlog/reports/` whose opening `Skill:` line names this skill and this
+  chunk's flow (`report.md`), else 45. Then
+  every `WARN` line `backlog-preflight` printed in step 1, each prefixed `Preflight:`.
 - `Halt questions`: for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md`
   lists the kinds that recur, each with its default answer), one per line as
   `Q<k>: <question> Recommended: <answer> (<reason>)`. The OK on the chunk answers them. A feature chunk asks them in
@@ -107,13 +113,16 @@ is long when the backlog is; every section is present, `none` when empty.
 - `Reply`: the one line
 
   ```text
-  Reply with: OK | OK, swap <N> | OK, Q2=<answer> | shakedown off | rules added | write the rules | skip the permissions
+  Reply with: OK | OK, swap <N> | OK, Q2=<answer> | shakedown off
+  Permissions: OK, write the rules | OK, rules added | OK, skip the permissions
   ```
 
   with `triage` added as a last form when the `Backlog` line says stalled, so the user can answer in one reply
-  without composing one. `OK` alone takes every recommended answer; `OK, Q2=<answer>` overrides one; the three
-  permission replies are `permissions.md` "When to ask"'s; `shakedown off` is "Shakedown"'s; `triage` runs
-  `triage.md` first.
+  without composing one; the `Permissions:` line only when the `Permissions` section lists rules. `OK` alone takes
+  every recommended answer; `OK, Q2=<answer>` overrides one; the three permission replies are `permissions.md` "When
+  to ask"'s, `write the rules` the recommended one. An `OK` that names no permission reply while rules are listed
+  gets a follow-up carrying only the permission request, since that request needs its own answer. `shakedown off` is
+  "Shakedown"'s; `triage` runs `triage.md` first.
 
 The user may swap or trim the chunk with the OK. A swapped-in issue gets the proposal's per-issue items (comments,
 earlier pieces, kind, halt questions) in a follow-up message, which is not a second question round (`permissions.md`

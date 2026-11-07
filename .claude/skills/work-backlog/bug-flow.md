@@ -21,7 +21,9 @@ Per bug, in the order the chunk proposal gave:
    no commits is removed from the main checkout after `ExitWorktree` with `action: keep` (`git worktree remove`,
    `git branch --delete`). The rest of the chunk goes on after the answer, whatever it is.
 4. **Fix it:** write the failing test, then the fix, in separate `test:` and `fix:` commits, as the global testing
-   rule asks.
+   rule asks. When a halt answer or a `Ruling:` says the change has no possible local test (`halt-questions.md`,
+   the test-driven-development entry of `sub-skill-overrides.md`), the `fix:` commit stands alone and that ruling
+   goes in the PR body.
 5. **PR**, reviewed with superpowers:requesting-code-review and merged on green CI as `SKILL.md` describes.
 
 Then return to `SKILL.md` step 8 for the findings walkthrough, which needs the user.

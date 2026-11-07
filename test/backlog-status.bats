@@ -48,8 +48,8 @@ function write_session() {
     '2026-03-04T10:00:02Z halt answers: Q1 a' \
     '2020-01-01T00:00:00Z started: 2020-01-01T00:00:00Z' \
     'at: SKILL.md step 7' \
-    '2026-03-04T10:40:00Z 160 pr 201 opened' \
-    '2026-03-04T11:00:00Z 160 pr 201 merged' > .claude/backlog/current-session.md
+    '2026-03-04T10:40:00Z #160 pr 201' \
+    '2026-03-04T11:00:00Z #160 merged' > .claude/backlog/current-session.md
 }
 
 # @description Print the lines of one section of the output, without the
@@ -68,11 +68,25 @@ function section() {
   assert_output --partial 'usage: backlog-status'
 }
 
-@test 'exits 2 outside a git repository' {
+@test 'exits 2 when neither the directory nor the script is inside a git repository' {
+  mkdir "${BATS_TEST_TMPDIR}/loose"
+  cp "${STATUS}" "${BATS_TEST_TMPDIR}/loose/backlog-status"
   cd "${BATS_TEST_TMPDIR}"
-  run "${STATUS}"
+  run "${BATS_TEST_TMPDIR}/loose/backlog-status"
   assert_failure 2
   assert_output --partial 'not inside a git repository'
+}
+
+@test 'run from outside any repository, reads the checkout the script lives in' {
+  write_session
+  mkdir --parents .claude/skills/work-backlog
+  cp "${STATUS}" .claude/skills/work-backlog/backlog-status
+  mkdir "${BATS_TEST_TMPDIR}/elsewhere"
+  cd "${BATS_TEST_TMPDIR}/elsewhere"
+  run "${FIXTURE_REPO}/.claude/skills/work-backlog/backlog-status"
+  assert_success
+  assert_line '  session-date: 2026-03-04'
+  assert_line "  ${FIXTURE_REPO} master"
 }
 
 @test 'prints every section, and no session in progress, when there is no record' {
@@ -128,9 +142,36 @@ function section() {
   run "${STATUS}"
   assert_equal "$(section 'Issues')" "$(printf '%s\n' \
     '  issue 160' \
-    '    last: 2026-03-04T11:00:00Z 160 pr 201 merged' \
+    '    last: 2026-03-04T11:00:00Z #160 merged' \
     '  issue 159 after 160' \
     '    no event yet')"
+}
+
+@test 'the Issues section matches an event by its #N token, never by digits in a timestamp or another number' {
+  printf '%s\n' 'session-date: 2026-02-03' \
+    '2026-02-03T14:02:11Z flow: bug' \
+    '2026-02-03T14:02:11Z issue 31' \
+    '2026-02-03T14:02:11Z issue 1' \
+    '2026-02-03T14:31:50Z #99 pr 57' \
+    '2026-02-03T14:40:00Z #131 merged' \
+    'at: merging.md step 1' > .claude/backlog/current-session.md
+  run "${STATUS}"
+  assert_equal "$(section 'Issues')" "$(printf '%s\n' \
+    '  issue 31' \
+    '    no event yet' \
+    '  issue 1' \
+    '    no event yet')"
+}
+
+@test 'the Issues section lists a #N progress line as an event of issue N, not as an issue' {
+  printf '%s\n' 'session-date: 2026-02-03' \
+    '2026-02-03T14:02:11Z issue 42 kind bug' \
+    '2026-02-03T14:31:50Z #42 pr 57' \
+    '2026-02-03T14:50:00Z #42 review round 2' > .claude/backlog/current-session.md
+  run "${STATUS}"
+  assert_equal "$(section 'Issues')" "$(printf '%s\n' \
+    '  issue 42 kind bug' \
+    '    last: 2026-02-03T14:50:00Z #42 review round 2')"
 }
 
 @test 'the Parallel section lists each issue file with state, pr and the first park-note line' {
@@ -201,6 +242,35 @@ function section() {
   assert_line "  ${BATS_TEST_TMPDIR}/wt-branch topic locked (pid 4000000, dead)"
   assert_line "  ${BATS_TEST_TMPDIR}/wt-alive detached locked (pid $$, alive)"
   assert_line "  ${BATS_TEST_TMPDIR}/wt-plain-lock detached locked"
+}
+
+@test 'the Branches section lists the branches merged into main and those not merged' {
+  git branch --move master main
+  git branch done-work
+  git switch --quiet --create open-work
+  printf 'y\n' > other
+  git add other
+  git commit --quiet --message 'more'
+  git switch --quiet main
+  run "${STATUS}"
+  assert_success
+  assert_equal "$(section 'Branches')" "$(printf '%s\n' \
+    '  merged into main: done-work' \
+    '  not merged: open-work')"
+}
+
+@test 'the Branches section says none when main is the only branch' {
+  git branch --move master main
+  run "${STATUS}"
+  assert_equal "$(section 'Branches')" "$(printf '%s\n' \
+    '  merged into main: none' \
+    '  not merged: none')"
+}
+
+@test 'the Branches section says so when there is no main branch' {
+  run "${STATUS}"
+  assert_success
+  assert_equal "$(section 'Branches')" '  no main branch'
 }
 
 @test 'the Findings section counts the pending entries' {

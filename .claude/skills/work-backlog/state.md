@@ -31,17 +31,25 @@ GitHub; approvals, halt answers and spec paths survive only in this file and und
 
 - `session-date: YYYY-MM-DD`: the date of the `session-log.md` line this session's step 2 appended; a file carried
   over from an earlier session gets it rewritten (step 6).
-- `flow: bug` or `flow: feature`.
-- `issue <N>`, one line per issue in chunk order (the parallel skill appends `after <M>` for a dependency); these two
-  forms are fixed because `backlog-status` reads them.
+- `flow: bug`, `flow: feature`, or `flow: mixed` (a `/work-backlog-parallel` batch holding both kinds).
+- `issue <N> [after <M>,<K>] [piece <name>] [kind bug|feature]`, one line per issue in chunk order: `after` (the
+  parallel skill's) names the issues it depends on, `piece` an umbrella issue's piece, and `kind` is written for every
+  issue under `flow: mixed` (optional otherwise), so a session that resumes one parked issue knows its flow. These
+  forms are fixed because `backlog-status` reads them; `issue` lines are only the chunk list.
 - The halt answers and the commands the user allowed, from the chunk OK (bugs) or `feature-flow.md` step 5
   (features).
 - The spec path once `feature-flow.md` step 2 writes it, and `spec approved: <path>` after step 5.
 - Each issue's plan path.
 - Every banner halt with its answer ("Halting" in `resume.md`).
 - `started: <UTC time>`, when the unattended part began ("Budgets" in `SKILL.md` says which step writes it).
-- One line per issue as it reaches a PR, as its PR merges (or is left `pr open, not merged` by a shakedown "no",
-  `merging.md` step 2), and as its worktree is removed.
+- Progress lines, each `#<N> <event>`, so `backlog-status` can tie an event to its issue by the whole token `#<N>`:
+  `#<N> pr <number>` as the issue reaches a PR, `#<N> merged` as it merges, `#<N> pr open, not merged` when a
+  shakedown "no" leaves it (`merging.md` step 2), `#<N> left to user` after a second "no" (`leftovers.md` "To
+  resume"; the line is all that stays of the issue, so its marker PR is no longer this skill's), `#<N> worktree
+  removed` after cleanup, and the counts a compaction
+  must not reset: `#<N> review round <k>` ("Review" in `SKILL.md`), `#<N> merge retry <k>` for each `BEHIND` or
+  `DIRTY` rebase and `#<N> merge-time fix <k>` (`merging.md` step 2). A resumed session reads its counts from the
+  highest `k` recorded.
 - `at: <file> step <n>`: where the session is, rewritten in place at each step transition (`SKILL.md` "The session"
   step numbers, or a sub-file's: `at: merging.md step 1`), so a reader of a dead session's file sees where it stopped
   without inferring it from the other lines.
@@ -55,16 +63,18 @@ session-date: 2026-02-03
 2026-02-03T14:02:11Z flow: bug
 2026-02-03T14:02:11Z issue 42
 2026-02-03T14:02:11Z started: 2026-02-03T14:02:11Z
-2026-02-03T14:31:50Z issue 42 pr 57
+2026-02-03T14:31:50Z #42 pr 57
 2026-02-03T14:48:07Z at: merging.md step 1
 ```
 
-`/work-backlog-parallel` adds its own lines (`cap:`, `issue <N> after <M>`, `piece`, the `workflow-*` lines and, after
+`/work-backlog-parallel` adds its own lines (`cap:`, the `workflow-*` lines, its `started:` at launch and, after
 its Ending, `park-answer <N>: <text>` for a parked issue the user already answered; its `SKILL.md` "State"); a file
 holding them is sorted by `leftovers.md` "A parallel run's files".
 
 ## `config`
 
-The user's settings for both backlog skills, `key: value` lines: `shakedown:` ("Shakedown" in `SKILL.md`),
-`max-hours:` and `max-parked:` ("Budgets"). An absent file or key means the default; an unreadable value is the
-default too (step 6 says so in the proposal).
+The user's settings for both backlog skills, `key: value` lines: `shakedown:` for `/work-backlog` and
+`shakedown-parallel:` for `/work-backlog-parallel` ("Shakedown" in `SKILL.md`), `max-hours:` and `max-parked:`
+("Budgets"). Blank lines and `#` comment lines are allowed. An absent file or key means the default; an unreadable
+or unknown line is ignored and its default used, which `backlog-preflight` reports as a `WARN config` line that rides
+in the proposal (step 6).

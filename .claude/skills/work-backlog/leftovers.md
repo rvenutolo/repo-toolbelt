@@ -36,11 +36,13 @@ either skill may be the one that finds them.
 `current-session.md`'s `workflow-*` lines first:
 
 - `workflow-done`: the run finished and its result is recorded; only its "Ending" is left. Run
-  `/work-backlog-parallel`'s "Ending" step 1 instead of asking (redo it if its output is missing), then write the
-  items its "Ending" step 3 would name into `.claude/backlog/parallel/summary.md` before its step 4 deletes the
-  files they come from, then run its step 4 and carry on with this session. Its walkthrough is this session's step
-  4, which comes after every leftover is finished, and this session's step 9 reads `summary.md` into its own summary
-  and then deletes it, so the user gets one summary.
+  `/work-backlog-parallel`'s "Ending" step 1 (its fold, and its shakedown merge as the `ready-to-merge` bullet below
+  says) instead of asking (redo it if its output is missing), then write the items its "Ending" step 3 would name into
+  `.claude/backlog/parallel/summary.md` before its step 4 deletes the files they come from, then run its step 4 and
+  carry on with this session; its step 2 park questions and finish-now offer are this file's parked handling below, and
+  while `shakedown-parallel:` is on, its step 5 lift offer follows this session's summary. Its walkthrough is this
+  session's step 4, which comes after every leftover is finished, and this session's step 9 reads `summary.md` into its
+  own summary and then deletes it, so the user gets one summary.
 - `workflow-result` with no `workflow-done`: the run finished, and its result waits in
   `.claude/backlog/parallel/result.json`. Record from it as the parallel skill's "The run" step 5 does, delete the
   file, and treat the run as `workflow-done`.
@@ -78,8 +80,12 @@ Then fold the files, before sorting anything:
     to confirm or sort: delete the file, and the issue stays in the backlog for the next chunk.
   - `ready-to-merge`: an open PR the run built and reviewed, waiting for the shakedown's merge OK
     (`/work-backlog-parallel` "Shakedown and budgets"). Ask and merge as `/work-backlog-parallel` "Ending" step 1
-    says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On no, keep the
-    file and leave the PR open for the user.
+    says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On a first no,
+    write `state: pr open, not merged` to the file in place of `ready-to-merge` and leave the PR open: the next
+    session asks once more.
+  - `pr open, not merged`: a `ready-to-merge` issue the user said no to once. Ask again as for `ready-to-merge`; on a
+    second no, delete the file, record `#<N> left to user` in `current-session.md`, leave the PR to the user and
+    name it in the proposal, as the serial second no does ("To resume" below).
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it in the one question above before resuming that issue, recommending the
     note's answer, unless a `park-answer` line already answers it. A note the script wrote (a dependency, a batch
@@ -98,12 +104,15 @@ Then fold the files, before sorting anything:
 
 Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on the issue branch) and
 `.claude/worktrees/<runId>-<k>` (the run id itself begins `wf_`), whose branch is an issue branch, or its own
-`worktree-<runId>-<k>`, or none (detached). A `<N>.md` lists every one an issue used under `worktrees:`. Before
-sorting one: a locked one whose
-lock PID is dead ("Locked worktrees" below) is unlocked with `git worktree unlock <path>` (once the user has said no
-run is going), and one with a rebase in progress gets `git -C <path> rebase --abort`, which puts it back on its
-branch. Nothing else removes them for this skill: Claude Code removes an isolated worktree at its agent's end only
-when it is unchanged, so one that holds commits or files stays until this skill sorts it.
+`worktree-<runId>-<k>`, or none (detached). A `<N>.md` lists every one an issue used under `worktrees:`. Before sorting
+one: a locked one whose lock PID is dead ("Locked worktrees" below) is unlocked with `git worktree unlock <path>` (once
+the user has said no run is going), and one with a rebase in progress gets `git -C <path> rebase --abort`, which puts it
+back on its branch. Nothing else removes them for this skill: Claude Code removes an isolated worktree at its agent's
+end only when it is unchanged, which means no commits and no tracked or untracked file that is not ignored (the copied
+instruction files, plan, ledger and `.claude/tmp/` status files are ignored and do not count). One that holds commits or
+such files stays until this skill sorts it. A removed worktree can still leave its branch: a build that renamed its
+branch to `<type>/<N>-<description>` and died or parked before that first commit landed leaves that branch at
+`origin/main` with no worktree and no upstream.
 
 - One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, when
   `origin/<branch>` exists, bring it up to date with `git pull --ff-only origin <branch>` (later rounds pushed from
@@ -122,6 +131,10 @@ when it is unchanged, so one that holds commits or files stays until this skill 
   issue or remove it.
 - A `worktree-wf_*` branch is this skill's even with no worktree left and even when it looks like a merged branch
   the user made: delete it once `origin/main` contains it.
+- So is a `<type>/<N>-<description>` branch with no worktree, no commits beyond `origin/main` and no PR, when issue N is
+  one of the run's (an `issue <N>` line or a `<N>.md`): a build that renamed its branch and died or parked before that
+  first commit landed left it. Delete it with `git branch --delete` and name it in the summary, so a later build of the
+  issue does not clash on the name.
 
 ### Locked worktrees
 
@@ -132,10 +145,12 @@ run is going, dead means the lock is stale.
 
 ## This skill's unfinished work
 
-- An open PR whose body ends with the marker. When the body names an issue in a line that is exactly `Closes #N` or
-  `Part of #N` (a whole-line match, "PRs" in `SKILL.md`), that issue must still be open
-  (`gh issue view <number> --json state --jq .state` prints `OPEN`). A marker PR that names no issue is a "fix it
-  now" from `findings-walkthrough.md` and is this skill's as well.
+- An open PR whose body has the marker line ("The marker" in `SKILL.md`). When the body names an issue in a line that is
+  exactly `Closes #N` or `Part of #N` (a whole-line match, "PRs" in `SKILL.md`), that issue must still be open (`gh
+  issue view <number> --json state --jq .state` prints `OPEN`). A marker PR that names no issue is a "fix it now" from
+  `findings-walkthrough.md` and is this skill's as well. A marker PR whose issue has a `#<N> left to user` line in
+  `current-session.md` is not: a second shakedown "no" handed it to the user. Drop that line once the PR is merged
+  or closed.
 - A worktree under `.claude/worktrees/` whose branch has no PR, when the issue it belongs to is still open. The
   issue is the N after `<type>/` in the branch name (`<type>/<N>-<description>`, "Branches" in `SKILL.md`). A
   `fix/finding-<slug>` or `docs/finding-<slug>` branch has no issue; it is this skill's while its entry is still in
@@ -189,9 +204,11 @@ To resume:
 - A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built, since no
   record of an earlier review survives a session, unless its `<N>.md` says `ready-to-merge` (above) or it was
   recorded `pr open, not merged` (next bullet).
-- A PR recorded `pr open, not merged` by a shakedown "no" (`merging.md` step 2) was already reviewed and green: run
-  `merging.md` from step 0 and ask its shakedown question once more; on a second no, leave it to the user, name it in
-  the proposal, and go on to `SKILL.md` step 4.
+- A PR recorded `#<N> pr open, not merged` by a shakedown "no" (`merging.md` step 2; step 9 keeps that line when it
+  trims `current-session.md`) was already reviewed and green: run
+  `merging.md` from step 0 and ask its shakedown question once more; on a second no, delete that issue's lines from
+  `current-session.md` and record `#<N> left to user` in their place, leave the PR to the user, name it in the
+  proposal, and go on to `SKILL.md` step 4.
 
 ## Done
 

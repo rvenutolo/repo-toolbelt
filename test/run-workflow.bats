@@ -41,8 +41,16 @@ function run_scenario() {
   run_scenario needs-review-three-times.js
 }
 
-@test 'stopBeforeMerge leaves the issue ready-to-merge and skips its dependent' {
+@test 'stopBeforeMerge runs the merge agent with stopAtMerge, ends ready-to-merge and skips its dependent' {
   run_scenario stop-before-merge.js
+}
+
+@test 'a build that reconciles to merged still runs the merge agent before its dependent builds' {
+  run_scenario build-merged-runs-merge-tail.js
+}
+
+@test 'review, fix and merge prompts carry the piece, the halt answers and what a merge-time fix needs' {
+  run_scenario prompts-carry-piece-and-halt-answers.js
 }
 
 @test 'a skipped prerequisite skips its dependents with the fixed notes' {

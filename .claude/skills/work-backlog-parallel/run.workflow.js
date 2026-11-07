@@ -105,7 +105,8 @@ const REVIEW = {
 const MERGE = {
   type: 'object',
   properties: {
-    state: { type: 'string', enum: ['merged', 'parked', 'skipped', 'needs-review'] },
+    // ready-to-merge: the shakedown's stopAtMerge call, current and green on CI, left for the controller to merge.
+    state: { type: 'string', enum: ['merged', 'parked', 'skipped', 'needs-review', 'ready-to-merge'] },
     parkNote: str, batchHalt: str, mergeWorktree: str, conflictedFiles: strs, leftInPlace: strs,
     rulings: strs, findings,
     // For needs-review: what the change under review is for, the failure it answers, and the commit the reviewer
@@ -164,6 +165,8 @@ const unlessHalted = (start) => {
   })
 }
 const haltNote = () => `Batch halted: ${batchHalt}`
+// Notes are joined into one paragraph, so each part must end its own sentence.
+const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`)
 // The agent that hit a batch-level failure reports it in batchHalt and may leave parkNote empty. A park with no note
 // at all still needs one: the summary and leftovers.md ask the user the note's question. A skip with no note is the
 // user closing the issue or its PR (the only skip an agent makes without a note), and the summary must say so.
@@ -242,9 +245,16 @@ const UNSTARTED = {
   skipped: (m) => `Not started: #${m} did not merge: ${records[m].note}`,
 }
 
-async function mergeIssue(rec) {
+const READY_NOTE = 'Reviewed; waits for the user\'s OK to merge.'
+
+// stopAtMerge carries the shakedown: the merge agent rebases, runs the gate and waits for green CI, then returns
+// ready-to-merge without merging, so the shakedown exercises the queue and the controller asks before the merge.
+async function mergeIssue(rec, item) {
   if (batchHalt) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
-  const inputs = { n: rec.n, branch: rec.branch, pr: rec.pr, worktrees: rec.worktrees, date: A.date, main: A.main }
+  const inputs = {
+    n: rec.n, branch: rec.branch, pr: rec.pr, worktrees: rec.worktrees, kind: item.kind, spec: item.spec,
+    plan: rec.plan, haltAnswers: item.haltAnswers, stopAtMerge: A.stopBeforeMerge, date: A.date, main: A.main,
+  }
   let resolutionReviewed = false
   let resolutionFindings = []
   let mergeWorktree = ''
@@ -260,9 +270,9 @@ async function mergeIssue(rec) {
     state: 'parked', batchHalt: cause,
     parkNote: !mergeWorktree ? note
       : lastReason === 'ci'
-        ? `${note} The worktree ${mergeWorktree} holds a rebased ${rec.branch} that is ahead of ` +
+        ? `${sentence(note)} The worktree ${mergeWorktree} holds a rebased ${rec.branch} that is ahead of ` +
           `origin/${rec.branch} by an unpushed fix.`
-        : `${note} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
+        : `${sentence(note)} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
           `origin/${rec.branch}.`,
   })
   // A conflict resolution, or a fix for the gate or CI, goes to review and back; main can move during CI and force
@@ -362,6 +372,9 @@ async function runIssue(item) {
     budgetStopped.add(n)
     return end(rec, 'skipped', deadlineNote())
   }
+  // A build that reconciled to merged (its merge agent died after the merge) still needs the queue's pull and
+  // cleanup: the merge agent's section 1 takes a MERGED PR straight there.
+  if (build.state === 'merged') return mergeAndEnd(rec, item)
   if (build.state !== 'ready') return end(rec, build.state, writerNote(build))
   // Every review, fix and merge prompt names the branch and PR; without them the rest would act on nothing.
   if (!build.branch || !build.pr) return end(rec, 'parked', 'The build agent returned ready without a branch or PR.')
@@ -372,8 +385,9 @@ async function runIssue(item) {
     if (batchHalt) return end(rec, 'parked', haltNote())
     const review = await ask(
       prompt('agents.md', 'Review', {
-        n, round, kind: item.kind, spec: item.spec, branch: rec.branch, pr: rec.pr, headWorktree: head,
-        plan: rec.plan, worktrees: rec.worktrees, build: last, main: A.main,
+        n, round, kind: item.kind, spec: item.spec, piece: item.piece, haltAnswers: item.haltAnswers,
+        branch: rec.branch, pr: rec.pr, headWorktree: head, plan: rec.plan, worktrees: rec.worktrees, build: last,
+        main: A.main,
       }),
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
     if (!review) return end(rec, 'parked', dead(`round ${round} review agent`))
@@ -394,8 +408,9 @@ async function runIssue(item) {
     if (!review.changeFindings.length) break
     const fix = await slot(() => unlessHalted(() => ask(
       prompt('agents.md', 'Fix', {
-        n, round, kind: item.kind, branch: rec.branch, pr: rec.pr, spec: item.spec, plan: rec.plan,
-        changeFindings: review.changeFindings, date: A.date, main: A.main,
+        n, round, kind: item.kind, branch: rec.branch, pr: rec.pr, spec: item.spec, piece: item.piece,
+        haltAnswers: item.haltAnswers, plan: rec.plan, changeFindings: review.changeFindings, date: A.date,
+        main: A.main,
       }),
       { label: `fix #${n} r${round}`, phase: 'Fix', schema: WRITER, isolation: 'worktree' })
       .then((r) => countPark(rec, r))), { priority: true })
@@ -416,10 +431,14 @@ async function runIssue(item) {
     if (!fix.changed) break
   }
 
-  // The shakedown leaves the merge to the controller, which asks the user first (SKILL.md "Ending").
-  if (A.stopBeforeMerge) return end(rec, 'ready-to-merge', 'Reviewed; waits for the user\'s OK to merge.')
-  const merged = await serial(() => mergeIssue(rec))
+  return mergeAndEnd(rec, item)
+}
+
+async function mergeAndEnd(rec, item) {
+  const merged = await serial(() => mergeIssue(rec, item))
   halt(merged.batchHalt)
+  // The shakedown's merge is the controller's, after the user's OK (SKILL.md "Ending"); its worktree stays for it.
+  if (merged.state === 'ready-to-merge') return end(rec, 'ready-to-merge', READY_NOTE)
   if (merged.leftInPlace && merged.leftInPlace.length) rec.leftInPlace = merged.leftInPlace
   else if (merged.state === 'skipped') rec.leftInPlace = [...rec.worktrees]
   return end(rec, merged.state, writerNote(merged))
