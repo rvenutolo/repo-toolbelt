@@ -307,10 +307,10 @@ those steps refer to.
   PR, leave a `TODO` or decide for itself what is worth reporting. The filing bar is the controller's to apply,
   after the report; a reviewer told what not to flag reviews with a blind spot (`sub-skill-overrides.md`). A
   reviewer inspects the branch with `git diff` and `git show`, never by adding a worktree of its own, which the next
-  session's step 3 would report as the user's work. The prompt also says: `git commit` and every `./.ci/in-devshell`
-  command run in the foreground with the Bash tool `timeout: 600000`, never backgrounded and never retried while one
-  may still be running. The user's two-minute default timeout would otherwise background them, and a subagent that
-  retries a commit meets the first one's `index.lock`, or reports a task done before its tests finish.
+  session's step 3 would report as the user's work. The prompt also says: `git commit`, `./run-tests` and every
+  `./.ci/in-devshell` command run in the foreground with the Bash tool `timeout: 600000`, never backgrounded and never
+  retried while one may still be running. The user's two-minute default timeout would otherwise background them, and a
+  subagent that retries a commit meets the first one's `index.lock`, or reports a task done before its tests finish.
 
 ## The filing bar
 
