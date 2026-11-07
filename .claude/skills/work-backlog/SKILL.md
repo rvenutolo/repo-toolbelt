@@ -33,10 +33,8 @@ what gets built, or when it is a merge under shakedown; everything else the sess
   then the findings walkthrough.
 - **Either:** a question-banner halt when a decision changes what gets built (a not-a-bug finding, `bug-flow.md`
   step 3, is one), and a blocked-banner halt when something outside the session's control stops it: a failed `gh`
-  call, what `merging.md` and "Long commands" name, commit signing that fails, or Docker unreachable or
-  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/test-image`, the one step that needs a container (the
-  user's global Docker rule forbids running one then; the halt on it happens there and nowhere else, and the
-  preflight's `ip-forward` line is only a WARN). Both are recorded as `resume.md` "Halting" says.
+  call, what `merging.md` and "Long commands" name (Docker unreachable before the image test among them), or commit
+  signing that fails. Both are recorded as `resume.md` "Halting" says.
 
 ## Arguments
 
@@ -50,8 +48,7 @@ The invocation's arguments, in any order:
   of both kinds make the bugs this chunk and the features the runner-up, said in the proposal, because a chunk
   follows one flow.
 - **`short` or `long`:** the chunk size, at most two PRs or at most four ("Size" in `choosing.md`); without one the
-  size rule stands. Shakedown ignores both, since its chunk is one issue. `/work-backlog-parallel` reads the same two
-  words as its batch sizes, so a habit formed there costs no question here.
+  size rule stands. Shakedown ignores both (one issue under "Shakedown").
 - **Anything else:** ask with the question banner, listing the valid forms, before step 1.
 
 ## Terms
@@ -68,8 +65,7 @@ The invocation's arguments, in any order:
 - **Banners:** the `❓❓❓❓❓` (question) and `🚧🚧🚧🚧🚧` (blocked) lines the global "Attention Banners" rule
   requires as the first line of a message that waits for the user, and the `✅✅✅✅✅` (done) line, on the summary
   and on a `plan` run's proposal. A question-banner halt resumes after the answer; a blocked-banner halt ends the
-  unattended part until the user has acted. The shakedown lift offer ("Shakedown") waits for an answer, so it is a
-  question-banner follow-up after the summary, not part of it.
+  unattended part until the user has acted.
 - **Halt question:** a question the unattended part would otherwise stop to ask; the global "Unattended Execution /
   Pre-Answer Halt Questions" rule calls them halt points. The chunk proposal (bugs) or the question round (features)
   asks every likely one in advance, each with a recommended answer and a one-line reason.
@@ -115,9 +111,8 @@ from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=
 state files are written there and nowhere else, and only from the main checkout ("Leaving to write"); reading them
 from inside a worktree is fine.
 
-Every line appended to `current-session.md` after its first starts with the UTC time, and one `at:` line names the file
-and step the session is in, rewritten at each step (`state.md`), so a dead session's record says when it stopped and
-where. `<main>/.claude/skills/work-backlog/backlog-status` reads these files, the parallel run's files, the session's
+`current-session.md` lines carry their UTC time and an `at:` line names where the session is (`state.md`).
+`<main>/.claude/skills/work-backlog/backlog-status` reads these files, the parallel run's files, the session's
 open PRs, the worktrees and the local branches merged and not merged into `main`, and prints a session's state; it is
 read-only and runs from any terminal, so the user can watch an unattended run without touching the session, and
 `leftovers.md` opens with it.
@@ -137,10 +132,8 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
    Every later `gh` call is retried as "Failed `gh` call" ("Terms") says.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
    `current-session.md`: its existence means unfinished work; step 3 reads it). Append `YYYY-MM-DD open=N` to
-   `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless today's line
-   exists without `done`: that is this session restarted, so keep it and add none. A line whose date is the
-   `session-date:` of a carried-over `current-session.md` holding `workflow-*` lines belongs to that run, even
-   today: append this session's own line. Any other line, whatever its date, is another session's.
+   `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless this session
+   already appended one (a restart; `state.md` "`session-log.md`" says how to tell).
 3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
    empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
    `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
@@ -167,9 +160,9 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
 9. **Summary.** Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the
    `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that
    date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it
-   (leave it as it is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a `#<N>
-   left to user` line: trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so the
-   next session's step 3 still knows the first "no" was given.
+   (leave it as it is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a
+   `#<N> left to user` line: trim it to those issues and lines, as `/work-backlog-parallel`'s "Ending" step 4 says, so
+   the next session's step 3 still knows the first "no" was given.
 
 ## Choosing the chunk
 
@@ -236,16 +229,19 @@ those steps refer to.
   Writes that fall together share one round trip. Never write a main-checkout file from inside a worktree with Bash
   (`cp`, a redirect): it may get through only because the guard checks the file tools and `git`, not Bash paths, and
   a stricter guard would stop an unattended run partway.
-- **Long commands:** the pre-push gate (`git push`), the baseline tests, the baseline regeneration and the CI watch
-  each run for minutes, past the Bash tool's two-minute default and sometimes its ten-minute foreground maximum. Run
-  them with `run_in_background` and read the output when the command exits (a foreground timeout is not a failure).
-  Each runs as `timeout 30m <command>` (the global rule for commands that could hang; permission matching strips the
-  `timeout`, so the command's own allow rule still applies). Exit 124 means it hung: a blocked-banner halt naming the
-  command and its last output, never a silent rerun. A step that says to wait a minute runs `sleep 60` with
-  `run_in_background` and goes on when its completion notification arrives; never a foreground `sleep`, which the
-  harness blocks. `git commit` is a long command of another kind: both commit hooks run through the devShell (the
-  pre-commit hook also builds the runner, the commit-msg hook runs commitlint), minutes the first time, so run it in the
-  foreground with the Bash tool `timeout: 600000`, with no `timeout 30m` and no background.
+- **Long commands:** the pre-push gate (`git push`), the baseline tests, the baseline regeneration and the CI watch each
+  run for minutes, past the Bash tool's two-minute default and sometimes its ten-minute foreground maximum. Run them
+  with `run_in_background` and read the output when the command exits (a foreground timeout is not a failure). Each runs
+  as `timeout 30m <command>` (the global rule for commands that could hang; permission matching strips the `timeout`, so
+  the command's own allow rule still applies). Exit 124 means it hung: a blocked-banner halt naming the command and its
+  last output, never a silent rerun. A step that says to wait a minute runs `sleep 60` with `run_in_background` and goes
+  on when its completion notification arrives; never a foreground `sleep`, which the harness blocks. `git commit` is a
+  long command of another kind: both commit hooks run through the devShell (the pre-commit hook also builds the runner,
+  the commit-msg hook runs commitlint), minutes the first time, so run it in the foreground with the Bash tool `timeout:
+  600000`, with no `timeout 30m` and no background. `./.ci/test-image` is the one step that runs a container: right
+  before it, Docker unreachable or `sysctl net.ipv4.ip_forward` not 1 is a blocked-banner halt, since the user's global
+  Docker rule forbids running one then. The halt happens there and nowhere else; the preflight's `ip-forward` line is
+  only a WARN.
 - **Copied rules:** a conflict with a copied rule in `.claude/rules/` that only surfaces during the unattended part
   is settled by satisfying the rule, and named in the summary. `.claude/CLAUDE.md` asks the user about such a
   conflict, but nobody is there to answer, and satisfying the rule is the choice that never needs undoing. A conflict
@@ -359,15 +355,16 @@ session that ends before the chunk is done leaves what `resume.md` "Ending early
 Until the user has watched one run go through end to end, an unattended merge is a step taken on trust, so both
 backlog skills start in shakedown: `shakedown: on` is the default while `.claude/backlog/config` does not say `off`
 (step 6 reads the file). `/work-backlog-parallel` reads its own key, `shakedown-parallel:`, with the same default,
-because a run that merged serially has not exercised its merge queue; lifting one never lifts the other. While it is
-on, a chunk is one issue: form and order the chunk as usual, then take its first issue as the chunk and name the rest
-as the runner-up, ahead of the runner-up chunk (`choosing.md` "The proposal"); with named issues, the first named
-bug, or the first named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the
-question banner once CI is green, recorded as `resume.md` "Halting" says. After the summary, a question-banner follow-up
-offers to lift it ("Banners"); on the user's yes, write the skill's own key off (`shakedown: off` here) to the config
-(create the file, or replace the key's line). The user may also turn it off or on with the chunk OK. Turned off with the
-OK: write `shakedown: off` then, and send a full-size proposal (its halt questions included) as a follow-up before
-starting (`permissions.md` "When to ask" says why a follow-up is allowed). Turned on: the chunk is its first issue.
+because a run that merged serially has not exercised its merge queue; lifting one never lifts the other. While it is on,
+a chunk is one issue: form and order the chunk as usual, then take its first issue as the chunk and name the rest as the
+runner-up, ahead of the runner-up chunk (`choosing.md` "The proposal"); with named issues, the first named bug, or the
+first named issue when none is a bug. Its merge waits for the user's OK: `merging.md` step 2 asks with the question
+banner once CI is green, recorded as `resume.md` "Halting" says. After the summary, a question-banner follow-up, not
+part of the summary since it waits for an answer, offers to lift it; on the user's yes, write the skill's own key off
+(`shakedown: off` here) to the config (create the file, or replace the key's line). The user may also turn it off or on
+with the chunk OK. Turned off with the OK: write `shakedown: off` then, and send a full-size proposal (its halt
+questions included) as a follow-up before starting (`permissions.md` "When to ask" says why a follow-up is allowed).
+Turned on: the chunk is its first issue.
 
 ## Budgets
 

@@ -67,7 +67,7 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
    with no commits would outlive it and read to every later session as the user's. Copy the instruction files, and
    for a feature `<main>/<spec>`, as the "Worktrees" bullet says, reading each from `<main>/`; read the copied rules
    that apply to the files you will change. A change the issue makes to what `.claude/CLAUDE.md` says
-   is a `Ruling:` naming the edit (`/work-backlog-parallel` `SKILL.md` "Named exceptions"), never an edit here. Then
+   is a `Ruling:` naming the edit (`common.md` "Exceptions to `/work-backlog`"), never an edit here. Then
    run the baseline the "Worktrees" bullet names, before changing anything; red is never fixed as part of this
    issue.
 3. **Build.**
@@ -88,7 +88,7 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
      you that line is step 4 below: push, PR, return. Where the merged code of an earlier piece contradicts the
      spec, the code wins and the divergence is a ruling.
 4. **Push and open the PR.** Only here: the "PRs" bullet's early push and early PR do not apply to a build agent
-   (`/work-backlog-parallel` `SKILL.md` "Named exceptions"), because step 1 takes any open PR for a finished build,
+   (`common.md` "Exceptions to `/work-backlog`"), because step 1 takes any open PR for a finished build,
    and a resumed run would
    merge a half-built one.
    `git push --set-upstream origin <branch>` (or the detached form from step 1). A pre-push gate failure is fixed
@@ -177,7 +177,7 @@ Inputs: `n`, `round`, `kind`, `branch`, `pr`, `spec` (repo-relative, empty for a
 agent; for an umbrella piece, a finding asking for another piece's work is dropped with a ruling.
 
 1. **Reconcile and check out:** `git fetch origin <branch>`, then `git switch --detach FETCH_HEAD`. Fix commits carry a
-   `Review-round: <round>` trailer (`/work-backlog-parallel` `SKILL.md` "Named exceptions"); a commit on the branch
+   `Review-round: <round>` trailer (`common.md` "Exceptions to `/work-backlog`"); a commit on the branch
    with this round's trailer
    means a resumed fix: continue from the findings it does not cover. Copy `<main>/.claude/CLAUDE.md` and
    `<main>/.claude/rules/` in, and for a feature `<main>/<spec>`, as Build step 2 does. For a feature, `<main>/<plan>`

@@ -1,8 +1,7 @@
 # Triage
 
 Runs only when the backlog has stalled (`SKILL.md` step 5) and the user replied `triage` to the proposal ("The
-proposal" in `choosing.md`): a backlog of deliberately filed families stalls by design while the user files faster
-than a session closes, so triage is the user's call, and it never reads every open issue. Judge:
+proposal" in `choosing.md`; step 5 says why it is never run unasked). It never reads every open issue. Judge:
 
 - **Bugs**, every open one, against the filing bar in `SKILL.md`.
 - **Features** only when something marks one as possibly no longer wanted: its `refs` or `umbrella` row in the index

@@ -48,13 +48,16 @@ Take the first that matches:
 
 ## What to read, when
 
-Read `/work-backlog` `SKILL.md` in full before "The session": it governs this session. Its sub-files and the files
-beside this one are read at the step that uses them, not up front; the agents read the build, fix and merge
-procedures, so the controller does not.
+`/work-backlog` `SKILL.md` governs this session, but its "Doing the work" and "Merging" describe one issue built by
+the controller, which here happens only at "Ending" or when step 1 finishes leftover work; read them then. Its
+sub-files and the files beside this one are read at the step that uses them, not up front; the agents read the build,
+fix and merge procedures, so the controller does not.
 
 - **First, always:** `current-session.md` and the matching case of "On invocation" above. A case that names a step
   goes there; only "None of these" starts at "The session".
-- **Before "The session":** `/work-backlog` `SKILL.md`.
+- **Before "The session":** `/work-backlog` `SKILL.md` from the top through "Choosing the chunk", then "The filing
+  bar", "Out-of-scope findings", "Shakedown", "Budgets", "Never" and "Red flags".
+- **When step 1 finishes leftover work, and at "Ending":** its "Doing the work" and "Merging" too.
 - **After a compaction, or when a halt is recorded:** `/work-backlog` `resume.md` ("On invocation" says which of its
   steps apply here).
 - **"The session" step 1:** the files `/work-backlog` steps 1–5 name as they come up (`leftovers.md`,
@@ -90,9 +93,8 @@ run stopped with no completion record, and relaunches it with the same `scriptPa
 ## Arguments
 
 `/work-backlog` "Arguments" holds: `plan` (its serial steps are in `plan.md`), issue numbers and an unknown argument
-behave as it says. `short` and `long` are the same words there, but here they pick the batch size `planning.md`
-"Choosing the batch" defines, not a chunk cap (a named exception below); without one the proposal is the short batch.
-Named issues make the batch, so a size beside them is ignored.
+behave as it says; `short` and `long` are batch sizes here (a named exception below). Without one the proposal is the
+short batch. Named issues make the batch, so a size beside them is ignored.
 
 In plan-only mode, step 0's two checks report instead of asking (a missing Workflow tool and the permission mode go
 in the printed proposal), the preflight prints as `plan.md` step 1 says, and step 2 prints `planning.md`'s proposal
@@ -104,13 +106,10 @@ the specs they would need. The run and "Ending" never start.
 
 `/work-backlog` "Shakedown" and "Budgets" hold, carried into the run by its args ("The run" step 1):
 
-- **While the shakedown is on**, the batch is one issue (`planning.md` gives the cap) and `stopBeforeMerge` is true.
-  This skill's shakedown is the config key `shakedown-parallel:`, not `shakedown:`: on while
-  `.claude/backlog/config` does not say `off`, and lifted on its own, so a shakedown watched in one skill never lifts
-  the other's, whose merges run differently. Under it the merge agent still runs, with `stopAtMerge`: it rebases if
-  behind, runs the gate, pushes and waits for green CI, then stops the issue as `ready-to-merge` without merging,
-  leaving its rebase worktree in place; "Ending" step 1 asks the user before merging it. A workflow agent cannot
-  ask anyone, so only the merge itself moves to the controller, and the shakedown still exercises the merge queue.
+- **While the shakedown is on** (this skill's own key, `shakedown-parallel:`, a named exception below), the batch is
+  one issue (`planning.md` gives the cap) and `stopBeforeMerge` is true: the merge agent runs with `stopAtMerge`,
+  rebasing if behind, running the gate, pushing and waiting for green CI, then stops the issue as `ready-to-merge`
+  without merging and leaves its rebase worktree in place for "Ending" step 1.
 - **The time budget** is `deadline`: `max-hours` from the launch time, computed as "Budgets" computes it from
   `started:`, right before launch, and "The run" step 3 writes that launch time as the `started:` line. A build agent
   that would start fresh after it skips its issue (`agents.md` "Build" step 2); the script cannot read the clock. The
@@ -144,8 +143,7 @@ reports as the script failing is handled as a lost run ("The run" step 4).
   and the dependency graph, not relatedness, keeps conflicting work apart. An issue's kind is decided as "Kinds" in
   `choosing.md` says.
 - **Feature batches** get one brainstorm and spec per family, then one combined question round and one permission
-  request (`planning.md`). A mixed batch asks its bug halt questions in that round. Every likely halt question is
-  asked, as `/work-backlog` asks it: a park answers nothing, it only moves the question to a later session.
+  request (`planning.md`). A mixed batch asks its bug halt questions in that round.
 - **An umbrella issue builds one piece per batch.** The script runs one build per issue number, so a batch holds at
   most one piece of an umbrella issue, named by its `piece`; its PR says `Part of #N` unless the piece is the
   spec's last. Replaces the run of every piece in one session that "PRs" describes.
@@ -165,21 +163,21 @@ reports as the script failing is handled as a lost run ("The run" step 4).
   applies to it; from "Ending" on, the shakedown merge and a "fix it now" in the walkthrough enter a worktree as
   `/work-backlog` says. Replaces the re-enter step of "After a compaction" in `resume.md` during the run (the
   controller follows "On invocation" instead). Agents never enter or leave one either (`common.md`).
-- **A permission-mode question before planning.** Adds a halt to "The session" step 0, ahead of `/work-backlog`'s
-  steps: an agent that meets a prompt stalls its issue and every dependent.
-- **A permission refusal is not an answer.** `permissions.md` lets a serial run go on after `skip the permissions`;
-  here the run proceeds only when the session is bypassed or every rule string is matched ("The run" step 2),
-  because an agent that meets a prompt stalls its issue and every dependent. So the parallel proposal's `Reply` line
-  leaves that form out (`planning.md` "The proposal").
+- **Permissions are settled before planning, and a refusal is not an answer.** "The session" step 0 adds a
+  permission-mode question ahead of `/work-backlog`'s steps, and where `permissions.md` lets a serial run go on after
+  `skip the permissions`, here the run proceeds only when the session is bypassed or every rule string is matched
+  ("The run" step 2), so the parallel proposal's `Reply` line leaves that form out (`planning.md` "The proposal").
+  `permissions.md` "Workflow agents add" says why.
 - **`OK, short` and `OK, long` replies.** The parallel `Reply` line adds them, so the user can take the other batch
   size the proposal names as its `Runner-up` without a second proposal round; a serial chunk has no second size.
-- **Its own shakedown key**, `shakedown-parallel:` ("Shakedown and budgets"). Replaces `shakedown:` for this skill:
-  the parallel merge queue is a different procedure from the serial merge, so watching one does not vouch for the
-  other.
+- **Its own shakedown key**, `shakedown-parallel:`, on while `.claude/backlog/config` does not say `off` and lifted
+  on its own ("Ending" step 5). Replaces `shakedown:` for this skill: the parallel merge queue is a different
+  procedure from the serial merge, so watching one does not vouch for the other.
 - **The shakedown merge question is asked at "Ending"**, not at the time "The proposal" in `choosing.md` predicts
-  from the OK: the merge agent stops the issue as `ready-to-merge` on green CI, and the controller runs `merging.md`
-  steps 0–1 in the issue's worktree, asks as its step 2 does, then runs steps 2–4 ("Ending" step 1). `planning.md`'s
-  proposal gives its own `Shakedown:` line.
+  from the OK: a workflow agent cannot ask anyone, so only the merge itself moves to the controller, and the
+  shakedown still exercises the merge queue up to it. The merge agent stops the issue as `ready-to-merge` on green
+  CI, and the controller runs `merging.md` steps 0–1 in the issue's worktree, asks as its step 2 does, then runs
+  steps 2–4 ("Ending" step 1). `planning.md`'s proposal gives its own `Shakedown:` line.
 - **`workflow-launching:`** is a `current-session.md` line written right before the Workflow tool is invoked
   ("State"), so a death between the invocation and its return leaves a trace that "On invocation" sends to the
   trace check instead of planning again.
@@ -188,34 +186,8 @@ reports as the script failing is handled as a lost run ("The run" step 4).
 
 ### For workflow agents
 
-Each rule below is stated in full in the agents' file it names; this list only records what it replaces and why.
-
-- **A refused pull of local `main` ends the run** (`merge-queue.md` section 6): `merging.md` step 3 carries on from
-  `origin/main`, but here every later merge would hit the same refusal.
-- **Some rebase conflicts are resolved**, not halted on (`merge-queue.md` "3. Conflicts"): the list, registry,
-  baseline and changelog conflicts concurrent builds make by design, and a code conflict between two of the batch's
-  own PRs; any other parks the issue. Replaces `merging.md` step 2's conflict blocked banners for those only.
-- **Worktrees are made by the workflow** (`agents.md`): build and fix agents run in tool-made
-  `.claude/worktrees/<runId>-<k>` worktrees (the run id begins `wf_`; `k` counts the run's agents) from
-  `origin/main`, and the merge queue makes `.claude/worktrees/merge-<N>`. Replaces "Worktrees" creation; branch
-  names still follow "Branches", and the baseline run is the build agent's.
-- **Nothing shared is written mid-run by a builder** (`common.md` "Shared state is not yours"): spec and
-  `.claude/CLAUDE.md` changes are `Ruling:` lines the controller applies at the end, and the review stage copies
-  the plan. Replaces "Leaving to write" for workflow agents.
-- **Agents wait with `wait-for`** (`common.md` "Long commands"): a background notification reaches an agent only
-  while it keeps working. Replaces "Long commands" for workflow agents.
-- **No early push or early PR for a build agent** (`agents.md` "Build" step 4): a resumed run takes any open PR as a
-  finished build. Replaces the early push and early PR of "PRs" for build agents.
-- **The plan's workspace is deleted after the PR exists** (`agents.md` "Build" step 4), not at the plan's "Finish":
-  a build that dies before its push would otherwise leave a branch with no ledger to resume from.
-- **Fix commits carry a `Review-round: <round>` trailer** (`agents.md` "Fix"), so a re-run fix agent sees which
-  findings the dead one covered; the serial controller remembers that itself.
-- **No nested subagents** (`agents.md` "Review"): workflow agents have no subagent tool, so
-  superpowers:subagent-driven-development is never chosen, superpowers:executing-plans' final review is skipped, and
-  the review stage performs `code-reviewer.md`'s review in place of superpowers:requesting-code-review. The two-round
-  cap holds: a round is one review stage plus one fix stage. The controller, which can dispatch, still runs
-  superpowers:requesting-code-review where the serial flow calls for it (a merge-time fix at the shakedown merge, a
-  leftover finished serially).
+Recorded, with their reasons, in `common.md` "Exceptions to `/work-backlog`", which the agents read; the controller
+needs none of them.
 
 ## State
 
@@ -283,26 +255,23 @@ timestamp and `at:` rules, and `backlog-status` ("State") shows a run from any t
    `current-session.md` records them, empty when none do. The script rejects malformed args before any agent
    starts. Record nothing in `current-session.md` yet: the `workflow-*` lines are written together in step 3, so a
    restart between here and the launch finds a planned batch, not a run.
-2. **Check before launching.** Nobody will answer a prompt: an agent that meets one holds its slot and stalls its
-   issue and every issue that depends on it.
+2. **Check before launching.** Nobody will answer a prompt (`permissions.md` "Workflow agents add" says what one
+   costs).
    - **Permissions:** `/work-backlog` `permissions.md`, its "Rule strings" and "Workflow agents add", checked with
      the re-read right before the unattended part it describes. The run proceeds when the session runs with
      permissions bypassed or every rule string is matched; otherwise ask the user to add the missing ones, naming
      them, or to restart in bypass mode ("On invocation" picks the batch up again). Workflow agents run with the
      session's permission mode and allow rules.
-   - **Signing:** `permissions.md` "Signing".
-   - **Local `main`:** the checks `permissions.md` "When to ask" makes right before the unattended part (the main
-     checkout on `main`, with no local commit `origin/main` lacks). Workflow worktrees start from `origin/main`, so
-     the user's local commits never reach a build, but the merge queue's pull of `main` would refuse them.
+   - **Signing and local `main`:** rerun `backlog-preflight`, as `permissions.md` "When to ask" says; any `FAIL`
+     stops the launch. Workflow worktrees start from `origin/main`, so the user's local commits never reach a build,
+     but the merge queue's pull of `main` would refuse them.
 3. Write `workflow-launching:` with the args path to `current-session.md`, then invoke the Workflow tool with
    `scriptPath` set to the script's absolute path and `args` set to the file's contents (as a JSON value, not a
    string). The tool returns at once with the run id; the moment it does, replace that line with
    `workflow-script: .claude/skills/work-backlog-parallel/run.workflow.js`, `workflow-args:` with the args path,
    `workflow-run: <runId>` and `started: <time>` together, the time being the one step 1 computed `deadline` from, so
    `report.md`'s `Timings` measure this run as they measure a serial one. Then wait for the completion
-   notification; do not poll.
-   Skipping a stuck agent from `/workflows` takes two skips: the script cannot tell a skip from an API failure, so it
-   retries the agent once, then parks the issue; after a batch halt it is not retried. A run that fails with
+   notification; do not poll. A run that fails with
    "run-args.json is invalid" started no agent: write no result, correct the file, drop the `workflow-*` and
    `started:` lines and launch again. A result that reports the script itself failing is a lost run: go to step 4's
    trace check (the search for PRs and `wf_*` worktrees), skipping its resume advice.

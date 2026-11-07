@@ -9,6 +9,11 @@ One line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at th
 `done` when the session reaches its summary, so a line without it is a session that did not reach its summary and
 says nothing about the backlog. No header or other lines, because the stall check (step 5) counts lines.
 
+Which line is this session's, for step 2: a line dated today without `done` is this session restarted, so step 2
+keeps it and appends none. A line whose date is the `session-date:` of a carried-over `current-session.md` holding
+`workflow-*` lines belongs to that parallel run, even when dated today, so step 2 appends this session's own line. Any
+other line, whatever its date, is another session's.
+
 ## `pending-findings.md`
 
 Out-of-scope findings waiting for the user's decision, one entry each:
@@ -50,9 +55,11 @@ GitHub; approvals, halt answers and spec paths survive only in this file and und
   must not reset: `#<N> review round <k>` ("Review" in `SKILL.md`), `#<N> merge retry <k>` for each `BEHIND` or
   `DIRTY` rebase and `#<N> merge-time fix <k>` (`merging.md` step 2). A resumed session reads its counts from the
   highest `k` recorded.
-- `at: <file> step <n>`: where the session is, rewritten in place at each step transition (`SKILL.md` "The session"
-  step numbers, or a sub-file's: `at: merging.md step 1`), so a reader of a dead session's file sees where it stopped
-  without inferring it from the other lines.
+- `at: <file> step <n>`: where the session is (`SKILL.md` "The session" step numbers, or a sub-file's:
+  `at: merging.md step 1`), so a reader of a dead session's file sees where it stopped without inferring it from the
+  other lines. It is rewritten in place whenever the session already writes `current-session.md`, and on entering or
+  leaving a worktree; never with a round trip out of a worktree of its own ("Leaving to write" in `SKILL.md`), which
+  would cost four tool calls a step. So a stale `at:` means "at or after" that step.
 
 Every line after `session-date:` starts with the UTC time it was written, `date --utc +%FT%TZ`, then a space; the
 `at:` line carries the time of its last rewrite. The times give `backlog-status` (`SKILL.md` "State") something to
