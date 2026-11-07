@@ -76,6 +76,30 @@ function allow() {
   assert_output ''
 }
 
+@test 'from a worktree, reads the main checkout settings, not the worktree copies' {
+  git config user.name 'Test'
+  git config user.email 'test@example.invalid'
+  git config commit.gpgsign false
+  git commit --quiet --allow-empty --message 'init'
+  git worktree add --quiet --detach "${BATS_TEST_TMPDIR}/wt"
+  mkdir "${BATS_TEST_TMPDIR}/wt/.claude"
+  allow "${FIXTURE_REPO}/.claude/settings.local.json" 'Bash(d)'
+  allow "${BATS_TEST_TMPDIR}/wt/.claude/settings.json" 'Bash(w)'
+  cd "${BATS_TEST_TMPDIR}/wt"
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(d)' 'Bash(w)'
+  assert_success
+  assert_output 'Bash(w)'
+}
+
+@test 'outside a git repository, reads the settings under the working directory' {
+  mkdir --parents "${BATS_TEST_TMPDIR}/plain/.claude"
+  allow "${BATS_TEST_TMPDIR}/plain/.claude/settings.json" 'Bash(p)'
+  cd "${BATS_TEST_TMPDIR}/plain"
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(p)' 'Bash(q)'
+  assert_success
+  assert_output 'Bash(q)'
+}
+
 @test 'counts a rule present only when listed verbatim, and names the wider rule that covers it' {
   allow "${CLAUDE_CONFIG_DIR}/settings.json" 'Bash(git *)'
   run --separate-stderr "${PERMISSION_DIFF}" 'Bash(git fetch *)'

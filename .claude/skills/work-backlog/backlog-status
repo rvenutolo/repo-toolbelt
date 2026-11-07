@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 
-# @description Show where a backlog session stands, from any directory in the
-#              checkout or one of its worktrees and without a Claude session:
+# @description Show where a backlog session stands, without a Claude session:
 #              the resume record, the parallel run's per-issue files, the
 #              session's open pull requests with their check buckets, the
-#              worktrees with their locks, and the pending findings. Read-only.
+#              worktrees with their locks, the local branches, and the pending
+#              findings. Read-only. Run from any directory in the checkout or
+#              one of its worktrees it reads that checkout; run from anywhere
+#              else it reads the checkout the script itself lives in.
 # @noargs
 # @stdout sections `Session`, `Issues`, `Parallel`, `Pull requests`,
-#         `Worktrees` and `Findings`, each a heading line then indented lines
+#         `Worktrees`, `Branches` and `Findings`, each a heading line then
+#         indented lines
 # @exitcode 0 the status was printed, whether or not a session is in progress
-# @exitcode 2 wrong arguments, or not inside a git repository
+# @exitcode 2 wrong arguments, or neither the working directory nor the
+#             script's own directory is inside a git repository
 
 # devshell-exempt: a work-backlog skill helper run on the host from any checkout or worktree, outside any gate, with the host's gh login
 
@@ -124,10 +128,9 @@ function section_issues() {
     printf '  none\n'
     return
   fi
-  # The stamped lines that are not issue lines themselves: the events. The
-  # newest one naming an issue's number as a whole token is its last word.
-  grep --extended-regexp "${STAMP}" "${RECORD}" | grep --extended-regexp --invert-match "${STAMP}issue " > "${TMP}" \
-    || true
+  # The stamped progress lines, `#<N> <event>` (state.md): the newest one
+  # whose first token after the stamp is an issue's `#<N>` is its last word.
+  grep --extended-regexp "${STAMP}#[0-9]+ " "${RECORD}" > "${TMP}" || true
   local line stripped number event found='false'
   while IFS= read -r line || [[ -n "${line}" ]]; do
     stripped="$(strip_stamp "${line}")"
@@ -137,7 +140,7 @@ function section_issues() {
     found='true'
     number="${BASH_REMATCH[1]}"
     printf '  %s\n' "${stripped}"
-    event="$(grep --extended-regexp "(^|[^0-9])${number}([^0-9]|$)" "${TMP}" | tail --lines=1 || true)"
+    event="$(grep --extended-regexp "${STAMP}#${number} " "${TMP}" | tail --lines=1 || true)"
     if [[ -n "${event}" ]]; then
       printf '    last: %s\n' "${event}"
     else
@@ -263,6 +266,33 @@ function section_worktrees() {
   done < "${TMP}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
 }
 
+# @description Print a space-separated list of branch names, or `none`.
+# @arg $@ names the branch names
+function names_or_none() {
+  if (($# == 0)); then
+    printf 'none'
+  else
+    local IFS=' '
+    printf '%s' "$*"
+  fi
+}
+
+# @description The local branches merged into main and those not merged, the
+#              two listings leftovers.md sorts.
+# @noargs
+function section_branches() {
+  printf 'Branches\n'
+  if ! git rev-parse --verify --quiet refs/heads/main > /dev/null; then
+    printf '  no main branch\n'
+    return
+  fi
+  local -a merged unmerged
+  mapfile -t merged < <(git branch --format='%(refname:short)' --merged main | grep --invert-match --line-regexp main || true)
+  mapfile -t unmerged < <(git branch --format='%(refname:short)' --no-merged main)
+  printf '  merged into main: %s\n' "$(names_or_none "${merged[@]}")"
+  printf '  not merged: %s\n' "$(names_or_none "${unmerged[@]}")"
+}
+
 # @description How many findings wait for the walkthrough.
 # @noargs
 function section_findings() {
@@ -278,11 +308,17 @@ function section_findings() {
 # @noargs
 function main() {
   local common_dir
-  if ! common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
+  # A terminal opened at ~ to watch an unattended run is outside the checkout;
+  # the script then reads the checkout it is installed in.
+  if ! common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" \
+    && ! common_dir="$(git -C "$(dirname "$(readlink --canonicalize "${BASH_SOURCE[0]}")")" \
+      rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
     printf '%s: not inside a git repository\n' "${0##*/}" >&2
     exit 2
   fi
   MAIN="$(dirname "${common_dir}")"
+  # git and gh read the repository from the working directory.
+  cd "${MAIN}"
   BACKLOG="${MAIN}/.claude/backlog"
   RECORD="${BACKLOG}/current-session.md"
   TMP="$(mktemp)"
@@ -292,6 +328,7 @@ function main() {
   section_parallel
   section_pull_requests
   section_worktrees
+  section_branches
   section_findings
 }
 

@@ -55,8 +55,14 @@ function usage() {
 # @description Print the settings files that exist, least specific first.
 # @noargs
 function settings_files() {
-  local repo
-  repo="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
+  # The main checkout's files, even from a worktree: a session may run this
+  # from inside one, where the untracked settings.local.json is absent.
+  local repo common_dir
+  if common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
+    repo="$(dirname "${common_dir}")"
+  else
+    repo="$(pwd)"
+  fi
   local file
   for file in \
     "${CLAUDE_CONFIG_DIR}/settings.json" \

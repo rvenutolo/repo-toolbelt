@@ -12,20 +12,22 @@ or `EnterWorktree`.
 there is a park here, with the status and the rule in the note. Its steps 3 and 4 (leaving a worktree, recording in
 `current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here replace them. Git commands in the
 rebase worktree run as `git -C <rebase worktree> …`. Every rebase and every `rebase --continue` runs as
-`git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase …`: the editor setting means
-`rebase --continue` never waits on an editor nobody will close, and rerere is off for the reason `merging.md` step 2
-gives (a replayed resolution would be staged before section 3 ever saw the conflict). Devshell commands run there as
+`git -C <rebase worktree> -c rerere.enabled=false rebase …`: with rerere on, a replayed resolution is staged, so the
+conflicted-file listing comes back empty and hides the conflict section 3 must judge. `rebase --continue` never
+waits on an editor: Claude Code sets `GIT_EDITOR=true` for every Bash call. Devshell commands run there as
 `cd <rebase worktree> && ./.ci/in-devshell …`. Long commands (the push, the baseline regeneration and its tests,
 `gh pr checks --watch`) follow `common.md` "Long commands", with their status files in the rebase worktree's
 `.claude/tmp/`, never the main checkout's.
 
-Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used, the build agent's first),
-`resolutionReviewed` (true when the previous call returned `needs-review` and the review has run), `resolutionFindings`
-(that review's findings, possibly none), `pendingRulings` (the rulings earlier calls for this issue returned with
-`needs-review` (`Summary:` lines excluded); a call that stops for review may not have pushed, so they may not be in the
-PR body yet), `lastReason` (the `reason` the previous call returned with `needs-review`: `conflict`, `gate` or `ci`;
-empty on the first call), `date`, `main`. Nothing else carries over between calls: what a call needs from an earlier
-one (the old remote SHA, the rebase worktree) it reads again from git.
+Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used, the build agent's first), `kind`,
+`spec`, `plan` and `haltAnswers` (for a merge-time fix, which must keep to what the issue was for and to the user's
+answers), `stopAtMerge` (true under the shakedown: section 5), `resolutionReviewed` (true when the previous call
+returned `needs-review` and the review has run), `resolutionFindings` (that review's findings, possibly none),
+`pendingRulings` (the rulings earlier calls for this issue returned with `needs-review` (`Summary:` lines excluded); a
+call that stops for review may not have pushed, so they may not be in the PR body yet), `lastReason` (the `reason` the
+previous call returned with `needs-review`: `conflict`, `gate` or `ci`; empty on the first call), `date`, `main`.
+Nothing else carries over between calls: what a call needs from an earlier one (the old remote SHA, the rebase worktree)
+it reads again from git.
 
 ## 1. Reconcile
 
@@ -68,13 +70,13 @@ The rebase happens on the issue branch itself, so that after the merge the local
    `origin/<branch>` lacks, park: work exists only locally.
 5. If `git -C <rebase worktree> merge-base --is-ancestor origin/main HEAD` succeeds, the branch is current: go to
    section 3, step 1. Otherwise it is behind, and as `merging.md` step 1 rebases before its first CI watch, so does
-   this agent: `git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase origin/main`.
+   this agent: `git -C <rebase worktree> -c rerere.enabled=false rebase origin/main`.
 
 ## 3. Conflicts
 
 For each conflicted file (in a rebase, `--ours` is `main`, `--theirs` is the branch's commit), resolve it, then
 `git -C <rebase worktree> add <file>` and
-`git -C <rebase worktree> -c core.editor=true -c rerere.enabled=false rebase --continue`, until the rebase ends:
+`git -C <rebase worktree> -c rerere.enabled=false rebase --continue`, until the rebase ends:
 
 - **List and registry lines** (`lints.toml`, `formatters.toml`, README lists and tables, `examples/consumer/` lint
   lists): keep both sides' entries. Where the file is sorted, keep it sorted; where it is in order of addition, put
@@ -87,9 +89,9 @@ These three rules hold whoever made the `main` side: they lose nothing, so a Ren
 is handled the same way as a batch PR.
 
 - **Anything else, between two of this batch's own PRs:** every commit since the branch's base that wrote `main`'s
-  side of the conflicting hunk belongs to a PR whose body ends with `Backlog-Session: <date>`. Find them with
-  `git -C <rebase worktree> blame -L <first>,<last> origin/main -- <file>`, where `<first>,<last>` is the hunk's
-  line range in `origin/main`'s version, keeping the commits after
+  side of the conflicting hunk belongs to a PR whose body has a line that is exactly `Backlog-Session: <date>`.
+  Find them with `git -C <rebase worktree> blame -L <first>,<last> origin/main -- <file>`, where `<first>,<last>`
+  is the hunk's line range in `origin/main`'s version, keeping the commits after
   `git -C <rebase worktree> merge-base origin/<branch> origin/main`; map each to its PR with `gh api
   repos/{owner}/{repo}/commits/<sha>/pulls --jq '.[].body'`. Test the hunk, not the file: an outside commit
   elsewhere in the same file did not make this conflict. When the intent on both sides is clear from the two commits
@@ -132,14 +134,16 @@ does not review fixes after its last review round. A CI rerun is a `Summary:` li
 
 ## 5. Merge
 
+**Under the shakedown** (`stopAtMerge` true), stop here: the branch is current, pushed and green on CI. Return
+`state: "ready-to-merge"` with `mergeWorktree` set, leaving the rebase worktree in place and writing nothing to
+`<n>.md` (the controller asks the user and merges at "Ending", `/work-backlog-parallel` `SKILL.md`). Otherwise,
 `merging.md` step 2, with three differences:
 
 - Where it says to go to step 3 (after `MERGED`), go to section 6 here.
 - Where it says to rebase on `BEHIND` or `DIRTY`, go back to section 2, step 1; its limit on how often that happens
   holds within this call. Nothing counts across calls; the script's three merge calls per issue bound the rest.
-- Its shakedown question never applies to this agent: the script's `stopBeforeMerge` carries the shakedown and
-  stops an issue before any merge agent runs for it, so when this agent runs, the merge is approved. Skip the
-  question and do not read `.claude/backlog/config`.
+- Its shakedown question never applies to this agent: `stopAtMerge` carries the shakedown, so when this agent gets
+  here with it false, the merge is approved. Skip the question and do not read `.claude/backlog/config`.
 
 The moment `gh pr view` prints `MERGED`, write `state: merged` to `<main>/.claude/backlog/parallel/<n>.md`, before
 any cleanup.

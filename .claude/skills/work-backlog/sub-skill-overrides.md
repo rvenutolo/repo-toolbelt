@@ -11,7 +11,8 @@ The first two entries apply to every session, whichever sub-skills it ends up ca
 - **Every prompt template** (`implementer-prompt.md`, `task-reviewer-prompt.md` and `re-review-prompt.md` in
   superpowers:subagent-driven-development; `code-reviewer.md` in superpowers:requesting-code-review): each is used
   with the "Subagents" clause from `SKILL.md` appended (return every finding; never open an issue, comment on a PR,
-  leave a `TODO` or filter). `code-reviewer.md`'s "check it out into a separate temporary directory (e.g.
+  leave a `TODO` or filter; run `git commit`, `./run-tests` and every `./.ci/in-devshell` command in the foreground with
+  the Bash tool `timeout: 600000`). `code-reviewer.md`'s "check it out into a separate temporary directory (e.g.
   `git worktree add /tmp/review-[SHA] [SHA]`)": the reviewer uses `git diff` and `git show` only, for the reason
   "Subagents" gives.
 - **superpowers:finishing-a-development-branch**: not invoked at all, even where another skill ends by naming it.
