@@ -207,7 +207,7 @@ function section_pull_requests() {
   fi
   date="${date#session-date: }"
   if [[ -z "${date}" ]]; then
-    printf '  no session date\n'
+    printf '  none (no session in progress)\n'
     return
   fi
   local -r search="\"Backlog-Session: ${date}\" in:body"
