@@ -248,7 +248,7 @@ function check_names() {
 @test 'warns ip-forward when the value is not 1, naming the one step that needs it' {
   SYSCTL_VALUE=0 run "${PREFLIGHT}"
   assert_success
-  assert_line --regexp '^WARN ip-forward: .*0.*\.ci/test-image'
+  assert_line --regexp '^WARN ip-forward: .*0.*; needed only by \./\.ci/test-image$'
 }
 
 @test 'fails superpowers when no plugin is installed' {
