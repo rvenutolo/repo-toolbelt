@@ -128,12 +128,16 @@ working, and nothing that arrives after your final message changes it.
      call's `cd` may have left the shell elsewhere and a push from the wrong tree runs the wrong hook. The absolute
      path is what makes the write and the wait name the same file whatever directory each call runs in. The status
      is the whole list's exit: a `1` with no output from the command means the `cd` failed, not the command.
-  2. Wait with foreground calls of `<main>/.claude/skills/work-backlog-parallel/wait-for <status path> 580`, each
-     passing the Bash tool `timeout: 600000`: the tool's default limit is shorter, and a call past it moves to the
-     background, where its end never reaches you. A call the tool still cuts off counts as exit 124 (not written
-     yet). Repeat on 124, four calls at most: `timeout 30m` writes a status within 30 minutes, so a fourth 124, or a
-     status of 124, means the command hung. That is a park, or a batch-level failure when its cause is one (the
-     "Batch-level failures" rule above), with the command and its last output in the note.
+  2. Wait with foreground calls of `<main>/.claude/skills/work-backlog-parallel/wait-for <status path> 170 1860`,
+     each passing the Bash tool `timeout: 600000`: the tool's default limit is shorter, and a call past it moves to
+     the background, where its end never reaches you. Start the first wait right after the launch: it writes
+     `<status path>.start`, and every later wait measures from it. Repeat on exit 124 (not written yet; a call the
+     tool cuts off counts the same) as many times as it takes. Exit 3 means 31 minutes have passed since the start
+     with no status: `timeout 30m` writes one within 30 minutes, so the command hung, and so does a status of 124.
+     The time since the start decides it, never a count of calls, because the tool may cut a call short (a
+     background agent's foreground call can be capped near three minutes, which the 170 seconds fit). A hang is a
+     park, or a batch-level failure when its cause is one (the "Batch-level failures" rule above), with the command
+     and its last output in the note.
   3. Read the output and the exit status.
 
   Use that helper, by that path, for every wait: the allow rule that pre-approves waits names it, and a
