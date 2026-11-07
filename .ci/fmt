@@ -6,8 +6,8 @@
 #              repo dogfoods (.ci/dogfood-formatters.bash), which format the
 #              files they take the way their check lints in run-all-checks and
 #              the pre-commit hook expect. A file neither step covers is left
-#              as it is. Stops at the first step that fails. Run it inside the
-#              devShell: ./.ci/in-devshell ./.ci/fmt
+#              as it is. Stops at the first step that fails. Re-runs itself
+#              inside the devShell when started outside it.
 # @noargs
 # @exitcode 0 every file is formatted, rewritten or not.
 # @exitcode * a step failed: its exit status.
@@ -16,6 +16,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # shellcheck source=.ci/dogfood-formatters.bash
 source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/dogfood-formatters.bash"

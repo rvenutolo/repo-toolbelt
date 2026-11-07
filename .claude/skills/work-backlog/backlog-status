@@ -11,6 +11,8 @@
 # @exitcode 0 the status was printed, whether or not a session is in progress
 # @exitcode 2 wrong arguments, or not inside a git repository
 
+# devshell-exempt: a work-backlog skill helper run on the host from any checkout or worktree, outside any gate, with the host's gh login
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

@@ -28,6 +28,8 @@
 # @exitcode 1 a gh call failed
 # @exitcode 2 wrong arguments
 
+# devshell-exempt: a work-backlog skill helper Claude Code runs on the host by the path its allow rule names, outside any gate, with the host's gh login
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

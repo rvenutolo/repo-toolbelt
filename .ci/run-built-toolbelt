@@ -6,7 +6,8 @@
 #              directory. TOOLBELT_LINTS_DIR and TOOLBELT_FORMATTERS_DIR point
 #              into the built layout, so the runner runs the lints and
 #              formatters built beside it, as in the image. The runner runs in
-#              the caller's directory. Run it inside the devShell.
+#              the caller's directory. Re-runs itself inside the devShell when
+#              started outside it.
 # @arg $@ args the runner's arguments, such as `fmt shell`
 # @exitcode 0 the runner exited 0.
 # @exitcode 1 no arguments.
@@ -17,6 +18,16 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit

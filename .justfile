@@ -5,18 +5,18 @@
 default:
     @just --list
 
-# Run the full gate: ./.ci/in-devshell ./run-all-checks
+# Run the full gate: ./run-all-checks
 check:
-    ./.ci/in-devshell ./run-all-checks
+    ./run-all-checks
 
-# Run the lint suite only: ./.ci/in-devshell ./.ci/run-lint-checks
+# Run the lint suite only: ./.ci/run-lint-checks
 lint:
-    ./.ci/in-devshell ./.ci/run-lint-checks
+    ./.ci/run-lint-checks
 
-# Run the Go tests and the BATS suite: ./.ci/in-devshell ./run-tests
+# Run the Go tests and the BATS suite: ./run-tests
 test:
-    ./.ci/in-devshell ./run-tests
+    ./run-tests
 
-# Format what nix fmt and the dogfooded formatters cover: ./.ci/in-devshell ./.ci/fmt
+# Format what nix fmt and the dogfooded formatters cover: ./.ci/fmt
 fmt:
-    ./.ci/in-devshell ./.ci/fmt
+    ./.ci/fmt

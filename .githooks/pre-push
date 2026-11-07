@@ -2,6 +2,12 @@
 
 # @description Git pre-push hook: runs the full gate inside the devShell and
 #              aborts the push if it fails. Bypass with `git push --no-verify`.
+#              Started outside the devShell, as git starts it for a push made
+#              from the host, it re-runs itself through .ci/in-devshell. That
+#              re-run needs what .ci/in-devshell needs on the host: bash 4.4+,
+#              git, GNU coreutils (readlink, mktemp, rm) and nix. On macOS:
+#              brew install bash coreutils, with the coreutils gnubin directory
+#              first on PATH.
 # @arg $1 remote name of the remote being pushed to, supplied by git
 # @arg $2 url URL of the remote being pushed to, supplied by git
 # @exitcode 0 the gate passed.
@@ -12,6 +18,16 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
+# Git runs hooks with the caller's environment, and an interactive shell leaves
+# IN_DEVSHELL unset and the host PATH in place: a tool the flake lacks would
+# resolve from the host. Re-run through in-devshell, which sets IN_DEVSHELL and
+# so stops the recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/../.ci/in-devshell" "${SELF_PATH}" "$@"
+fi
+
 # @description Run the full gate inside the devShell; abort the push on failure.
 # @arg $1 remote name of the remote being pushed to, supplied by git
 # @arg $2 url URL of the remote being pushed to, supplied by git
@@ -19,7 +35,7 @@ function main() {
   local repo_dir
   repo_dir="$(git rev-parse --show-toplevel)"
   printf 'pre-push: running the full local gate\n' >&2
-  if ! "${repo_dir}/.ci/in-devshell" ./run-all-checks; then
+  if ! "${repo_dir}/run-all-checks"; then
     printf 'pre-push: gate failed; fix it, or rerun with --no-verify to bypass\n' >&2
     exit 1
   fi

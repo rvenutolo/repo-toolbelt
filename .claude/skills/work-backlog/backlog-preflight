@@ -15,6 +15,8 @@
 # @exitcode 1 a check failed
 # @exitcode 2 wrong arguments, CLAUDE_CONFIG_DIR unset, or not inside a git repository
 
+# devshell-exempt: a work-backlog skill helper Claude Code runs on the host, outside any gate; it reads CLAUDE_CONFIG_DIR and checks the host's gh login, signing and IP forwarding, which the devShell's cleared environment would hide
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

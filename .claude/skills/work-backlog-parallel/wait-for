@@ -13,6 +13,8 @@
 # @exitcode 2 wrong arguments, or the path exists and is not a regular file
 # @exitcode 124 the file did not appear in time, the code `timeout` uses
 
+# devshell-exempt: a work-backlog-parallel skill helper Claude Code runs on the host by the path its allow rule names, outside any gate; it needs only bash and sleep
+
 set -Eeuo pipefail
 IFS=$'\n\t'
 

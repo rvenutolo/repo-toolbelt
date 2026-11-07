@@ -1,13 +1,12 @@
 #!/usr/bin/env bats
 
 # The pre-commit hook runs in a fixture repo holding a copy of the real
-# .ci/run-built-toolbelt, the build-dist stub test_helper/built-runner
-# describes, and a .ci/in-devshell stub that records its arguments and then
-# runs them, so the whole chain runs with nothing real built or checked. Like
-# the real wrapper, which admits only its allowlist, the stub drops
-# GIT_INDEX_FILE.
+# .ci/run-built-toolbelt and the build-dist stub test_helper/built-runner
+# describes, so the whole chain runs with nothing real built or checked. The
+# suite runs inside the devShell, so the hook runs the chain directly; its
+# re-run through .ci/in-devshell from outside is test/self-wrap.bats' concern.
 
-readonly FIX_HINT='pre-commit: formatting check failed; run ./.ci/in-devshell ./.ci/fmt and stage the result'
+readonly FIX_HINT='pre-commit: formatting check failed; run ./.ci/fmt and stage the result'
 readonly COULD_NOT_RUN='pre-commit: the formatting check could not run; see the error above'
 
 function setup() {
@@ -18,28 +17,19 @@ function setup() {
   export CALLS
   write_build_dist_stub
   cp -- "${REPO_DIR}/.ci/run-built-toolbelt" .ci/run-built-toolbelt
-  cat > .ci/in-devshell << 'STUB'
-#!/usr/bin/env bash
-printf 'in-devshell %s\n' "$*" >> "${CALLS}"
-unset GIT_INDEX_FILE
-exec "$@"
-STUB
-  chmod +x .ci/in-devshell
 }
 
-@test 'checks the dogfooded formatters through the devShell and the built runner' {
+@test 'checks the dogfooded formatters with the built runner, directly inside the devShell' {
   run "${REPO_DIR}/.githooks/pre-commit"
   assert_success
   assert_output --partial 'pre-commit: formatting check passed'
   run cat "${CALLS}"
-  assert_line --index 0 \
-    "in-devshell ${FIXTURE_REPO}/.ci/run-built-toolbelt run --hook pre-commit check-shell-formatted check-go-formatted"
-  assert_line --index 1 --regexp '^build-dist /.+/dist$'
-  assert_line --index 2 'toolbelt run --hook pre-commit check-shell-formatted check-go-formatted'
-  assert_line --index 3 'lints dir ok'
-  assert_line --index 4 'formatters dir ok'
-  assert_line --index 5 "ran in ${FIXTURE_REPO}"
-  assert_equal "${#lines[@]}" 6
+  assert_line --index 0 --regexp '^build-dist /.+/dist$'
+  assert_line --index 1 'toolbelt run --hook pre-commit check-shell-formatted check-go-formatted'
+  assert_line --index 2 'lints dir ok'
+  assert_line --index 3 'formatters dir ok'
+  assert_line --index 4 "ran in ${FIXTURE_REPO}"
+  assert_equal "${#lines[@]}" 5
 }
 
 @test 'runs from a subdirectory of the checkout' {
@@ -51,7 +41,7 @@ STUB
   assert_output 1
 }
 
-@test 'hands the runner the index git is committing, through the devShell' {
+@test 'hands the runner the index git is committing' {
   GIT_INDEX_FILE="${BATS_TEST_TMPDIR}/index.lock" run "${REPO_DIR}/.githooks/pre-commit"
   assert_success
   run grep '^index ' "${CALLS}"

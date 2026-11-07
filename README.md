@@ -376,18 +376,26 @@ A release that only adds lints changes nothing in a consuming repo, because each
 
 ## Development
 
-Every tool runs through the devShell wrapper, so nothing needs installing but Nix and Docker:
+Every tool runs inside the Nix devShell, so nothing needs installing but Nix and Docker. The scripts and git hooks
+enter the devShell themselves: started with `IN_DEVSHELL` unset, as from a plain or a direnv shell, each re-runs
+itself through `.ci/in-devshell`, which enters `nix develop --ignore-environment` for the repo it lives in, so a tool
+the flake lacks fails here as it would in CI. `.ci/in-devshell <command>` is for commands that are not scripts, such as
+`./.ci/in-devshell go test ./...`. The exceptions are `.ci/in-devshell` itself, the wrapper every other script
+re-runs through, and the scripts marked `# devshell-exempt:` with their reason: `.ci/activate-githooks`, which the
+devShell's own startup runs, the shipped formatters and lints and the example consumer hooks, which run in consumer
+repos, and the Claude Code skill helpers under `.claude/skills/`, which run on the host. Outside the devShell the host
+needs bash 4.4+, git, GNU coreutils and nix.
 
 ```bash
-./.ci/in-devshell ./run-tests          # Go tests and BATS under kcov; reports go to .coverage/
-./.ci/in-devshell ./run-all-checks     # the full gate (needs network): formatting, Go vendor hash, linters, tests
-./.ci/in-devshell ./.ci/test-image     # builds the image, loads it into Docker and runs the e2e suite
-./.ci/in-devshell ./.ci/fmt            # formats what nix fmt covers, then what the dogfooded formatters take
+./run-tests                            # Go tests and BATS under kcov; reports go to .coverage/
+./run-all-checks                       # the full gate (needs network): formatting, Go vendor hash, linters, tests
+./.ci/test-image                       # builds the image, loads it into Docker and runs the e2e suite
+./.ci/fmt                              # formats what nix fmt covers, then what the dogfooded formatters take
 git config core.hooksPath .githooks    # commit-msg, pre-commit and pre-push hooks
 ```
 
 The pre-commit hook checks the working tree's formatting with the dogfooded formatters' check lints, run by the
-runner built from the working tree; `./.ci/in-devshell ./.ci/fmt` rewrites what it finds.
+runner built from the working tree; `./.ci/fmt` rewrites what it finds.
 
 `just test`, `just check`, `just lint` and `just fmt` are shortcuts for the first, second, linter-only and formatter
 commands. Nothing requires `just`.
