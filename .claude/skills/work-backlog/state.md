@@ -31,8 +31,9 @@ GitHub; approvals, halt answers and spec paths survive only in this file and und
 
 - `session-date: YYYY-MM-DD`: the date of the `session-log.md` line this session's step 2 appended; a file carried
   over from an earlier session gets it rewritten (step 6).
-- The flow, bug or feature.
-- The issues in order.
+- `flow: bug` or `flow: feature`.
+- `issue <N>`, one line per issue in chunk order (the parallel skill appends `after <M>` for a dependency); these two
+  forms are fixed because `backlog-status` reads them.
 - The halt answers and the commands the user allowed, from the chunk OK (bugs) or `feature-flow.md` step 5
   (features).
 - The spec path once `feature-flow.md` step 2 writes it, and `spec approved: <path>` after step 5.
@@ -41,9 +42,26 @@ GitHub; approvals, halt answers and spec paths survive only in this file and und
 - `started: <UTC time>`, when the unattended part began ("Budgets" in `SKILL.md` says which step writes it).
 - One line per issue as it reaches a PR, as its PR merges (or is left `pr open, not merged` by a shakedown "no",
   `merging.md` step 2), and as its worktree is removed.
+- `at: <file> step <n>`: where the session is, rewritten in place at each step transition (`SKILL.md` "The session"
+  step numbers, or a sub-file's: `at: merging.md step 1`), so a reader of a dead session's file sees where it stopped
+  without inferring it from the other lines.
 
-`/work-backlog-parallel` adds its own lines (`cap:`, `issue <N> after <M>`, `piece`, the `workflow-*` lines; its
-`SKILL.md` "State"); a file holding them is sorted by `leftovers.md` "A parallel run's files".
+Every line after `session-date:` starts with the UTC time it was written, `date --utc +%FT%TZ`, then a space; the
+`at:` line carries the time of its last rewrite. The times give `backlog-status` (`SKILL.md` "State") something to
+show while a run is going and let a resumed session tell a fresh halt from a stale one. An example, mid-chunk:
+
+```text
+session-date: 2026-02-03
+2026-02-03T14:02:11Z flow: bug
+2026-02-03T14:02:11Z issue 42
+2026-02-03T14:02:11Z started: 2026-02-03T14:02:11Z
+2026-02-03T14:31:50Z issue 42 pr 57
+2026-02-03T14:48:07Z at: merging.md step 1
+```
+
+`/work-backlog-parallel` adds its own lines (`cap:`, `issue <N> after <M>`, `piece`, the `workflow-*` lines and, after
+its Ending, `park-answer <N>: <text>` for a parked issue the user already answered; its `SKILL.md` "State"); a file
+holding them is sorted by `leftovers.md` "A parallel run's files".
 
 ## `config`
 

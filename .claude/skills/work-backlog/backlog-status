@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+
+# @description Show where a backlog session stands, from any directory in the
+#              checkout or one of its worktrees and without a Claude session:
+#              the resume record, the parallel run's per-issue files, the
+#              session's open pull requests with their check buckets, the
+#              worktrees with their locks, and the pending findings. Read-only.
+# @noargs
+# @stdout sections `Session`, `Issues`, `Parallel`, `Pull requests`,
+#         `Worktrees` and `Findings`, each a heading line then indented lines
+# @exitcode 0 the status was printed, whether or not a session is in progress
+# @exitcode 2 wrong arguments, or not inside a git repository
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# Every line the session appends to current-session.md after the first begins
+# with this UTC stamp (state.md); it is stripped before a line is read.
+readonly STAMP='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z '
+
+MAIN=''
+BACKLOG=''
+RECORD=''
+# One scratch file for the lists the sections read back; the EXIT trap in main
+# removes it.
+TMP=''
+
+# @description Print the usage line to stderr and exit 2.
+# @noargs
+function usage() {
+  printf 'usage: %s\n' "${0##*/}" >&2
+  exit 2
+}
+
+# @description Print a line of the record with its timestamp removed.
+# @arg $1 line the raw line
+function strip_stamp() {
+  local -r line="$1"
+  if [[ "${line}" =~ ${STAMP} ]]; then
+    printf '%s\n' "${line:21}"
+  else
+    printf '%s\n' "${line}"
+  fi
+}
+
+# @description Print the first record line, stamp stripped, that starts with
+#              the given prefix; nothing when none does.
+# @arg $1 prefix the line start to look for
+function record_line() {
+  local -r prefix="$1"
+  local line stripped
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    stripped="$(strip_stamp "${line}")"
+    if [[ "${stripped}" == "${prefix}"* ]]; then
+      printf '%s\n' "${stripped}"
+      return
+    fi
+  done < "${RECORD}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
+}
+
+# @description Print a duration in hours and minutes.
+# @arg $1 seconds a non-negative number of seconds
+function hours_minutes() {
+  local -r seconds="$1"
+  printf '%dh%02dm' "$((seconds / 3600))" "$((seconds % 3600 / 60))"
+}
+
+# @description Print the given UTC time's distance from now as `elapsed Xh`,
+#              or, for a deadline, as time left or passed.
+# @arg $1 time a UTC time like 2026-01-31T18:00:00Z
+# @arg $2 kind `elapsed` or `deadline`
+function distance() {
+  local -r time="$1"
+  local -r kind="$2"
+  local target now
+  if ! target="$(date --utc --date "${time}" +%s 2> /dev/null)"; then
+    printf 'unreadable time'
+    return
+  fi
+  now="$(date --utc +%s)"
+  if [[ "${kind}" == 'elapsed' ]]; then
+    printf 'elapsed %s' "$(hours_minutes "$((now - target))")"
+  elif ((target >= now)); then
+    printf '%s left' "$(hours_minutes "$((target - now))")"
+  else
+    printf 'passed %s ago' "$(hours_minutes "$((now - target))")"
+  fi
+}
+
+# @description The record's date, flow, clock and position.
+# @noargs
+function section_session() {
+  printf 'Session\n'
+  if [[ ! -f "${RECORD}" ]]; then
+    printf '  no session in progress\n'
+    return
+  fi
+  local value
+  for value in 'session-date: ' 'flow: ' 'at: '; do
+    record_line "${value}" | sed 's/^/  /'
+  done
+  value="$(record_line 'started: ')"
+  if [[ -n "${value}" ]]; then
+    printf '  %s (%s)\n' "${value}" "$(distance "${value#started: }" elapsed)"
+  fi
+  local -r args="${BACKLOG}/parallel/run-args.json"
+  if [[ -f "${args}" ]]; then
+    value="$(jq --raw-output '.deadline // empty' "${args}" 2> /dev/null || true)"
+    if [[ -n "${value}" ]]; then
+      printf '  deadline: %s (%s)\n' "${value}" "$(distance "${value}" deadline)"
+    fi
+  fi
+}
+
+# @description Each issue line of the record with its last timestamped event.
+# @noargs
+function section_issues() {
+  printf 'Issues\n'
+  if [[ ! -f "${RECORD}" ]]; then
+    printf '  none\n'
+    return
+  fi
+  # The stamped lines that are not issue lines themselves: the events. The
+  # newest one naming an issue's number as a whole token is its last word.
+  grep --extended-regexp "${STAMP}" "${RECORD}" | grep --extended-regexp --invert-match "${STAMP}issue " > "${TMP}" \
+    || true
+  local line stripped number event found='false'
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    stripped="$(strip_stamp "${line}")"
+    if [[ ! "${stripped}" =~ ^issue\ ([0-9]+) ]]; then
+      continue
+    fi
+    found='true'
+    number="${BASH_REMATCH[1]}"
+    printf '  %s\n' "${stripped}"
+    event="$(grep --extended-regexp "(^|[^0-9])${number}([^0-9]|$)" "${TMP}" | tail --lines=1 || true)"
+    if [[ -n "${event}" ]]; then
+      printf '    last: %s\n' "${event}"
+    else
+      printf '    no event yet\n'
+    fi
+  done < "${RECORD}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
+  if [[ "${found}" == 'false' ]]; then
+    printf '  none\n'
+  fi
+}
+
+# @description Each per-issue file of a parallel run: state, PR and note.
+# @noargs
+function section_parallel() {
+  printf 'Parallel\n'
+  local -r dir="${BACKLOG}/parallel"
+  local file number state pr note found='false'
+  for file in "${dir}"/[0-9]*.md; do
+    if [[ ! -f "${file}" ]]; then
+      continue
+    fi
+    number="${file##*/}"
+    number="${number%.md}"
+    if [[ ! "${number}" =~ ^[0-9]+$ ]]; then
+      continue
+    fi
+    found='true'
+    state="$(grep --max-count=1 '^state: ' "${file}" | cut --delimiter=' ' --fields=2- || true)"
+    pr="$(grep --max-count=1 '^pr: ' "${file}" | cut --delimiter=' ' --fields=2- || true)"
+    note="$(grep --max-count=1 '^park-note: ' "${file}" | cut --delimiter=' ' --fields=2- || true)"
+    printf '  %s: %s pr=%s' "${number}" "${state:-?}" "${pr:--}"
+    if [[ -n "${note}" ]]; then
+      printf ' park-note: %s' "${note}"
+    fi
+    printf '\n'
+  done
+  if [[ "${found}" == 'false' ]]; then
+    printf '  none\n'
+  fi
+}
+
+# @description Print the check-bucket summary of one PR.
+# @arg $1 number the PR number
+function check_summary() {
+  local -r number="$1"
+  local buckets
+  if ! buckets="$(gh pr checks "${number}" --json bucket 2> /dev/null)"; then
+    printf 'gh unavailable'
+    return
+  fi
+  jq --raw-output --argjson b "${buckets}" --null-input '
+    ["pass", "fail", "pending", "skipping", "cancel"] # coverage-exempt: kcov scores this line; it never executes as bash
+    | map(. as $k | $k + "=" + ([$b[] | select(.bucket == $k)] | length | tostring)) # coverage-exempt: kcov scores this line; it never executes as bash
+    | join(" ")' # coverage-exempt: kcov scores this line; it never executes as bash
+}
+
+# @description The session's open PRs, found by the marker, with their checks.
+# @noargs
+function section_pull_requests() {
+  printf 'Pull requests\n'
+  local date=''
+  if [[ -f "${RECORD}" ]]; then
+    date="$(record_line 'session-date: ')"
+  fi
+  date="${date#session-date: }"
+  if [[ -z "${date}" ]]; then
+    printf '  no session date\n'
+    return
+  fi
+  local -r search="\"Backlog-Session: ${date}\" in:body"
+  local prs
+  if ! prs="$(gh pr list --state open --search "${search}" --json number,title,headRefName 2> /dev/null)"; then
+    printf '  gh unavailable\n'
+    return
+  fi
+  jq --raw-output '.[] | "\(.number)\t\(.title)\t\(.headRefName)"' <<< "${prs}" > "${TMP}"
+  if [[ ! -s "${TMP}" ]]; then
+    printf '  none\n'
+    return
+  fi
+  local number title branch
+  while IFS=$'\t' read -r number title branch; do
+    printf '  %s %s (%s) %s\n' "${number}" "${title}" "${branch}" "$(check_summary "${number}")"
+  done < "${TMP}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
+}
+
+# @description Every worktree with its branch and lock.
+# @noargs
+function section_worktrees() {
+  printf 'Worktrees\n'
+  git worktree list --porcelain > "${TMP}"
+  local line path='' ref='' lock='' pid
+  # A blank line ends each worktree's block, the last one included, so the
+  # block is printed when its blank line is read.
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    case "${line}" in
+      worktree\ *)
+        path="${line#worktree }"
+        ref=''
+        lock=''
+        ;;
+      branch\ *) ref="${line#branch refs/heads/}" ;;
+      detached) ref='detached' ;;
+      locked*)
+        lock=' locked'
+        if [[ "${line}" =~ \(pid\ ([0-9]+) ]]; then
+          pid="${BASH_REMATCH[1]}"
+          if kill -0 "${pid}" 2> /dev/null; then
+            lock=" locked (pid ${pid}, alive)"
+          else
+            lock=" locked (pid ${pid}, dead)"
+          fi
+        fi
+        ;;
+      '')
+        if [[ -n "${path}" ]]; then
+          printf '  %s %s%s\n' "${path}" "${ref}" "${lock}"
+        fi
+        path=''
+        ;;
+      *) ;; # coverage-exempt: an empty case arm; bash runs nothing on it for kcov to see
+    esac
+  done < "${TMP}" # coverage-exempt: kcov scores a loop's redirect line, which bash never runs on its own
+}
+
+# @description How many findings wait for the walkthrough.
+# @noargs
+function section_findings() {
+  printf 'Findings\n'
+  local count=0
+  if [[ -f "${BACKLOG}/pending-findings.md" ]]; then
+    count="$(grep --count '^## ' "${BACKLOG}/pending-findings.md" || true)"
+  fi
+  printf '  %s pending\n' "${count}"
+}
+
+# @description Resolve the main checkout and print every section.
+# @noargs
+function main() {
+  local common_dir
+  if ! common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null)"; then
+    printf '%s: not inside a git repository\n' "${0##*/}" >&2
+    exit 2
+  fi
+  MAIN="$(dirname "${common_dir}")"
+  BACKLOG="${MAIN}/.claude/backlog"
+  RECORD="${BACKLOG}/current-session.md"
+  TMP="$(mktemp)"
+  trap 'rm --force -- "${TMP}"' EXIT
+  section_session
+  section_issues
+  section_parallel
+  section_pull_requests
+  section_worktrees
+  section_findings
+}
+
+if (($# != 0)); then
+  usage
+fi
+
+main

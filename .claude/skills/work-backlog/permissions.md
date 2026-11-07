@@ -21,11 +21,16 @@ session can be started in another mode.
   `git fetch origin main`, `git merge-base --is-ancestor HEAD origin/main` succeeds: a sitting is long, and a commit the
   user made on local `main` meanwhile would refuse the pull that follows every merge, so ask them to move it off first.
 
-The request tells the user how to add the rules: with `/permissions`, or by editing `.claude/settings.local.json`
-and saying so; the session re-reads the files before it starts. A deferral ("do whatever you think") answers no
-permission question: the request still needs its own answer, and a follow-up message carrying only the request is
-allowed and is not a second question round. A refusal ("skip the permission stuff") is an answer: go on, and say the
-run will stop at its first prompt until the user returns. Never drop a command to avoid its rule.
+The request tells the user how to add the rules and names the three replies the proposal's `Reply` line offers ("The
+proposal" in `choosing.md`): `rules added` means the user added them with `/permissions` or by editing
+`.claude/settings.local.json`, and the session re-reads the files before it starts; `write the rules` has the session
+append every missing rule string to the main checkout's `.claude/settings.local.json` under `permissions.allow`
+(creating the file if absent, keys sorted alphabetically at every level, as the user's settings rule asks), re-run
+`permission-diff` and go on, since Claude Code re-reads the settings files while a session runs, so the rules apply at
+once and the user types nothing; `skip the permissions` is a refusal, and an answer: go on, and say the run will stop
+at its first prompt until the user returns. A deferral ("do whatever you think") answers no permission question: the
+request still needs its own answer, and a follow-up message carrying only the request is allowed and is not a second
+question round. Never drop a command to avoid its rule.
 
 ## Rule strings
 
@@ -54,12 +59,14 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   `Bash(git worktree prune*)` (the `*` lets `plan`'s `--dry-run` match) and `Bash(git worktree list *)` (all): step 1,
   step 3's listings and `leftovers.md`; the pull also runs in the main checkout after every merge and, resuming a
   parallel run's worktree, as `origin <branch>` there.
-- `Bash(<main>/.claude/skills/work-backlog/backlog-index*)` and
+- `Bash(<main>/.claude/skills/work-backlog/backlog-preflight*)`,
+  `Bash(<main>/.claude/skills/work-backlog/backlog-status*)`,
+  `Bash(<main>/.claude/skills/work-backlog/backlog-index*)` and
   `Bash(<main>/.claude/skills/work-backlog/permission-diff*)` (all), with `<main>` written out so the rule matches
-  from any directory: the proposal runs them; with them allowed, a later session's proposal, `plan` included, runs
-  without a prompt.
+  from any directory: step 1, `leftovers.md` and the proposal run them; with them allowed, a later session's step 1
+  and proposal, `plan` included, run without a prompt.
 - `Bash(git config --get *)`, `Bash(ssh-keygen -Y sign *)` and `Bash(printf *)` (all): the signing check ("Signing"),
-  run in the proposal and again right before the unattended part.
+  run by `backlog-preflight` in step 1 and again by the session right before the unattended part.
 
 **The unattended part.**
 
@@ -158,8 +165,9 @@ permission request"):
 ## Signing
 
 Every commit and rebase signs with the key `git config --get user.signingkey` names, so a key that is missing or
-expires mid-run fails every later commit. Check it the way git uses it, with a test signature, in the proposal
-(while the user is there to allow the rule) and again right before the unattended part ("When to ask"):
+expires mid-run fails every later commit. Check it the way git uses it, with a test signature: `backlog-preflight`
+runs it in step 1 (its `signing` and `agent-key` lines, while the user is there to allow the rule), and the session
+runs it again right before the unattended part ("When to ask"), since a key can be unloaded during a long sitting:
 
 ```bash
 printf x | ssh-keygen -Y sign -n git -f "$(git config --get user.signingkey)" >/dev/null

@@ -19,7 +19,11 @@
 #         main or an audit flagging the repo), refs (other issue numbers the
 #         body names outside fenced code; with no issue named, only numbers
 #         that are themselves open issues), umbrella (yes when the body calls
-#         itself an umbrella or tracks sub-issues), bytes (body length)
+#         itself an umbrella or tracks sub-issues), comments (how many the
+#         issue has; their bodies are in the JSON), bytes (body length),
+#         pieces (how many merged pull requests hold the whole line
+#         `Part of #<number>`, from one listing of every merged pull request
+#         whose body says "Part of #")
 # @exitcode 0 the index was written
 # @exitcode 1 a gh call failed
 # @exitcode 2 wrong arguments
@@ -29,7 +33,12 @@ IFS=$'\n\t'
 
 trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
 
-readonly FIELDS='number,state,title,labels,body'
+readonly FIELDS='number,state,title,labels,body,comments'
+# Every merged pull request that may be an earlier piece of some issue, listed
+# once: the search phrase is quoted so GitHub matches it whole, and the row's
+# count then checks the exact line, since the search also matches the words
+# apart. The quotes are part of the argument, not shell quoting.
+readonly PIECES_SEARCH='"Part of #" in:body'
 # The Bash tool shows about this much of one result; a longer body is cut off.
 readonly LONG_BODY_BYTES=16000
 
@@ -43,30 +52,32 @@ readonly LONG_BODY_BYTES=16000
 # pull request, which the proposal's ordering must not read as a dependency.
 # shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
 readonly TABLE_JQ='
-  (map(.number)) as $indexed
-  | ["number", "state", "kind", "labels", "title", "repro", "refs", "umbrella", "bytes"],
-  (sort_by(.number)[]
-    | (.body // "") as $body
-    | ([.labels[].name]) as $labels
-    | .number as $self
-    | [
-        .number,
-        .state,
-        (if ($labels | index("bug")) or (.title | test("^fix(\\([^)]*\\))?!?:")) then "bug"
-         elif (.title | test("^feat(\\([^)]*\\))?!?:")) or ($labels | index("enhancement")) then "feature"
-         else "?" end),
-        ($labels | join(",")),
-        .title,
-        (if $body | test("reproduc(e|tion|es|ed)|steps to reproduce|repro:|flags (this|the) repo|fails on `?main`?"; "i")
-         then "yes" else "" end),
-        ([$body | gsub("```[\\s\\S]*?```"; "") | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber
-          | select(. != $self) | select(($all_open | not) or IN($indexed[]))]
-          | unique | map(tostring) | join(",")),
-        (if ($body | test("- \\[[ xX]\\] [^\\n]*#[0-9]+")) or ($body | test("sub-issue|umbrella"; "i"))
-         then "yes" else "" end),
-        ($body | utf8bytelength)
-      ])
-  | @tsv'
+  (map(.number)) as $indexed # coverage-exempt: kcov scores this line; it never executes as bash
+  | ["number", "state", "kind", "labels", "title", "repro", "refs", "umbrella", "comments", "bytes", "pieces"], # coverage-exempt: kcov scores this line; it never executes as bash
+  (sort_by(.number)[] # coverage-exempt: kcov scores this line; it never executes as bash
+    | (.body // "") as $body # coverage-exempt: kcov scores this line; it never executes as bash
+    | ([.labels[].name]) as $labels # coverage-exempt: kcov scores this line; it never executes as bash
+    | .number as $self # coverage-exempt: kcov scores this line; it never executes as bash
+    | [ # coverage-exempt: kcov scores this line; it never executes as bash
+        .number, # coverage-exempt: kcov scores this line; it never executes as bash
+        .state, # coverage-exempt: kcov scores this line; it never executes as bash
+        (if ($labels | index("bug")) or (.title | test("^fix(\\([^)]*\\))?!?:")) then "bug" # coverage-exempt: kcov scores this line; it never executes as bash
+         elif (.title | test("^feat(\\([^)]*\\))?!?:")) or ($labels | index("enhancement")) then "feature" # coverage-exempt: kcov scores this line; it never executes as bash
+         else "?" end), # coverage-exempt: kcov scores this line; it never executes as bash
+        ($labels | join(",")), # coverage-exempt: kcov scores this line; it never executes as bash
+        .title, # coverage-exempt: kcov scores this line; it never executes as bash
+        (if $body | test("reproduc(e|tion|es|ed)|steps to reproduce|repro:|flags (this|the) repo|fails on `?main`?"; "i") # coverage-exempt: kcov scores this line; it never executes as bash
+         then "yes" else "" end), # coverage-exempt: kcov scores this line; it never executes as bash
+        ([$body | gsub("```[\\s\\S]*?```"; "") | scan("(?<![#\\w])#([0-9]+)") | .[0] | tonumber # coverage-exempt: kcov scores this line; it never executes as bash
+          | select(. != $self) | select(($all_open | not) or IN($indexed[]))] # coverage-exempt: kcov scores this line; it never executes as bash
+          | unique | map(tostring) | join(",")), # coverage-exempt: kcov scores this line; it never executes as bash
+        (if ($body | test("- \\[[ xX]\\] [^\\n]*#[0-9]+")) or ($body | test("sub-issue|umbrella"; "i")) # coverage-exempt: kcov scores this line; it never executes as bash
+         then "yes" else "" end), # coverage-exempt: kcov scores this line; it never executes as bash
+        (.comments // [] | length), # coverage-exempt: kcov scores this line; it never executes as bash
+        ($body | utf8bytelength), # coverage-exempt: kcov scores this line; it never executes as bash
+        ([$pieces[] | select((.body // "") | test("(^|\\n)Part of #" + ($self | tostring) + "(\\n|$)"))] | length) # coverage-exempt: kcov scores this line; it never executes as bash
+      ]) # coverage-exempt: kcov scores this line; it never executes as bash
+  | @tsv' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # @description Print the usage line to stderr and exit 2.
 # @noargs
@@ -86,6 +97,13 @@ function fetch() {
   for issue in "$@"; do
     gh issue view "${issue}" --json "${FIELDS}" || return 1
   done | jq --slurp '.'
+}
+
+# @description Print the JSON array of the merged pull requests whose body says
+#              "Part of #", the candidates for an issue's earlier pieces.
+# @noargs
+function fetch_pieces() {
+  gh pr list --state merged --limit 1000 --search "${PIECES_SEARCH}" --json number,body
 }
 
 # @description Print the default index path: .claude/tmp/issues.json under the
@@ -108,12 +126,13 @@ function default_out() {
 function write_long_bodies() {
   local -r json="$1"
   local -r dir="$(dirname "${json}")"
+  # shellcheck disable=SC2016 # the $ name is a jq variable, not a shell one
+  local -r long_numbers='.[] | select((.body // "") | utf8bytelength > $max) | .number'
   local number
   while IFS= read -r number; do
     jq --raw-output --argjson n "${number}" '.[] | select(.number == $n) | .body' "${json}" \
       > "${dir}/issue-${number}.md"
-  done < <(jq --raw-output --argjson max "${LONG_BODY_BYTES}" \
-    '.[] | select((.body // "") | utf8bytelength > $max) | .number' "${json}")
+  done < <(jq --raw-output --argjson max "${LONG_BODY_BYTES}" "${long_numbers}" "${json}") # coverage-exempt: kcov scores this line; it never executes as bash
 }
 
 # @description Parse the arguments, write the JSON and print the table.
@@ -147,6 +166,11 @@ function main() {
     printf '%s: gh failed to list the issues\n' "${0##*/}" >&2
     exit 1
   fi
+  local pieces
+  if ! pieces="$(fetch_pieces)"; then
+    printf '%s: gh failed to list the merged pull requests\n' "${0##*/}" >&2
+    exit 1
+  fi
   mkdir --parents "$(dirname "${out}")"
   printf '%s\n' "${json}" > "${out}"
   write_long_bodies "${out}"
@@ -154,7 +178,7 @@ function main() {
   if ((${#issues[@]} == 0)); then
     all_open='true'
   fi
-  jq --raw-output --argjson all_open "${all_open}" "${TABLE_JQ}" "${out}"
+  jq --raw-output --argjson all_open "${all_open}" --argjson pieces "${pieces}" "${TABLE_JQ}" "${out}"
 }
 
 main "$@"

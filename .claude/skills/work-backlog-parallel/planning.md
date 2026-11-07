@@ -49,38 +49,41 @@ batch too.
 
 ## The proposal
 
-One message, beginning with the question banner, naming everything `/work-backlog`'s proposal names, plus:
+One message, beginning with the question banner, laid out as "The proposal" in `choosing.md` fixes it: the same
+section labels in the same order and the same `Reply` line, so the user reads both skills' proposals the same way.
+Four sections are inserted after `Chunk`, in this order:
 
-- the graph, as the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece,
-  in the order "Order" in `choosing.md` gives (by leverage, not bugs before features);
-- **the cap**: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
+- `Graph`: the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece, in the
+  order "Order" in `choosing.md` gives (by leverage, not bugs before features);
+- `Cap`: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
   pre-push gate when it pushes); the one merge agent runs beside them, so at most cap + 1 gates run;
-- **the budgets** and the shakedown as `/work-backlog` "Budgets" and "Shakedown" give them, with what each does to a
-  run that reaches it (`SKILL.md` "Shakedown and budgets"); state `max-hours`, not a clock time, since the deadline is
-  computed at launch, after the sitting. While the shakedown is on, say that the merge OK is asked at "Ending", once
-  the run completes, in place of the fifteen-minute line `/work-backlog`'s proposal carries (`SKILL.md` "Named
-  exceptions");
-- **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
-  bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review
-  and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never
-  overlap. A merge that meets a code conflict or a baseline regeneration takes 30 to 40 minutes (a second test run,
-  a resolution review, a second gate), and every new lint after the first in a batch meets one in the shared
-  registry files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes
-  about the longer of the longest chain and the first ready PR plus one merge round per issue; a fix takes a slot
-  ahead of builds still queued when the fix asks (not ahead of one already running), and the merge agent runs
-  outside the cap, so merging begins as soon as a review passes, whatever the builds are doing. Say plainly that a
-  short
-  batch of small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that; an
-  estimate longer than the time budget names the issues that would likely skip;
-- **the agent count**, from these bounds: per issue at most ten agents (one build, two reviews, two fixes, three
-  merge calls and two resolution reviews between them), each retried once if it dies, plus a resumed run's live
-  re-runs; most issues need three (build, review, merge). Name the session's workflow size guideline (the Workflow
-  tool's description states it in one of two forms: "This session has the … workflow size guideline" by default, or
-  "A workflow size guideline is configured for this session: …") and say whether the estimate exceeds it, adding:
-  "This is a guideline for whoever writes the script, not a limit; nothing needs changing for the run to proceed."
-  Agents running at once are the build and fix agents up to the cap, plus every review in progress (reviews run
-  outside the cap) and one merge agent, so a long batch at cap 4 can approach the hard limit of concurrent agents,
-  min(16, max(2, CPUs − 2)); name that limit, and the 1000 agents per run, only when the batch would reach them.
+- `Estimate`: a wall-clock range, not a promise. Per issue, guess its work from the issue and spec: a small bug about
+  30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review and fixes.
+  A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never overlap. A
+  merge that meets a code conflict or a baseline regeneration takes 30 to 40 minutes (a second test run, a
+  resolution review, a second gate), and every new lint after the first in a batch meets one in the shared registry
+  files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes about the
+  longer of the longest chain and the first ready PR plus one merge round per issue; a fix takes a slot ahead of
+  builds still queued when the fix asks (not ahead of one already running), and the merge agent runs outside the
+  cap, so merging begins as soon as a review passes, whatever the builds are doing. Say plainly that a short batch of
+  small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that; an estimate
+  longer than the time budget names the issues that would likely skip;
+- `Agents`: the agent count, from these bounds: per issue at most ten agents (one build, two reviews, two fixes,
+  three merge calls and two resolution reviews between them), each retried once if it dies, plus a resumed run's
+  live re-runs; most issues need three (build, review, merge). Name the session's workflow size guideline (the
+  Workflow tool's description states it in one of two forms: "This session has the … workflow size guideline" by
+  default, or "A workflow size guideline is configured for this session: …") and say whether the estimate exceeds
+  it, adding: "This is a guideline for whoever writes the script, not a limit; nothing needs changing for the run to
+  proceed." Agents running at once are the build and fix agents up to the cap, plus every review in progress
+  (reviews run outside the cap) and one merge agent, so a long batch at cap 4 can approach the hard limit of
+  concurrent agents, min(16, max(2, CPUs − 2)); name that limit, and the 1000 agents per run, only when the batch
+  would reach them.
+
+Two of the shared sections read differently here. `Budgets and shakedown` states `max-hours`, not a clock time, since
+the deadline is computed at launch, after the sitting (`SKILL.md` "Shakedown and budgets"), and while the shakedown
+is on its expected-time line reads `Shakedown: one issue; expect the merge question at Ending, about <N> minutes
+after launch`, N from the `Estimate` section, in place of the serial line, because the merge OK is asked once the
+run completes (`SKILL.md` "Named exceptions"). `Runner-up` is the other batch size, as "Choosing the batch" says.
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`; the
 permission request is left out when the session runs with permissions bypassed. Ask every likely halt question, as

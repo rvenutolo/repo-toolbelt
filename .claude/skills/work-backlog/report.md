@@ -17,6 +17,14 @@ bullet names in quotes without a file are `SKILL.md`'s. Sections, each `none` wh
   consumers it would fail, so the user knows to fix them before the next release reaches them.
 - `Budgets and shakedown`: a budget that stopped new issues from starting and the issues it left ("Budgets"); while
   shakedown is on, that it is on and that a follow-up question offers to lift it ("Shakedown").
+- `Timings`: one line per issue with its PR number, then the spans PR opened → CI green → merged, from
+  `gh pr view <n> --json createdAt,mergedAt` and `gh run list --branch <branch> --workflow ci.yml --json
+  createdAt,updatedAt,conclusion` (the last successful run's end is CI green; every run before it is a rerun), and the
+  count of CI reruns; then the span from `started:` (`state.md`) to the first PR, the total CI wait across every
+  issue and, while shakedown was on, the span from `started:` to the merge question (the timestamp of its halt line
+  in `current-session.md`). GitHub is the source for the PR spans in both skills, so the parallel run, whose agents
+  write no timestamps, fills the same section; the next proposal reads the shakedown span from here ("The proposal"
+  in `choosing.md`), and two reports side by side show whether a change to the flow saved time.
 - `Session notes`:
   - the branches and worktrees step 3 deleted;
   - a CI rerun and why;

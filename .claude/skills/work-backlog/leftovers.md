@@ -11,9 +11,21 @@ hand stays registered until then):
 - `git branch --merged main --format='%(refname:short) %(upstream:track)'`
 - `git branch --no-merged main --format='%(refname:short)'`
 
+Before sorting, run `<main>/.claude/skills/work-backlog/backlog-status` and show its output as it is: it lays out the
+same files and listings as one table, so the user sees what the dead session left before any question about it.
+
 Sort what they show by the sections below. Anything no section above "The user's own work" claims is the user's.
 `.claude/backlog/config` and `.claude/backlog/reports/` are the user's settings and kept reports, not leftovers:
 nothing here reads, moves or deletes them.
+
+**One question for the low-stakes decisions.** The sections below ask the user several things: whether to remove or
+keep each worktree and branch of a skipped or unnamed worktree, what to do about each refused fast-forward, and each
+parked issue's `park-note:` question. Ask them all in one question-banner message, as numbered items each with a
+recommendation (the global halt-question format), and carry out the answers in one pass; after a parallel death with
+several issues, one banner per decision would cost a morning of visits before any work starts. The findings
+walkthrough stays one finding per question (`findings-walkthrough.md`), and every removal still names its literal
+path. A parked issue whose `park-answer <N>:` line `current-session.md` already holds (`state.md`) is not asked
+again: it resumes under that answer.
 
 ## A parallel run's files
 
@@ -60,7 +72,7 @@ Then fold the files, before sorting anything:
     (below), then delete the file.
   - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
     deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
-    were for. Ask with the question banner whether to remove each worktree and its branch, recommending removal.
+    were for. Ask, in the one question above, whether to remove each worktree and its branch, recommending removal.
     A budget skip is the exception: its note says the issue was never started (a budget, the deadline, or a
     prerequisite waiting for its merge OK), its issue is still open and no worktree or PR was made. There is nothing
     to confirm or sort: delete the file, and the issue stays in the backlog for the next chunk.
@@ -69,9 +81,10 @@ Then fold the files, before sorting anything:
     says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On no, keep the
     file and leave the PR open for the user.
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
-    question the run could not ask: ask it with the question banner before resuming that issue, recommending the
-    note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
-    whether to resume the issue now that its cause is settled. Before its merge resumes, add every `ruling:` line of
+    question the run could not ask: ask it in the one question above before resuming that issue, recommending the
+    note's answer, unless a `park-answer` line already answers it. A note the script wrote (a dependency, a batch
+    halt, a dead agent) carries no question; ask whether to resume the issue now that its cause is settled. Before
+    its merge resumes, add every `ruling:` line of
     the file that its PR body lacks to the body, as "PRs" in `SKILL.md` says: a merge call that stopped for a review
     had not pushed them. Once the issue merges, apply its `.claude/CLAUDE.md`
     rulings as for `merged`, then delete the file; delete it too if the user drops the issue.
@@ -94,7 +107,7 @@ when it is unchanged, so one that holds commits or files stays until this skill 
 
 - One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, when
   `origin/<branch>` exists, bring it up to date with `git pull --ff-only origin <branch>` (later rounds pushed from
-  other worktrees); a refused fast-forward means work in two places: ask with the question banner. When the
+  other worktrees); a refused fast-forward means work in two places: ask in the one question above. When the
   issue's `park-note:` says the worktree holds an unpushed, rebased branch, that is expected, not lost work: the
   next merge rebases again, so recommend dropping the rebase by moving the branch back to `origin/<branch>`
   (`git -C <path> switch --detach origin/<branch>`, then, once the user confirms,
@@ -105,7 +118,7 @@ when it is unchanged, so one that holds commits or files stays until this skill 
   `merging.md` step 4 removes it by its own path, not the `<N-description>` one.
 - A detached or `worktree-wf_*` one with no commits that are not on its issue's `origin/<branch>` or on
   `origin/main` holds nothing: remove it and delete its `worktree-<runId>-<k>` branch, naming each in the summary.
-- One that holds such commits, or that no `<N>.md` names: ask with the question banner whether to keep it for its
+- One that holds such commits, or that no `<N>.md` names: ask, in the one question above, whether to keep it for its
   issue or remove it.
 - A `worktree-wf_*` branch is this skill's even with no worktree left and even when it looks like a merged branch
   the user made: delete it once `origin/main` contains it.
@@ -128,13 +141,13 @@ run is going, dead means the lock is stale.
   `fix/finding-<slug>` or `docs/finding-<slug>` branch has no issue; it is this skill's while its entry is still in
   `pending-findings.md`.
   The PR listing above shows open PRs only, so check `gh pr list --state all --head <branch> --json state` first: a
-  `CLOSED` PR means the user rejected that work, so it is not unfinished: ask with the question banner whether to
+  `CLOSED` PR means the user rejected that work, so it is not unfinished: ask, in the one question above, whether to
   remove the worktree and its branch, recommending removal, and never open a new PR for it unasked. A `MERGED` one
   belongs to "Done". With no PR at all, the worktree is unfinished work and is resumed below.
 - A worktree under `.claude/worktrees/` with no commits beyond `origin/main` is this skill's too, but holds nothing:
   remove it (`git worktree remove`, then `git branch --delete`) and name it in the summary.
 - A worktree under `.claude/worktrees/` whose issue has since been closed is this skill's but has nothing left to
-  finish: ask with the question banner whether to remove it or keep it, and do as the user says.
+  finish: ask, in the one question above, whether to remove it or keep it, and do as the user says.
 - An approved spec recorded in `current-session.md` (`spec approved: <path>`) with issues that have no worktree, no
   PR and no merged PR, even when git and GitHub show nothing: the brainstorm and question round are done, so the
   unbuilt issues resume at `feature-flow.md` step 6 under that approval.

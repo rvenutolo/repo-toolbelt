@@ -17,6 +17,10 @@ function setup() {
     'printf "%s\n" "$*" >> "${GH_LOG}"' \
     'if [[ "$1 $2" == "issue list" ]]; then exec cat "${FIXTURES}/list.json"; fi' \
     'if [[ "$1 $2" == "issue view" && -f "${FIXTURES}/$3.json" ]]; then exec cat "${FIXTURES}/$3.json"; fi' \
+    'if [[ "$1 $2" == "pr list" && -z "${GH_PR_LIST_FAILS:-}" ]]; then' \
+    '  if [[ -f "${FIXTURES}/prs.json" ]]; then exec cat "${FIXTURES}/prs.json"; fi' \
+    '  exec printf "[]\n"' \
+    'fi' \
     'printf "gh: not found\n" >&2' \
     'exit 1' > "${BATS_TEST_TMPDIR}/bin/gh"
   chmod +x "${BATS_TEST_TMPDIR}/bin/gh"
@@ -34,7 +38,39 @@ function issue_json() {
     ($spec | split("|")) as $f
     | {number: ($f[0] | tonumber), state: $state, title: $f[1],
        labels: [($f[2] | split(",")[] | select(. != "") | {name: .})],
-       body: ($f[3:] | join("|"))}'
+       body: ($f[3:] | join("|")), comments: []}'
+}
+
+# @description Give one issue's fixtures the given comments, replacing any it
+#              had, in the list fixture and in its view fixture when present.
+# @arg $1 number the issue number
+# @arg $@ comment bodies, one per argument
+function add_comments() {
+  local -r number="$1"
+  shift
+  local comments
+  comments="$(printf '%s\n' "$@" | jq --raw-input '{body: .}' | jq --slurp '.')"
+  local file
+  for file in "${FIXTURES}/list.json" "${FIXTURES}/${number}.json"; do
+    if [[ -f "${file}" ]]; then
+      jq --argjson n "${number}" --argjson c "${comments}" \
+        'if type == "array" then map(if .number == $n then .comments = $c else . end) else .comments = $c end' \
+        "${file}" > "${file}.tmp"
+      mv "${file}.tmp" "${file}"
+    fi
+  done
+}
+
+# @description Write the `gh pr list` fixture: merged pull requests whose
+#              bodies are the arguments, numbered from 101.
+# @arg $@ one PR body per argument
+function pr_list_fixture() {
+  local body
+  local number=101
+  for body in "$@"; do
+    jq --null-input --argjson n "${number}" --arg body "${body}" '{number: $n, body: $body}'
+    number=$((number + 1))
+  done | jq --slurp '.' > "${FIXTURES}/prs.json"
 }
 
 # @description Write the `gh issue list` fixture: a JSON array of the open
@@ -83,7 +119,8 @@ function cell() {
   list_fixture '1|feat: a||body'
   run "${BACKLOG_INDEX}" --out "${OUT}"
   assert_success
-  assert_line --index 0 "$(printf 'number\tstate\tkind\tlabels\ttitle\trepro\trefs\tumbrella\tbytes')"
+  assert_line --index 0 \
+    "$(printf 'number\tstate\tkind\tlabels\ttitle\trepro\trefs\tumbrella\tcomments\tbytes\tpieces')"
 }
 
 @test 'writes the full issue JSON to the --out file' {
@@ -251,10 +288,49 @@ function cell() {
   assert_equal "$(cell 1 8)" ''
 }
 
+@test 'counts the comments of each issue' {
+  list_fixture '1|feat: a||x' '2|feat: b||y'
+  add_comments 1 'first comment' 'second comment'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_equal "$(cell 1 9),$(cell 2 9)" '2,0'
+}
+
+@test 'counts the comments of a named issue and keeps their bodies in the index' {
+  view_fixture OPEN '5|fix: a||x'
+  add_comments 5 'the one comment'
+  run "${BACKLOG_INDEX}" --out "${OUT}" 5
+  assert_equal "$(cell 5 9)" '1'
+  assert_equal "$(jq --raw-output '.[0].comments[0].body' "${OUT}")" 'the one comment'
+}
+
 @test 'prints the body length in bytes' {
   list_fixture '1|feat: a||héllo'
   run "${BACKLOG_INDEX}" --out "${OUT}"
-  assert_equal "$(cell 1 9)" '6'
+  assert_equal "$(cell 1 10)" '6'
+}
+
+@test 'counts the merged pull requests whose body holds a whole Part of line for the issue' {
+  list_fixture '7|feat: a||x' '8|feat: b||x' '9|feat: c||x'
+  pr_list_fixture $'Part of #7\nBacklog-Session: 2026-01-01' 'Part of #7' 'see Part of #8 here' 'Part of #88'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_success
+  assert_equal "$(cell 7 11),$(cell 8 11),$(cell 9 11)" '2,0,0'
+}
+
+@test 'lists the merged pull requests once per run, searching for the Part of phrase' {
+  list_fixture '1|feat: a||x' '2|feat: b||x'
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_success
+  run grep --count '^pr list --state merged --limit 1000 --search "Part of #" in:body --json number,body$' "${GH_LOG}"
+  assert_output '1'
+}
+
+@test 'exits 1 when gh fails to list the merged pull requests' {
+  list_fixture '1|feat: a||x'
+  export GH_PR_LIST_FAILS=1
+  run "${BACKLOG_INDEX}" --out "${OUT}"
+  assert_failure 1
+  assert_output --partial 'gh failed to list the merged pull requests'
 }
 
 @test 'keeps a title with a tab on one row' {

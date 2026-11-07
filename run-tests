@@ -27,8 +27,10 @@ readonly COVERAGE_DIR='.coverage'
 # Directories kcov measures, listed so that a directory that does not exist yet
 # is skipped: kcov errors on a missing directory. Extend this list when a new
 # tree of bash appears. Each formatters/<name> directory is measured too,
-# found at run time rather than listed here.
-readonly KCOV_DIRS=(lib lints .ci)
+# found at run time rather than listed here. The backlog skills' helper scripts
+# are bash beside markdown and a workflow script; kcov parses only the files
+# with a bash shebang.
+readonly KCOV_DIRS=(lib lints .ci .claude/skills/work-backlog .claude/skills/work-backlog-parallel)
 
 # Root-level runners kcov measures. They are files, not a directory, so they are
 # named individually.

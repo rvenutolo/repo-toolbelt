@@ -36,12 +36,12 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # what makes a verbatim-missing rule still allowed.
 # shellcheck disable=SC2016 # the $ names are jq variables, not shell ones
 readonly COVERED_BY_JQ='
-  ($rule | capture("^Bash\\((?<command>.*)\\)$").command) as $command
-  | [.allow[]
-     | select(test("^Bash\\(.* \\*\\)$"))
-     | . as $wider
-     | select($command | startswith(($wider | capture("^Bash\\((?<prefix>.*) \\*\\)$").prefix) + " "))]
-  | max_by(length) // empty'
+  ($rule | capture("^Bash\\((?<command>.*)\\)$").command) as $command # coverage-exempt: kcov scores this line; it never executes as bash
+  | [.allow[] # coverage-exempt: kcov scores this line; it never executes as bash
+     | select(test("^Bash\\(.* \\*\\)$")) # coverage-exempt: kcov scores this line; it never executes as bash
+     | . as $wider # coverage-exempt: kcov scores this line; it never executes as bash
+     | select($command | startswith(($wider | capture("^Bash\\((?<prefix>.*) \\*\\)$").prefix) + " "))] # coverage-exempt: kcov scores this line; it never executes as bash
+  | max_by(length) // empty' # coverage-exempt: kcov scores this line; it never executes as bash
 
 # @description Print the usage line to stderr and exit 2.
 # @noargs
