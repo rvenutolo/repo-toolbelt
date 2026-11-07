@@ -1,8 +1,7 @@
 # Findings walkthrough
 
 Go through `pending-findings.md` one finding at a time, and never skip one. Never present them as a list: the user
-decides each on its own, and a list invites a blanket answer that files or drops findings nobody weighed. There is
-no cap on how many there are.
+decides each on its own, and a list invites a blanket answer that files or drops findings nobody weighed.
 
 For each finding:
 

@@ -17,12 +17,12 @@ Every role reads `/work-backlog` `SKILL.md` "Terms", its "Never" section, and th
 would otherwise call). Then:
 
 - **Build, bug:** the "PRs", "PR title", "Branches" and "Worktrees" bullets of "Doing the work" and the "Comments"
-  bullet of "Choosing the chunk"; the
+  bullet of `choosing.md`; the
   `sub-skill-overrides.md` entries for systematic-debugging, test-driven-development and using-git-worktrees (its
   red-baseline rule); `bug-flow.md`; and "The filing bar", used only to judge your own issue (`bug-flow.md` step 3).
 - **Build, feature:** as for a bug, plus the "Review" bullet, the entries for writing-plans and executing-plans, and
   `feature-flow.md` step 6.
-- **Review:** the "Comments" bullet of "Choosing the chunk".
+- **Review:** the "Comments" bullet of `choosing.md`.
 - **Fix:** the "PRs" bullet; the entries for systematic-debugging, test-driven-development and receiving-code-review.
 - **Merge:** the "PRs" bullet; the test-driven-development entry; `merging.md` steps 0–2.
 
@@ -66,7 +66,7 @@ working, and nothing that arrives after your final message changes it.
 - **After a context compaction**, re-read this file and your section, and the inputs in your prompt, before
   anything else. Rules such as "never ask", "never fetch `main`" and "never end your turn mid-command" do not
   survive a compaction otherwise.
-- **Summary items:** every item that `/work-backlog` `SKILL.md` "End-of-run report" lists under `Session notes` or
+- **Summary items:** every item that `/work-backlog` `report.md` lists under `Session notes` or
   `Consumer-impacting changes` and that only you can see (read those two bullets) goes in `rulings` as a line
   starting `Summary:`, so the controller's summary names it; the controller never sees the code, so it cannot
   notice these itself. A consumer-impacting change is also a `Ruling:` in the PR body, as `halt-questions.md`'s

@@ -114,7 +114,7 @@ Then:
    included, then
    `git -C <rebase worktree> push --force-with-lease=<branch>:<old remote SHA> origin <branch>`. The pre-push hook
    runs the full gate in the rebase worktree. A failure that comes from combining the branch with the new `main` (a
-   test or manifest that expects the old set of lints, say) is the merge-time fix `merging.md` step 1 describes:
+   test or manifest that expects the old set of lints, say) is the fix `merging.md` "Merge-time fixes" describes:
    note `HEAD`, commit the fix, then return `needs-review` with `reason: "gate"`, the noted commit as `fixBase`, the
    gate's failing output (trimmed to what shows the failure) as `failure`, and the fixed files as `conflictedFiles`.
    Any other failure parks.
@@ -122,8 +122,9 @@ Then:
 ## 4. CI
 
 `merging.md` step 1, the watch run as `common.md` "Long commands" says: watch, read the buckets, one rerun for an
-infrastructure failure, still red after the rerun parks, and CI that did not trigger parks. A real failure is the
-merge-time fix it describes, reviewed by the review stage in place of superpowers:requesting-code-review: note `HEAD`,
+infrastructure failure, still red after the rerun parks, and CI that did not trigger parks. A real failure is the fix
+`merging.md` "Merge-time fixes" describes, reviewed by the review stage in place of superpowers:requesting-code-review:
+note `HEAD`,
 commit the fix in the rebase worktree, do not push, and return `needs-review` with `reason: "ci"`, the noted commit as
 `fixBase`, the failing job's output as `failure`, and the fixed files as `conflictedFiles`. Every merge-time change gets
 one review stage; the fixes for that review's findings (section 2, step 3) are not reviewed again, as `/work-backlog`
@@ -161,8 +162,8 @@ any cleanup.
 
 Every ruling this agent makes (a resolution finding dropped, a conflict resolved one way) goes in `rulings` and,
 before the push in section 3, step 4, into the PR body (`common.md` "PR bodies"), with each of `pendingRulings` the
-body does not have yet. Each `Summary:` kind `common.md` "Summary items" lists (a CI rerun among them) goes in
-`rulings` as a `Summary:` line, never in the PR body. Every out-of-scope finding
+body does not have yet. Each `Summary:` kind of `common.md` "Summary items" (which takes them from `report.md`; a CI
+rerun among them) goes in `rulings` as a `Summary:` line, never in the PR body. Every out-of-scope finding
 goes in `findings`, unjudged; the script hands both to the controller.
 
 ## Parking

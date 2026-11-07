@@ -54,7 +54,7 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
    whatever the time: it is already on a branch. Read the issue with
    `gh issue view <n> --json state,title,body,comments`: `CLOSED` returns `state: "skipped"` with a `parkNote`
    saying the user closed it, so the record can be told from a skip whose note was forgotten. The comments bind you
-   as the "Comments" bullet says, and `haltAnswers` binds you too: never re-decide a question it answers.
+   as "Comments" in `choosing.md` says, and `haltAnswers` binds you too: never re-decide a question it answers.
    Rename the branch with `git branch --move <type>/<n>-<description>` (the "Branches" bullet; the worktree starts
    on its own `worktree-<runId>-<k>` branch, which this renames, so the command has a branch to move). Copy the
    instruction files, and for a feature `<main>/<spec>`, as the "Worktrees" bullet says, reading each from
@@ -123,7 +123,7 @@ worktree path the issue's agents used so far), `build` (the latest build or fix 
    that instruction in. Fill the template's placeholders:
    - `[DESCRIPTION]`: the PR's title and body (`gh pr view <pr> --json title,body`).
    - `[PLAN_OR_REQUIREMENTS]`: the issue, body and comments (`gh issue view <n> --json title,body,comments`, since
-     the `--comments` form drops the body off a terminal, as the "Comments" bullet says) and, for a feature,
+     the `--comments` form drops the body off a terminal, as "Comments" in `choosing.md` says) and, for a feature,
      `<main>/<spec>` and `<main>/<plan>`.
    - `[BASE_SHA]`: `git merge-base origin/main origin/<branch>`, after `git fetch origin <branch>` in the main
      checkout (your issue's branch, which "Shared state is not yours" in `common.md` allows).

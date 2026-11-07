@@ -9,13 +9,15 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
 1. **Brainstorm.** **REQUIRED SUB-SKILL:** superpowers:brainstorming, with the user. Open it with the current state:
    the chunk's issue bodies and comments, and the settled decisions in `.claude/CLAUDE.md`, so its questions start
    from what is already decided instead of re-asking it. When the chunk proposal named an earlier session's spec
-   (merged `Part of #N` pieces, "Earlier pieces" in `SKILL.md`), open with that spec and extend it: its merged parts
-   are settled, and the code that landed is their design. A family of features shares one brainstorm. Brainstorming
-   ends when the user approves the design in the conversation; if the user opts out of its questions, the design is
-   what the conversation already holds. If the brainstorm drops an issue from the chunk or adds one (an open issue
-   that is not the user's own work), the spec's issue list is the chunk from then on; name the change in the summary.
-   Either way a spec is written, and the builder check's questions wait for step 5 (`sub-skill-overrides.md` names
-   the brainstorming pauses these steps replace).
+   (merged `Part of #N` pieces, "Earlier pieces" in `choosing.md`), open with that spec and extend it: its merged
+   parts are settled, and the code that landed is their design. A family of features shares one brainstorm.
+   Brainstorming ends when the user approves the design in the conversation; if the user opts out of its questions,
+   the design is what the conversation already holds.
+
+   The brainstorm may drop an issue from the chunk or add one (an open issue that is not the user's own work); the
+   spec's issue list is the chunk from then on, and the summary names the change. A spec is written either way, and
+   the builder check's questions wait for step 5 (`sub-skill-overrides.md` names the brainstorming pauses these steps
+   replace).
 2. **Spec.** Write it to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, a local path ("State" in
    `SKILL.md`), and record the path in `current-session.md`. For a family, one spec covers every issue and says
    which issue owns which part.
@@ -31,8 +33,8 @@ Steps 1 to 5 run in the main checkout on `main`; no worktree exists yet. The wor
    change what gets built; hold the rest for step 5.
 5. **One question round.** A single message, beginning with the question banner, that asks:
    - everything held from steps 3 and 4;
-   - every likely halt question for the unattended part ("Terms" in `SKILL.md`; `halt-questions.md` lists the kinds
-     that recur), each with a recommended answer and a one-line reason;
+   - every likely halt question for the unattended part, each as "Terms" in `SKILL.md` defines it
+     (`halt-questions.md` lists the kinds that recur);
    - any copied rule in `.claude/rules/` the planned code could not satisfy (the repo's `CLAUDE.md` asks the user
      about those);
    - the permission request (`permissions.md`), with any tool the spec's work needs beyond the devShell's added to

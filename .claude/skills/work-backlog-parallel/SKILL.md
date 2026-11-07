@@ -1,12 +1,9 @@
 ---
 name: work-backlog-parallel
 description: >-
-  Works this repo's GitHub issue backlog with independent issues built concurrently by a workflow and merged one at a
-  time on green CI, after the user plans and approves the batch in one sitting. Use when asked to work the backlog
-  with several issues built at once, for a short session or a long unattended batch. Arguments: `plan` for a
-  read-only proposal, `short` or `long` for the batch size, issue numbers to choose the batch. For two or three
-  small bugs, /work-backlog is about as fast and simpler. The first, shakedown run builds one issue, so start with
-  /work-backlog and switch once shakedown is lifted.
+  Works the issue backlog with independent issues built concurrently by a workflow and merged one at a time on green
+  CI, after one planning sitting. `plan` rehearses; `short` or `long` sizes the batch; issue numbers name it. Under
+  shakedown it builds one issue, like /work-backlog; for two or three small bugs /work-backlog is as fast and simpler.
 argument-hint: "[plan] [short|long] [<issue>...]"
 disable-model-invocation: true
 ---
@@ -16,9 +13,10 @@ disable-model-invocation: true
 One run of this skill is one parallel backlog session: the `/work-backlog` session, with independent issues built
 concurrently by a workflow and merged one at a time. Everything `/work-backlog` says governs here unless this file
 or a file beside it names an exception, and every exception exists because a workflow builds the issues; any other
-rule lives in `/work-backlog` and is cited here. The names below ("Terms", "State", "The filing bar", "Merging" and
-the rest) are sections of `.claude/skills/work-backlog/SKILL.md`, and "PRs", "Permissions", "Long commands" and the
-like are bullets of its "Doing the work".
+rule lives in `/work-backlog` and is cited here. A quoted name with no file beside it ("Terms", "State", "The filing
+bar", "Merging" and the rest) is a section of `.claude/skills/work-backlog/SKILL.md`, and "PRs", "Permissions", "Long
+commands" and the like are bullets of its "Doing the work"; a name followed by a file (`"Order" in choosing.md`,
+`report.md`, `plan.md`, `"Merge-time fixes" in merging.md`) is in that file beside `SKILL.md`.
 
 ## What to read, when
 
@@ -60,7 +58,8 @@ run stopped with no completion record, and relaunches it with the same `scriptPa
 
 ## Arguments
 
-`/work-backlog` "Arguments" holds: `plan`, issue numbers and an unknown argument behave as it says. `short` or `long`
+`/work-backlog` "Arguments" holds: `plan` (its serial steps are in `plan.md`), issue numbers and an unknown argument
+behave as it says. `short` or `long`
 is this skill's own (a named exception below) and picks the batch size `planning.md` "Choosing the batch" defines;
 without one the proposal is the short batch. Named issues make the batch, so a size beside them is ignored.
 
@@ -92,19 +91,21 @@ reports as the script failing is handled as a lost run ("The run" step 4).
 
 ## Named exceptions to `/work-backlog`
 
+### For the controller
+
 - **Issues run concurrently** within the dependency graph `planning.md` builds, up to the cap; merges are serial.
   Replaces "Strictly one issue at a time" ("Doing the work") and its red flag.
 - **`short` and `long` arguments.** A batch has no fixed size, so the user picks one of the two `planning.md`
   defines; the serial chunk size needs no argument. Adds to "Arguments".
-- **No chunk size limit.** Replaces "Size" in "Choosing the chunk". Builds overlap and every question is asked before
-  the run, so a longer batch costs the user no extra visit; only the serial merges grow with it, and the proposal's
+- **No chunk size limit.** Replaces "Size" in `choosing.md`. Builds overlap and every question is asked before the
+  run, so a longer batch costs the user no extra visit; only the serial merges grow with it, and the proposal's
   estimate shows that.
 - **A batch may mix bugs and features and hold unrelated families.** Replaces the bugs-first exclusivity and the
-  "Features" relatedness rule in "Choosing the chunk". Bugs-first stays only as a rule about what the batch holds (a
-  backlog with doable bugs puts them in the batch); the order is "Order"'s, by leverage, not by kind. Every
-  brainstorm and the
-  one question round happen before the run, so unrelated work no longer means a second sitting, and the dependency
-  graph, not relatedness, keeps conflicting work apart. An issue's kind is decided as "Choosing the chunk" says.
+  "Features" relatedness rule in `choosing.md`. Bugs-first stays only as a rule about what the batch holds (a backlog
+  with doable bugs puts them in the batch); the order is "Order"'s (`choosing.md`), by leverage, not by kind. Every
+  brainstorm and the one question round happen before the run, so unrelated work no longer means a second sitting,
+  and the dependency graph, not relatedness, keeps conflicting work apart. An issue's kind is decided as "Kinds" in
+  `choosing.md` says.
 - **Feature batches** get one brainstorm and spec per family, then one combined question round and one permission
   request (`planning.md`). A mixed batch asks its bug halt questions in that round. Every likely halt question is
   asked, as `/work-backlog` asks it: a park answers nothing, it only moves the question to a later session.
@@ -117,71 +118,61 @@ reports as the script failing is handled as a lost run ("The run" step 4).
   `parked` with a one-paragraph note: what happened, what was tried, the question the user would have been asked
   and the recommended answer. Issues that depend on a parked issue park too. Batch-level failures (`common.md`) end
   the run.
-- **A refused pull of local `main` ends the run.** `merging.md` step 3 carries on from `origin/main`; here the next
-  merges would all hit the same refusal, so the merge queue halts the batch.
-- **Some rebase conflicts are resolved**, not halted on (`merge-queue.md`): every conflict in the list and registry
-  lines, `.coverage-baseline.txt` and `CHANGELOG.md` that `merge-queue.md` "3. Conflicts" names, whatever commit it
-  meets, and a code conflict
-  whose conflicting hunks both come from the batch's own PRs. Concurrent builds touch those files by design, so
-  halting on them would park most feature batches. Any other conflict parks the issue, as `merging.md` step 2's
-  blocked banner would halt it. Replaces the conflict blocked banners in `merging.md` step 2 for those conflicts
-  only.
 - **Out-of-scope findings are never judged mid-run by an agent.** Agents return them unjudged and the controller
   judges and folds them at the end, so there is no "Same PR" fix and no known-gap comment for them. Replaces
   "Out-of-scope findings" for findings a workflow agent makes during the run; before the run (the Fable review's
   non-design findings) and from "Ending" on (a "fix it now", a leftover finished serially), the serial section
   holds.
-- **Worktrees are made by the workflow.** Build and fix agents run in tool-made worktrees
-  (`.claude/worktrees/<runId>-<k>`, where the run id itself begins `wf_` and `k` counts the run's agents, not
-  issues), which start from `origin/main`; the merge queue makes `.claude/worktrees/merge-<N>`. Replaces
-  "Worktrees" creation; branch names still follow "Branches", and the baseline test run the "Worktrees" bullet names
-  is the build agent's (`agents.md` "Build").
-- **No `EnterWorktree` or `ExitWorktree` during the run.** From step 2 of "The session" until `workflow-done` is
-  recorded ("The run" step 5), neither the controller nor any workflow agent calls either; from "Ending" on, the
-  shakedown merge and a "fix it now" in the walkthrough enter a worktree as `/work-backlog` says. Replaces the
-  re-enter step of "After a compaction" in `resume.md` during the run (the controller follows "On invocation"
-  instead).
-- **No "Leaving to write" during the run.** Every write an agent would make to the main checkout is returned as
-  `findings` or `rulings`, or made by the review stage, which runs in the main checkout. Replaces "Leaving to write"
-  for workflow agents.
-- **Agents wait with `wait-for`.** Replaces "Long commands" for workflow agents (`common.md`): a background
-  notification reaches an agent only while it keeps working, and nothing that arrives after its final message changes
-  it.
+- **The controller enters no worktree during the run.** From step 2 of "The session" until `workflow-done` is
+  recorded ("The run" step 5) it calls neither `EnterWorktree` nor `ExitWorktree`, so "Leaving to write" never
+  applies to it; from "Ending" on, the shakedown merge and a "fix it now" in the walkthrough enter a worktree as
+  `/work-backlog` says. Replaces the re-enter step of "After a compaction" in `resume.md` during the run (the
+  controller follows "On invocation" instead). Agents never enter or leave one either (`common.md`).
 - **A permission-mode question before planning.** Adds a halt to "The session" step 1: an agent that meets a prompt
   stalls its issue and every dependent.
 - **A permission refusal is not an answer.** `permissions.md` lets a serial run go on after "skip the permission
   stuff"; here the run proceeds only when the session is bypassed or every rule string is matched ("The run" step 2),
   because an agent that meets a prompt stalls its issue and every dependent.
-- **The shakedown merge question is asked at "Ending"**, not about fifteen minutes after the PR opens as "Choosing
-  the chunk" has the proposal say: the controller runs `merging.md` steps 0–1 in the issue's worktree, asks on green
-  as its step 2 does, then runs steps 2–4 ("Ending" step 1). `planning.md`'s proposal says so in place of the
-  fifteen-minute line.
+- **The shakedown merge question is asked at "Ending"**, not about fifteen minutes after the PR opens as "The
+  proposal" in `choosing.md` has the proposal say: the controller runs `merging.md` steps 0–1 in the issue's
+  worktree, asks on green as its step 2 does, then runs steps 2–4 ("Ending" step 1). `planning.md`'s proposal says
+  so in place of the fifteen-minute line.
 - **`workflow-launching:`** is a `current-session.md` line written right before the Workflow tool is invoked
   ("State"), so a death between the invocation and its return leaves a trace that "On invocation" sends to the
   trace check instead of planning again.
-- **No early push or early PR for a build agent.** A build pushes and opens its PR only when the build is finished
-  (`agents.md` "Build" step 4): a resumed run takes any open PR as a finished build and would merge a half-built
-  one. Replaces the early push and early PR of "PRs" for build agents.
-- **The plan's workspace is deleted after the PR exists**, not at the end of the plan's "Finish": a build that dies
-  before its push would otherwise leave a finished branch with no ledger to resume from (`agents.md` "Build"
-  step 3).
-- **Fix commits carry a `Review-round: <round>` trailer** (`agents.md` "Fix"), so a fix agent re-run after a death
-  sees which findings the dead one already covered; the serial controller remembers that itself.
-- **No nested subagents.** Workflow agents are given no subagent tool here, so superpowers:subagent-driven-development
-  is never chosen, superpowers:executing-plans' final review is skipped (its "With a subagent tool" and "Without a
-  subagent tool" paragraphs both), and superpowers:requesting-code-review, wherever `/work-backlog` or `merging.md`
-  calls for it from a workflow agent, is replaced by the review stage (`agents.md` "Review"), which performs
-  `code-reviewer.md`'s review itself. The two-round cap holds: a round is one review stage plus one fix stage. The
-  controller, which can dispatch, still runs superpowers:requesting-code-review where the serial flow calls for it
-  (a merge-time fix at the shakedown merge, a leftover finished serially).
-- **Nothing shared is written mid-run by a builder.** No build or fix agent edits the spec, `.claude/rules/`,
-  `current-session.md` or `pending-findings.md` (Write, Edit and git are confined to their worktree, and `common.md`
-  forbids shell writes outside it). A spec/code divergence (`feature-flow.md` step 6.3) is a `Ruling:` in the PR
-  body; the controller corrects the spec at the end. A change the issue makes to what `.claude/CLAUDE.md` says is a
-  `Ruling:` too, naming the edit; the controller applies it to the main checkout's copy at the end, as
-  "Leaving to write" would serially. The plan is copied to the main checkout by the review stage.
 - **`current-session.md` survives a run with parked issues**, trimmed to them ("Ending"). Replaces its deletion in
   step 9 while anything is parked.
+
+### For workflow agents
+
+Each rule below is stated in full in the agents' file it names; this list only records what it replaces and why.
+
+- **A refused pull of local `main` ends the run** (`merge-queue.md` section 6): `merging.md` step 3 carries on from
+  `origin/main`, but here every later merge would hit the same refusal.
+- **Some rebase conflicts are resolved**, not halted on (`merge-queue.md` "3. Conflicts"): the list, registry,
+  baseline and changelog conflicts concurrent builds make by design, and a code conflict between two of the batch's
+  own PRs; any other parks the issue. Replaces `merging.md` step 2's conflict blocked banners for those only.
+- **Worktrees are made by the workflow** (`agents.md`): build and fix agents run in tool-made
+  `.claude/worktrees/<runId>-<k>` worktrees (the run id begins `wf_`; `k` counts the run's agents) from
+  `origin/main`, and the merge queue makes `.claude/worktrees/merge-<N>`. Replaces "Worktrees" creation; branch
+  names still follow "Branches", and the baseline run is the build agent's.
+- **Nothing shared is written mid-run by a builder** (`common.md` "Shared state is not yours"): spec and
+  `.claude/CLAUDE.md` changes are `Ruling:` lines the controller applies at the end, and the review stage copies
+  the plan. Replaces "Leaving to write" for workflow agents.
+- **Agents wait with `wait-for`** (`common.md` "Long commands"): a background notification reaches an agent only
+  while it keeps working. Replaces "Long commands" for workflow agents.
+- **No early push or early PR for a build agent** (`agents.md` "Build" step 4): a resumed run takes any open PR as a
+  finished build. Replaces the early push and early PR of "PRs" for build agents.
+- **The plan's workspace is deleted after the PR exists** (`agents.md` "Build" step 3), not at the plan's "Finish":
+  a build that dies before its push would otherwise leave a branch with no ledger to resume from.
+- **Fix commits carry a `Review-round: <round>` trailer** (`agents.md` "Fix"), so a re-run fix agent sees which
+  findings the dead one covered; the serial controller remembers that itself.
+- **No nested subagents** (`agents.md` "Review"): workflow agents have no subagent tool, so
+  superpowers:subagent-driven-development is never chosen, superpowers:executing-plans' final review is skipped, and
+  the review stage performs `code-reviewer.md`'s review in place of superpowers:requesting-code-review. The two-round
+  cap holds: a round is one review stage plus one fix stage. The controller, which can dispatch, still runs
+  superpowers:requesting-code-review where the serial flow calls for it (a merge-time fix at the shakedown merge, a
+  leftover finished serially).
 
 ## State
 
@@ -315,8 +306,7 @@ Take the first that matches:
      it as a batch-level halt, cause "run lost", go to step 5 with no result, and sort every issue from its files
      and git as `leftovers.md` does.
 
-   Never start a fresh run for a batch whose run left traces. This step is the one place that decides whether a
-   run can be resumed; `leftovers.md` cites it.
+   Never start a fresh run for a batch whose run left traces.
 5. **Record**, from `result.json` (or with no result, after a lost run). The result is
    `{merged, parked: [{n, note}], skipped, readyToMerge, batchHalt, records}`, one record per issue with its
    `state` (`merged`, `parked`, `skipped` or `ready-to-merge`), `note`,
@@ -339,27 +329,32 @@ Take the first that matches:
    Apply every merged issue's `.claude/CLAUDE.md` ruling to the main checkout's copy the same way. The worktree
    sort and the deletion of each `<N>.md` wait for step 4, since step 3 still reads them.
 
-   **Shakedown merge.** For each `ready-to-merge` issue, in turn: take the worktree `git worktree list` shows on
-   `<branch>` (normally the build agent's, the first path of its `<N>.md` `worktrees:` line; a fix agent's is
-   detached, so a push from it has no branch to push); when none holds it, add `.claude/worktrees/merge-<N>` on
-   `<branch>` as `merge-queue.md` section 2 step 4 does. Enter it as `/work-backlog` "Worktrees" enters an existing
-   one, then run `git pull --ff-only origin <branch>` there, since fix rounds pushed from other worktrees. Then
-   `merging.md` steps 0–1 (the CI watch is usually already green, since the build's push started it), its step 2's
-   shakedown question on green (show the PR and what its review settled, recommending yes unless the review left
-   something open), and steps 2–4, with these differences: the review stage was its review, so it gets no second
-   one; a merge-time fix made here is reviewed as `merging.md` step 1 says, since this session can dispatch; step
-   3's record is this issue's `<N>.md` `state: merged`, not a `current-session.md` line; step 4 removes every path
-   on the `worktrees:` line. Its spec and `.claude/CLAUDE.md` rulings are then applied as above. On no, it stays
-   open as this skill's unfinished work for `leftovers.md`, and the summary names it.
+   **Shakedown merge.** For each `ready-to-merge` issue, in turn:
+   1. Take the worktree `git worktree list` shows on `<branch>`: normally the build agent's, the first path of its
+      `<N>.md` `worktrees:` line (a fix agent's is detached, so a push from it has no branch to push). When none
+      holds it, add `.claude/worktrees/merge-<N>` on `<branch>` as `merge-queue.md` section 2 step 4 does.
+   2. Enter it as `/work-backlog` "Worktrees" enters an existing one.
+   3. `git pull --ff-only origin <branch>` there, since fix rounds pushed from other worktrees.
+   4. `merging.md` steps 0–1; the CI watch is usually already green, since the build's push started it.
+   5. Its step 2's shakedown question, on green: show the PR and what its review settled, recommending yes unless
+      the review left something open.
+   6. `merging.md` steps 2–4, with three differences: the review stage was its review, so it gets no second one (a
+      merge-time fix made here is still reviewed as "Merge-time fixes" in `merging.md` says, since this session can
+      dispatch); step 3's record is this issue's `<N>.md` `state: merged`, not a `current-session.md` line; step 4
+      removes every path on the `worktrees:` line.
+
+   Its spec and `.claude/CLAUDE.md` rulings are then applied as above. On no, it stays open as this skill's
+   unfinished work for `leftovers.md`, and the summary names it.
 2. Run `/work-backlog` step 8 (the walkthrough), skipped as "Merging" says when the batch halted on a failed `gh`
    call.
-3. **Summary:** the report `/work-backlog` "End-of-run report" defines, in its report file and in chat, with these
+3. **Summary:** the report `/work-backlog` `report.md` defines, in its report file and in chat, with these
    additions: `Not merged` is led by the batch-level halt cause if there was one, naming the issue whose record's
    note carries it (a merged record may carry it too, when the merge agent's pull of `main` was refused after the
    merge), then every parked issue with its
    note and recommended answer, then every issue a budget skipped and every `ready-to-merge` issue left unmerged,
    each with its note; `Session notes` and `Consumer-impacting changes` take every record's `rulings` line that
-   starts `Summary:` (`common.md` "Summary items" lists the kinds); `Leftovers` takes every `leftInPlace` entry and
+   starts `Summary:` (`common.md` "Summary items", which takes the kinds from `report.md`); `Leftovers` takes every
+   `leftInPlace` entry and
    every path a merged issue's `worktrees:` line names that still exists (a merge agent that died after the merge).
    A note the script wrote itself (a dependency, a batch halt, a dead agent) carries no question: give it one,
    normally "resume the issue in the next session" once its cause is settled. Write these items to

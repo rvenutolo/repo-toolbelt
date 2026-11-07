@@ -9,7 +9,7 @@ Each default is the answer that never needs undoing.
   record a `Ruling:` that the workflow lints and the PR's own CI run are the test, since a test written to exercise a
   YAML key tests the parser, not the change.
 - **"Land together".** The issue asks for its change to ship with another issue's. Default: one PR each, ordered by
-  the dependency ("Combined changes" in `SKILL.md`).
+  the dependency ("Combined changes" in `choosing.md`).
 - **Title broader than body.** The title names a problem neither the body nor a comment describes. Default: try to
   reproduce it; fix it in the same PR if it reproduces, otherwise a `Ruling:` that it did not.
 - **Prerequisite outside the repo.** The change needs a GitHub App setting, a secret, another repo's change or a
