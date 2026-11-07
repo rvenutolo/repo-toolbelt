@@ -20,7 +20,8 @@ function checkArgs() {
   const bad = (why) => { throw new Error(`run-args.json is invalid: ${why}`) }
   if (!A || typeof A !== 'object' || Array.isArray(A)) bad('args must be an object')
   if (typeof A.date !== 'string' || !A.date) bad('date must be a non-empty string')
-  if (typeof A.main !== 'string' || !A.main) bad('main must be a non-empty string')
+  // Every agent prompt is `${A.main}/.claude/skills/…`; a relative path would resolve against each agent's own cwd.
+  if (typeof A.main !== 'string' || !A.main.startsWith('/')) bad('main must be an absolute path')
   if (!Number.isInteger(A.cap) || A.cap < 1) bad('cap must be an integer of at least 1')
   // Build agents compare `date --utc +%FT%TZ` with the deadline as strings, which orders correctly only in this form.
   if (typeof A.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(A.deadline)) {
@@ -117,9 +118,11 @@ const MERGE = {
     'findings', 'reason', 'failure', 'fixBase'],
 }
 
+// merge-queue.md is one agent's whole instruction set, so its prompt names the file, not a section of it.
 const prompt = (file, section, inputs) =>
   `You are a /work-backlog-parallel workflow agent with no human watching. Read ${SKILL}/common.md, then follow ` +
-  `the section "${section}" of ${SKILL}/${file}. Inputs (JSON): ${JSON.stringify(inputs)}`
+  (section ? `the section "${section}" of ${SKILL}/${file}.` : `the whole of ${SKILL}/${file}.`) +
+  ` Inputs (JSON): ${JSON.stringify(inputs)}`
 
 // The cap bounds build and fix agents together: each runs the full pre-push gate when it pushes. Fix agents go
 // ahead of builds still waiting, so ready work is not held behind issues that have not started. The merge agent
@@ -230,9 +233,14 @@ function end(rec, state, note, { counts = true } = {}) {
   return rec
 }
 const budgetNote = () => `Not started: the run's parked budget (${A.maxParked}) was spent.`
-// A prerequisite that stopped for a budget, or that waits for the user's merge, leaves its dependent unstarted, not
-// broken: it is skipped with the same reason and builds in a later session.
-const UNSTARTED = { 'ready-to-merge': (m) => `Not started: #${m} waits for the user's OK to merge.` }
+// The build agent's deadline note is free text; leftovers.md and the summary key on this wording.
+const deadlineNote = () => `Not started: the run's deadline (${A.deadline}) passed before this issue started.`
+// A prerequisite that stopped for a budget, that the user closed, or that waits for the user's merge, leaves its
+// dependent unstarted, not broken: it is skipped, naming the reason, and builds in a later session.
+const UNSTARTED = {
+  'ready-to-merge': (m) => `Not started: #${m} waits for the user's OK to merge.`,
+  skipped: (m) => `Not started: #${m} did not merge: ${records[m].note}`,
+}
 
 async function mergeIssue(rec) {
   if (batchHalt) return { state: 'parked', parkNote: haltNote(), batchHalt: '' }
@@ -240,23 +248,29 @@ async function mergeIssue(rec) {
   let resolutionReviewed = false
   let resolutionFindings = []
   let mergeWorktree = ''
+  // The previous call's reason: after a `ci` fix the rebased branch is already pushed, which changes the lease SHA
+  // the next call uses and what a park note must say about the worktree.
+  let lastReason = ''
   // A call that returns needs-review has not pushed, so its rulings are not in the PR body yet; the next call writes
   // them before its push.
   const pendingRulings = []
-  // Parking here, between merge calls, leaves a rebased branch no agent pushed; the note must say where it is.
+  // Parking here, between merge calls, leaves work no agent pushed; the note must say where it is and what it is,
+  // because leftovers.md keys its recommendation on these sentences.
   const park = (note, cause = '') => ({
     state: 'parked', batchHalt: cause,
-    parkNote: mergeWorktree
-      ? `${note} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
-        `origin/${rec.branch}.`
-      : note,
+    parkNote: !mergeWorktree ? note
+      : lastReason === 'ci'
+        ? `${note} The worktree ${mergeWorktree} holds a rebased ${rec.branch} that is ahead of ` +
+          `origin/${rec.branch} by an unpushed fix.`
+        : `${note} The worktree ${mergeWorktree} holds an unpushed, rebased ${rec.branch} that diverges from ` +
+          `origin/${rec.branch}.`,
   })
   // A conflict resolution, or a fix for the gate or CI, goes to review and back; main can move during CI and force
   // another, so three at most. No slot (see slot()): a second failure parks through park(), which keeps the
-  // divergence sentence leftovers.md relies on.
+  // worktree sentence leftovers.md relies on.
   for (const attempt of [1, 2, 3]) {
     const merge = await unlessHalted(() => ask(
-      prompt('merge-queue.md', 'Merge queue', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings }),
+      prompt('merge-queue.md', '', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings, lastReason }),
       { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })
       .then((r) => countPark(rec, r)))
     if (merge === HALTED) return park(haltNote())
@@ -273,6 +287,7 @@ async function mergeIssue(rec) {
     }
     pendingRulings.push(...(merge.rulings || []).filter((r) => !r.startsWith('Summary:')))
     mergeWorktree = merge.mergeWorktree
+    lastReason = merge.reason
     if (attempt === 3) {
       return park('Three changes needing review in a row (conflict resolutions, gate or CI fixes); the third was ' +
         'not reviewed.')
@@ -339,11 +354,14 @@ async function runIssue(item) {
   rec.plan = build.plan
   if (build.worktree) rec.worktrees.push(build.worktree)
   rec.rulings.push(...build.rulings)
-  rec.unrecorded = build.findings
+  rec.unrecorded = [...build.findings]
   halt(build.batchHalt)
   // A build that skipped at its first step changed nothing, so its worktree is not left in place. One that found the
   // deadline passed stopped for the run's time budget, and its dependents stop with it.
-  if (build.state === 'skipped' && build.deadlinePassed) budgetStopped.add(n)
+  if (build.state === 'skipped' && build.deadlinePassed) {
+    budgetStopped.add(n)
+    return end(rec, 'skipped', deadlineNote())
+  }
   if (build.state !== 'ready') return end(rec, build.state, writerNote(build))
   // Every review, fix and merge prompt names the branch and PR; without them the rest would act on nothing.
   if (!build.branch || !build.pr) return end(rec, 'parked', 'The build agent returned ready without a branch or PR.')
@@ -360,15 +378,19 @@ async function runIssue(item) {
       { label: `review #${n} r${round}`, phase: 'Review', schema: REVIEW })
     if (!review) return end(rec, 'parked', dead(`round ${round} review agent`))
     if (review.thrown) return end(rec, 'parked', failed(`round ${round} review agent`, review))
-    // A review stopped by a batch halt may not have recorded the writer's findings; keep them for the controller
-    // unless it says it did.
+    // A review that recorded the writer's findings wrote only the ones in its `build` input, so only those leave the
+    // unrecorded list; what an earlier review failed to write stays. A review stopped by a batch halt may not have
+    // recorded them at all; keep them for the controller unless it says it did.
+    const recorded = () => {
+      if (review.recordedWriterFindings) rec.unrecorded = rec.unrecorded.filter((f) => !last.findings.includes(f))
+    }
     if (review.batchHalt) {
       halt(review.batchHalt)
-      if (review.recordedWriterFindings) rec.unrecorded = []
+      recorded()
       rec.unrecorded.push(...review.otherFindings)
       return end(rec, 'parked', haltNote())
     }
-    if (review.recordedWriterFindings) rec.unrecorded = []
+    recorded()
     if (!review.changeFindings.length) break
     const fix = await slot(() => unlessHalted(() => ask(
       prompt('agents.md', 'Fix', {
@@ -382,7 +404,7 @@ async function runIssue(item) {
     if (fix.thrown) return end(rec, 'parked', failed(`round ${round} fix agent`, fix))
     if (fix.worktree) rec.worktrees.push(fix.worktree)
     rec.rulings.push(...fix.rulings)
-    // The review emptied unrecorded when it wrote the writer's findings down; what it did not write stays.
+    // The next review writes these down and removes them; what no review writes stays for the controller.
     rec.unrecorded.push(...fix.findings)
     halt(fix.batchHalt)
     // A fix skipped after the build pushed leaves the build's worktree behind.

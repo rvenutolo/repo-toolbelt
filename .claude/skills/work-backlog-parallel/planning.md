@@ -56,17 +56,21 @@ One message, beginning with the question banner, naming everything `/work-backlo
   in the order "Choosing the chunk" "Order" gives (by leverage, not bugs before features);
 - **the cap**: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
   pre-push gate when it pushes); the one merge agent runs beside them, so at most cap + 1 gates run;
-- **the budgets** and the shakedown as `/work-backlog` "Budgets" and "Shakedown" give them, with the deadline they
-  set and what each does to a run that reaches it (`SKILL.md` "Shakedown and budgets");
+- **the budgets** and the shakedown as `/work-backlog` "Budgets" and "Shakedown" give them, with what each does to a
+  run that reaches it (`SKILL.md` "Shakedown and budgets"); state `max-hours`, not a clock time, since the deadline is
+  computed at launch, after the sitting. While the shakedown is on, say that the merge OK is asked at "Ending", once
+  the run completes, in place of the fifteen-minute line `/work-backlog`'s proposal carries (`SKILL.md` "Named
+  exceptions");
 - **a wall-clock estimate**, as a range, not a promise. Per issue, guess its work from the issue and spec: a small
   bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15 minutes for review
   and fixes. A merge round is about 15 minutes (rebase, pre-push gate, CI of about five minutes), and merges never
   overlap. A merge that meets a code conflict or a baseline regeneration takes 30 to 40 minutes (a second test run,
   a resolution review, a second gate), and every new lint after the first in a batch meets one in the shared
   registry files. A dependency chain runs end to end, each link waiting for the previous one's merge. The run takes
-  about the longer of the longest chain and the first ready PR plus one merge round per issue; fixes take a free
-  slot ahead of builds not yet started, and the merge agent runs outside the cap, so merging begins as soon as a
-  review passes, whatever the builds are doing. Say plainly that a short
+  about the longer of the longest chain and the first ready PR plus one merge round per issue; a fix takes a slot
+  ahead of builds still queued when the fix asks (not ahead of one already running), and the merge agent runs
+  outside the cap, so merging begins as soon as a review passes, whatever the builds are doing. Say plainly that a
+  short
   batch of small bugs saves little over `/work-backlog`, and recommend it instead when the estimate shows that; an
   estimate longer than the time budget names the issues that would likely skip;
 - **the agent count**, from these bounds: per issue at most ten agents (one build, two reviews, two fixes, three
@@ -75,8 +79,9 @@ One message, beginning with the question banner, naming everything `/work-backlo
   tool's description states it in one of two forms: "This session has the … workflow size guideline" by default, or
   "A workflow size guideline is configured for this session: …") and say whether the estimate exceeds it, adding:
   "This is a guideline for whoever writes the script, not a limit; nothing needs changing for the run to proceed."
-  Name the hard limits (concurrent agents: min(16, CPUs − 2); 1000 agents per run) only when the batch would reach
-  them.
+  Agents running at once are the build and fix agents up to the cap, plus every review in progress (reviews run
+  outside the cap) and one merge agent, so a long batch at cap 4 can approach the hard limit of concurrent agents,
+  min(16, max(2, CPUs − 2)); name that limit, and the 1000 agents per run, only when the batch would reach them.
 
 For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`; the
 permission request is left out when the session runs with permissions bypassed. Ask every likely halt question, as
@@ -103,6 +108,9 @@ run" step 2 checks again before launch.
 
 ## Writing it down
 
-After the OK (and, for features, the answered question round), write `current-session.md` as `/work-backlog` step 6
-does, plus `cap:`, the `issue` and `piece` lines (`SKILL.md` "State") and each halt answer with the issues it bears
-on (they become each issue's `haltAnswers`). Then go to "The run".
+At the batch OK, write `current-session.md` as `/work-backlog` step 6 does, minus its `started:` line (`SKILL.md`
+"Shakedown and budgets"): a feature batch's brainstorms and question round follow, and `feature-flow.md` steps 2 and 5
+record each spec path and the round's answers in that file, as does any halt in between ("Halting" in `resume.md`).
+After the answered question round (or at once, for a bug batch), add `cap:`, the `issue` and `piece` lines
+(`SKILL.md` "State") and each halt answer with the issues it bears on (they become each issue's `haltAnswers`); their
+presence is what "On invocation" reads as a batch approved for launch. Then go to "The run".

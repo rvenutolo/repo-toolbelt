@@ -1,6 +1,6 @@
 # Leftovers
 
-Runs from `SKILL.md` step 3 when its normal case does not hold. Its inputs: the `current-session.md` step 2 read
+Runs from `SKILL.md` step 3 when its normal case does not hold. Its inputs: the `current-session.md` step 3 reads
 (format in `state.md`), which names the
 dead session's issues, spec, plans, halt answers and how far each issue got; the files under
 `.claude/backlog/parallel/`; and four listings, all run after `git worktree prune` (a worktree directory deleted by
@@ -32,7 +32,8 @@ either skill may be the one that finds them.
 - `workflow-result` with no `workflow-done`: the run finished, and its result waits in
   `.claude/backlog/parallel/result.json`. Record from it as the parallel skill's "The run" step 5 does, delete the
   file, and treat the run as `workflow-done`.
-- `workflow-run` (written with `workflow-script` and `workflow-args` at launch) and neither of those: ask with the
+- `workflow-run` (written with `workflow-script` and `workflow-args` at launch) and neither of those, or
+  `workflow-launching` with no `workflow-run` (the tool may have launched a run before the session died): ask with the
   question banner, before touching anything the run names, whether to resume it, take its issues over here, or leave
   them because the run is still going. Recommend
   "leave" when a `wf_*` worktree holds a rebase in progress or is locked by a live process ("Locked worktrees"
@@ -40,7 +41,7 @@ either skill may be the one that finds them.
   never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
   `/work-backlog-parallel`'s "The run" step 4 says; recommend the resume when that step finds it possible. Leaving
   keeps `current-session.md` as the run's file, whose `session-date:` that run's "Ending" and lost-run check read:
-  this session never adds its own chunk to it, and step 9 leaves it in place (`SKILL.md` steps 6 and 9). Its
+  this session chooses no chunk (`SKILL.md` step 6), and step 9 leaves the file in place. Its
   `session-log.md` line is the run's too; step 2 appended this session's own.
 - `cap:` and `issue` lines but no `workflow-*` line: a parallel batch that was approved and never launched. Ask with
   the question banner whether to launch it with `/work-backlog-parallel` (recommended: the approval was given for a
@@ -69,7 +70,9 @@ Then fold the files, before sorting anything:
   - `parked` or anything earlier: the issue is unfinished work of this skill's (below). A `park-note:` holds the
     question the run could not ask: ask it with the question banner before resuming that issue, recommending the
     note's answer. A note the script wrote (a dependency, a batch halt, a dead agent) carries no question; ask
-    whether to resume the issue now that its cause is settled. Once the issue merges, apply its `.claude/CLAUDE.md`
+    whether to resume the issue now that its cause is settled. Before its merge resumes, add every `ruling:` line of
+    the file that its PR body lacks to the body, as "PRs" in `SKILL.md` says: a merge call that stopped for a review
+    had not pushed them. Once the issue merges, apply its `.claude/CLAUDE.md`
     rulings as for `merged`, then delete the file; delete it too if the user drops the issue.
 - An `issue <N>` line in `current-session.md` with no `<N>.md`, no PR and no branch was approved but never built: it
   is unfinished work, resumed from the start of its flow under the approval the file records, after every issue its
@@ -85,8 +88,8 @@ Worktrees that run made are this skill's too: `.claude/worktrees/merge-<N>` (on 
 sorting one: a locked one whose
 lock PID is dead ("Locked worktrees" below) is unlocked with `git worktree unlock <path>` (once the user has said no
 run is going), and one with a rebase in progress gets `git -C <path> rebase --abort`, which puts it back on its
-branch. Nothing else removes them for this skill: Claude Code's own retention sweep removes only clean `wf_*`
-worktrees whose commits are all pushed, and only after the `cleanupPeriodDays` setting's cutoff.
+branch. Nothing else removes them for this skill: Claude Code removes an isolated worktree at its agent's end only
+when it is unchanged, so one that holds commits or files stays until this skill sorts it.
 
 - One on an issue branch is that issue's worktree, sorted below like any other. Before resuming in it, when
   `origin/<branch>` exists, bring it up to date with `git pull --ff-only origin <branch>` (later rounds pushed from
@@ -95,8 +98,10 @@ worktrees whose commits are all pushed, and only after the `cleanupPeriodDays` s
   next merge rebases again, so recommend dropping the rebase by moving the branch back to `origin/<branch>`
   (`git -C <path> switch --detach origin/<branch>`, then, once the user confirms,
   `git branch --force <branch> origin/<branch>` and `git -C <path> switch <branch>`), and offer pushing it instead
-  only when the note says a resolution review passed it. When its PR merges, `merging.md` step 4 removes it by its
-  own path, not the `<N-description>` one.
+  only when the note says a resolution review passed it. When the note instead says the worktree is ahead of
+  `origin/<branch>` by an unpushed fix, the fix answers a CI failure and dropping it would discard it: recommend
+  pushing it (the pre-push gate runs), and `merging.md` step 1 then watches CI again. When its PR merges,
+  `merging.md` step 4 removes it by its own path, not the `<N-description>` one.
 - A detached or `worktree-wf_*` one with no commits that are not on its issue's `origin/<branch>` or on
   `origin/main` holds nothing: remove it and delete its `worktree-<runId>-<k>` branch, naming each in the summary.
 - One that holds such commits, or that no `<N>.md` names: ask with the question banner whether to keep it for its
@@ -107,8 +112,9 @@ worktrees whose commits are all pushed, and only after the `cleanupPeriodDays` s
 ### Locked worktrees
 
 Claude Code locks a worktree it made for an agent and unlocks it when that agent finishes, so a lock means a running
-agent or a session that died. `git worktree list --porcelain` shows the lock reason with its PID, and
-`kill -0 <pid>` tells whether that process is alive: alive means a run is going, dead means the lock is stale.
+agent or a session that died. `git worktree list --porcelain` shows the lock reason on a `locked` line; the PID is the
+number after the word `pid` in its parentheses, and `kill -0 <pid>` tells whether that process is alive: alive means a
+run is going, dead means the lock is stale.
 
 ## This skill's unfinished work
 
@@ -118,7 +124,8 @@ agent or a session that died. `git worktree list --porcelain` shows the lock rea
   now" from `findings-walkthrough.md` and is this skill's as well.
 - A worktree under `.claude/worktrees/` whose branch has no PR, when the issue it belongs to is still open. The
   issue is the N after `<type>/` in the branch name (`<type>/<N>-<description>`, "Branches" in `SKILL.md`). A
-  `fix/finding-<slug>` branch has no issue; it is this skill's while its entry is still in `pending-findings.md`.
+  `fix/finding-<slug>` or `docs/finding-<slug>` branch has no issue; it is this skill's while its entry is still in
+  `pending-findings.md`.
   The PR listing above shows open PRs only, so check `gh pr list --state all --head <branch> --json state` first: a
   `CLOSED` PR means the user rejected that work, so it is not unfinished: ask with the question banner whether to
   remove the worktree and its branch, recommending removal, and never open a new PR for it unasked. A `MERGED` one
@@ -130,6 +137,9 @@ agent or a session that died. `git worktree list --porcelain` shows the lock rea
 - An approved spec recorded in `current-session.md` (`spec approved: <path>`) with issues that have no worktree, no
   PR and no merged PR, even when git and GitHub show nothing: the brainstorm and question round are done, so the
   unbuilt issues resume at `feature-flow.md` step 6 under that approval.
+- A feature chunk recorded in `current-session.md` with no `spec approved:` line, no worktree and no PR: the session
+  died between the chunk OK and the question round. Resume `feature-flow.md` at step 1 under that OK, extending the
+  spec the file names if step 2 wrote one.
 
 Unfinished work is finished (the rest of its flow, then review, CI, merge) before anything new is chosen, under the
 approval it already has: the halt answers and the allowed commands are in `current-session.md`, and the spec and
@@ -161,6 +171,9 @@ To resume:
   the next step.
 - A leftover PR gets a superpowers:requesting-code-review pass before it merges, whichever way it was built, unless
   its `<N>.md` says `ready-to-merge` (above).
+- A PR recorded `pr open, not merged` by a shakedown "no" (`merging.md` step 2) was already reviewed and green: run
+  `merging.md` from step 0 and ask its shakedown question once more; on a second no, leave it to the user, name it in
+  the proposal, and go on to `SKILL.md` step 4.
 
 ## Done
 

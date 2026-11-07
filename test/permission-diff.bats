@@ -52,14 +52,20 @@ function allow() {
   assert_output ''
 }
 
-@test 'reads all four settings files' {
+@test 'reads the user, project and local settings files' {
   allow "${CLAUDE_CONFIG_DIR}/settings.json" 'Bash(a)'
-  allow "${CLAUDE_CONFIG_DIR}/settings.local.json" 'Bash(b)'
   allow "${FIXTURE_REPO}/.claude/settings.json" 'Bash(c)'
   allow "${FIXTURE_REPO}/.claude/settings.local.json" 'Bash(d)'
-  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(a)' 'Bash(b)' 'Bash(c)' 'Bash(d)' 'Bash(e)'
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(a)' 'Bash(c)' 'Bash(d)' 'Bash(e)'
   assert_success
   assert_output 'Bash(e)'
+}
+
+@test 'ignores a settings.local.json in the config directory, which Claude Code never reads' {
+  allow "${CLAUDE_CONFIG_DIR}/settings.local.json" 'Bash(b)'
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(b)'
+  assert_success
+  assert_output 'Bash(b)'
 }
 
 @test 'finds the repo settings from a subdirectory' {
@@ -113,11 +119,25 @@ function allow() {
 }
 
 @test 'reports the defaultMode of the most specific file that sets it' {
-  jq --null-input '{permissions: {defaultMode: "acceptEdits"}}' > "${CLAUDE_CONFIG_DIR}/settings.json"
-  jq --null-input '{permissions: {defaultMode: "bypassPermissions"}}' > "${FIXTURE_REPO}/.claude/settings.json"
+  jq --null-input '{permissions: {defaultMode: "plan"}}' > "${CLAUDE_CONFIG_DIR}/settings.json"
+  jq --null-input '{permissions: {defaultMode: "acceptEdits"}}' > "${FIXTURE_REPO}/.claude/settings.json"
   allow "${FIXTURE_REPO}/.claude/settings.local.json" 'Bash(a)'
   run --separate-stderr "${PERMISSION_DIFF}" 'Bash(a)'
+  assert_equal "${stderr}" 'defaultMode: acceptEdits'
+}
+
+@test 'reports bypassPermissions when the user settings set it' {
+  jq --null-input '{permissions: {defaultMode: "bypassPermissions"}}' > "${CLAUDE_CONFIG_DIR}/settings.json"
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(a)'
   assert_equal "${stderr}" 'defaultMode: bypassPermissions'
+}
+
+@test 'ignores bypassPermissions and auto from a project or local file, where they take no effect' {
+  jq --null-input '{permissions: {defaultMode: "acceptEdits"}}' > "${CLAUDE_CONFIG_DIR}/settings.json"
+  jq --null-input '{permissions: {defaultMode: "bypassPermissions"}}' > "${FIXTURE_REPO}/.claude/settings.json"
+  jq --null-input '{permissions: {defaultMode: "auto"}}' > "${FIXTURE_REPO}/.claude/settings.local.json"
+  run --separate-stderr "${PERMISSION_DIFF}" 'Bash(a)'
+  assert_equal "${stderr}" 'defaultMode: acceptEdits'
 }
 
 @test 'exits 2 when a settings file is not valid JSON' {

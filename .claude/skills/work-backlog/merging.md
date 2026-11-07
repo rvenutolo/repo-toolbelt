@@ -16,7 +16,10 @@ background.
      any comment or review means the user has touched the PR (this skill never comments or reviews on GitHub). Ask
      with the question banner whether to go on with it or leave it, quoting what they wrote, and do not touch it
      before the answer.
-1. **Wait for CI** with `timeout 30m gh pr checks <number> --watch --fail-fast`, then read the result from
+1. **Wait for CI.** Before the first watch, `git fetch origin`, then `git merge-base --is-ancestor origin/main HEAD`:
+   if it fails the branch is behind `main`, and the ruleset will refuse the merge however CI ends, so take step 2's
+   `BEHIND` path now and come back here, one CI run instead of two; it counts as one of step 2's three. Then
+   `timeout 30m gh pr checks <number> --watch --fail-fast`, and read the result from
    `gh pr checks <number> --json bucket`, since the exit code alone does not tell the cases apart (a cancelled check
    exits 0). CI is green when every bucket is `pass` or `skipping`. Otherwise:
    - Exit 124 is the `timeout`: CI has not finished in 30 minutes (a queued or hung job). Blocked banner naming the
@@ -45,7 +48,10 @@ background.
    answer as "Halting" in `resume.md` says. On "no": `ExitWorktree` with `action: keep`, record `pr open, not merged`
    against the
    issue in `current-session.md`, leave the PR, worktree and branch for the next session's step 3, name the PR in
-   the summary, and go on with the next issue; steps 3 and 4 are the merge path and do not run. Coming back here after
+   the summary, and go on with the next issue that does not depend on this one (a dependent would start from `main`
+   without it, so it waits for the next session); steps 3 and 4 are the merge path and do not run. The PR stays this
+   skill's unfinished work: the next session's step 3 asks once more and, on a second no, leaves it to the user and
+   goes on to choose a chunk. Coming back here after
    a `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
    allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local branch is
    checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go
@@ -56,24 +62,30 @@ background.
    - `BEHIND`: the ruleset requires the branch to be up to date with `main`, and Renovate merges its own PRs
      unattended, so a branch that was current when CI started can fall behind. Rebase as the global GitHub rule
      says, inside the worktree: `git fetch origin`, note `git rev-parse origin/<branch>` as the old remote SHA,
-     `git rebase origin/main`, regenerate the baseline when "Baseline after a rebase" below says so,
+     `git -c rerere.enabled=false rebase origin/main` (every rebase in both backlog skills carries
+     `-c rerere.enabled=false`, and here the abort does too, so one rule covers both: the user's git config enables
+     rerere with autoupdate, which replays a recorded resolution and stages it, so a conflict would be resolved and
+     hidden before any rule here sees it), regenerate
+     the baseline when "Baseline after a rebase" below says so,
      confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
      push with `timeout 30m git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full
      gate again, a long command;
      a fix for a gate failure here is a merge-time fix, step 1), and go back to step 1 for the new CI run. A rebase
-     that conflicts is a change the user must see: `git rebase --abort`, blocked banner. Never
+     that conflicts is a change the user must see: `git -c rerere.enabled=false rebase --abort`, blocked banner. Never
      `gh pr update-branch`; it rewrites the commits unsigned. The third `BEHIND` or `DIRTY` on one PR is a blocked
      banner: `main` is moving faster than CI, and the user decides when to try again.
    - `DIRTY`: the branch conflicts with `main` (a Renovate merge touched the same file). Take the `BEHIND` path; the
      rebase conflicts and ends in its blocked banner, or resolves cleanly and runs CI again.
    - `UNSTABLE`, or any status not named here: blocked banner naming the status.
    - `BLOCKED` with green CI: a rule other than up-to-date refused it, such as an unresolved review thread (the
-     ruleset requires every thread resolved) or an unsigned commit. Blocked banner, saying which. Never pass
+     ruleset requires every thread resolved), an unsigned commit, or any other ruleset rule: name the parameter
+     `gh api repos/{owner}/{repo}/rules/branches/main` reports for it. Blocked banner, saying which. Never pass
      `--admin`, which `gh` itself suggests, and never resolve a thread; both are the user's.
 
    **Baseline after a rebase.** A rebase never leaves a text-merged `.coverage-baseline.txt` ("Never" in
-   `SKILL.md`). Regenerate it when the rebase took `main`'s copy in a conflict, or when both sides changed it since
-   their merge base. Measure that from the branch as it was pushed, since after the rebase the merge base is
+   `SKILL.md`). Regenerate it when the rebase took `main`'s copy in a conflict (the case `merge-queue.md`
+   "3. Conflicts" produces; this file aborts every conflicting rebase), or when both sides changed it since their
+   merge base. Measure that from the branch as it was pushed, since after the rebase the merge base is
    `origin/main` itself: with `base` from `git merge-base origin/main <old-remote-sha>`, both
    `git diff --quiet <base> <old-remote-sha> -- .coverage-baseline.txt` and
    `git diff --quiet <base> origin/main -- .coverage-baseline.txt` exit 1. Skip it when `HEAD` already has a

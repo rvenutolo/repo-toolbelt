@@ -6,7 +6,7 @@ The formats of the files under `.claude/backlog/` that "State" in `SKILL.md` nam
 ## `session-log.md`
 
 One line per session, `YYYY-MM-DD open=N`, where N is the open-issue count at the start; step 9 appends the word
-`done` when the session reaches its summary, so a line without it is a session that died before it chose work and
+`done` when the session reaches its summary, so a line without it is a session that did not reach its summary and
 says nothing about the backlog. No header or other lines, because the stall check (step 5) counts lines.
 
 ## `pending-findings.md`
@@ -25,8 +25,8 @@ Out-of-scope findings waiting for the user's decision, one entry each:
 ## `current-session.md`
 
 The resume record, written as soon as the session has anything to resume: at step 6 once the chunk is approved, or
-earlier when a "fix it now" in step 4 makes a worktree. Step 2 reads a copy of any date as the point to resume from,
-step 3 reconciles it against git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and
+earlier when a "fix it now" in step 4 makes a worktree. Step 3 reads a copy of any date as the point to resume from
+and reconciles it against git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and
 GitHub; approvals, halt answers and spec paths survive only in this file and under `docs/superpowers/`. Its lines:
 
 - `session-date: YYYY-MM-DD`: the date of the `session-log.md` line this session's step 2 appended; a file carried

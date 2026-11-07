@@ -32,14 +32,15 @@ The user takes part at fixed points and the rest runs unattended. A decision nee
 what gets built; everything else the session settles itself and records as a `Ruling:` ("Terms"). Every place that
 says a decision is "settled as 'How the session runs' says" means this test. The user's points:
 
-- **Bug chunk:** the chunk OK (which also answers the halt questions the proposal carries), the permission request,
-  then the findings walkthrough at the end.
+- **Bug chunk:** the chunk OK (also answering the proposal's halt questions), the permission request, then the
+  findings walkthrough at the end.
 - **Feature chunk:** the chunk OK, the brainstorm, one batched question round, then the findings walkthrough.
 - **Either:** a question-banner halt when a decision changes what gets built, and a blocked-banner halt when
   something outside the session's control stops it (a failed `gh` call, red CI after a rerun, a refused merge,
   commit signing that fails, a long command that hangs past its 30 minutes ("Long commands"), Docker unreachable or
-  `sysctl net.ipv4.ip_forward` not 1 when a step needs a container, since the user's global Docker rule forbids
-  running one then). Both are recorded as "Halting" in `resume.md` says.
+  `sysctl net.ipv4.ip_forward` not 1 right before `./.ci/in-devshell ./.ci/test-image`, the one step that needs a
+  container, since the user's global Docker rule forbids running one then; that check runs there and nowhere else).
+  Both are recorded as "Halting" in `resume.md` says.
 
 ## Arguments
 
@@ -53,18 +54,17 @@ The invocation's arguments, in any order:
   would run instead of running it. Step 6 then prints the proposal, its halt questions and the permission request
   (`permissions.md`) as it would send them; for a feature chunk, whose questions and request belong to
   `feature-flow.md` step 5, it prints the ones it can already see and names the spec it would write. `plan`'s one
-  message begins with the done banner; the proposal is printed without its question banner, since nothing is
-  awaited. The printed proposal is not approvable, because the skill cannot re-invoke itself: to run it, invoke
-  `/work-backlog` again, with the issue numbers to keep this chunk. Scratch files go to `.claude/tmp/` only; nothing
-  is written under `.claude/backlog/`, so a rehearsal leaves nothing the next real run's step 3 would sort as a
-  leftover.
+  message begins with the done banner, the proposal without its question banner, since nothing is awaited. The
+  printed proposal is not approvable, because the skill cannot re-invoke itself: to run it, invoke `/work-backlog`
+  again, with the issue numbers to keep this chunk. Scratch files go to `.claude/tmp/` only; nothing is written under
+  `.claude/backlog/`, so a rehearsal leaves nothing the next real run's step 3 would sort as a leftover.
 - **Issue numbers:** the chunk is exactly these issues, so step 6 skips choosing and classifies only them
   (`backlog-index <N>...`, "Choosing the chunk"). Each must still be open and doable: a named number whose `state`
   column is not `OPEN` (a closed issue, or a pull request's number) is dropped with a note in the proposal. The
-  bugs-first rule and the size limit give way, since
-  the user chose, but shakedown does not: while it is on, the chunk is the first named bug, or the first named issue
-  when none is a bug, and the proposal says so ("Shakedown"). Named issues of both kinds make the bugs this chunk and
-  the features the runner-up, said in the proposal, because a chunk follows one flow.
+  bugs-first rule and the size limit give way, since the user chose, but shakedown does not: while it is on, the
+  chunk is the first named bug, or the first named issue when none is a bug, and the proposal says so ("Shakedown").
+  Named issues of both kinds make the bugs this chunk and the features the runner-up, said in the proposal, because
+  a chunk follows one flow.
 - **Anything else** (including `short` and `long`, which are `/work-backlog-parallel`'s batch sizes): ask with the
   question banner, listing the valid forms, before step 1.
 
@@ -72,9 +72,8 @@ The invocation's arguments, in any order:
 
 - **Chunk:** the set of issues the user approves for this session ("Choosing the chunk").
 - **Approval:** what authorizes the unattended part, every push and merge included, except that while shakedown is
-  on each merge also waits for its own OK (`merging.md` step 2). For a bug chunk it is the chunk OK. For a feature
-  chunk it is the chunk OK plus the question round of `feature-flow.md` step 5; nothing is pushed or merged before
-  that round is answered.
+  on each merge also waits for its own OK (`merging.md` step 2). For a bug chunk, the chunk OK; for a feature chunk,
+  the chunk OK plus the question round of `feature-flow.md` step 5, before which nothing is pushed or merged.
 - **Controller:** this session, as opposed to the subagents it dispatches.
 - **Banners:** the `❓❓❓❓❓` (question) and `🚧🚧🚧🚧🚧` (blocked) lines the global "Attention Banners" rule
   requires as the first line of a message that waits for the user, and the `✅✅✅✅✅` (done) line, on the summary
@@ -83,12 +82,11 @@ The invocation's arguments, in any order:
 - **Halt question:** a question the unattended part would otherwise stop to ask; the global "Unattended Execution /
   Pre-Answer Halt Questions" rule calls them halt points. The chunk proposal (bugs) or the question round (features)
   asks every likely one in advance, each with a recommended answer and a one-line reason.
-- **Permission request:** the message that lists the allow rules the unattended part needs and asks the user to add
-  them before it starts (`permissions.md`).
+- **Permission request:** the message listing the allow rules the unattended part needs, asked before it starts
+  (`permissions.md`).
 - **Filing bar:** the two-part test a finding must pass to be recorded ("The filing bar").
-- **Known-gap comment:** a one-line comment beside code stating a gap in the present tense. It cites no issue or PR
-  number because the repo's own issue-numbers lint fails CI on one, and because the docs rules bar history from
-  comments.
+- **Known-gap comment:** a one-line comment beside code stating a gap in the present tense, citing no issue or PR
+  number: the repo's own issue-numbers lint fails CI on one, and the docs rules bar history from comments.
 - **Ledger:** the progress file a plan sub-skill keeps at `.superpowers/sdd/<plan-basename>/progress.md` in the
   worktree (both superpowers:subagent-driven-development and superpowers:executing-plans use it). It holds task
   completions, every `Ruling:`, and the findings those skills park or defer. The sub-skill deletes it at its own
@@ -98,7 +96,7 @@ The invocation's arguments, in any order:
   ruling goes in the PR body ("PRs"). Calls made before approval (`feature-flow.md` steps 3 and 4) are recorded in
   the spec instead; they are design decisions, not rulings.
 - **The marker:** the line `Backlog-Session: YYYY-MM-DD`, with the session's `session-date:` (`state.md`), that ends
-  every PR body this skill writes. The user never writes it, so it is what tells this skill's PRs from the user's.
+  every PR body this skill writes; the user never writes it, so it tells this skill's PRs from the user's.
 
 ## State
 
@@ -108,18 +106,16 @@ writes outside a PR is local and untracked: `.claude/` apart from `.claude/skill
 specs, plans, ledgers, worktrees and rule copies never appear in `git status` and are never force-added. Step 2
 creates the directory and the first two files if any is missing.
 
-- `session-log.md`: one line per session with its open-issue count; the stall check (step 5) and the proposal's
-  trend line read it.
+- `session-log.md`: one line per session with its open-issue count, read by the stall check (step 5) and the trend line.
 - `pending-findings.md`: out-of-scope findings waiting for the user's decision (`findings-walkthrough.md`).
 - `current-session.md`: the resume record: the approved chunk, its answers, and how far each issue got. Step 6
   writes it (or `findings-walkthrough.md` step 6, earlier), step 3 reconciles it, step 9 deletes it, and `resume.md`
   reads it. One a parallel run owns is sorted by `leftovers.md`.
 - `parallel/`: per-issue progress and findings files `/work-backlog-parallel` writes (its `SKILL.md` "State"). This
   skill writes them only when `leftovers.md` records a finished run's result, and folds any it finds.
-- `config`: the user's settings for both backlog skills ("Shakedown", "Budgets"). Written only on the user's word;
-  never a leftover.
-- `reports/`: one file per finished session, named by its `session-date:` ("End-of-run report"). Kept, never a
+- `config`: the user's settings for both skills ("Shakedown", "Budgets"), written only on the user's word; never a
   leftover.
+- `reports/`: one file per finished session, named by its `session-date:` ("End-of-run report"); kept, never a leftover.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`. The
@@ -130,16 +126,16 @@ from inside a worktree is fine.
 
 1. **Preconditions.** `git status --porcelain` prints nothing, `gh auth status --hostname github.com` succeeds, and
    after `git switch main` (the user's branch stays as it was, checked out nowhere), `git fetch --prune origin` and
-   `git pull --ff-only` succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any of these
-   fails, stop and tell the user (blocked banner) before doing anything else. The same holds for every later `gh`
-   call this skill makes: if one fails, retry it once after a minute (a long run meets transient network errors);
-   if it fails again, stop with the blocked banner, and never log a count or choose work from a partial or guessed
-   result.
+   `git pull --ff-only` succeed; the prune is what later marks a merged branch's upstream `[gone]`. If any fails, stop
+   with the blocked banner before doing anything else. Every later `gh` call this skill makes gets one retry after a
+   minute (a long run meets transient network errors); if it fails again, stop with the blocked banner, never logging
+   a count or choosing work from a partial or guessed result.
 2. **Log.** Create `.claude/backlog/`, `session-log.md` and `pending-findings.md` if any is missing (never
    `current-session.md`: its existence means unfinished work, which step 3 reads it for). Append `YYYY-MM-DD open=N`
    to `session-log.md`, N from `gh issue list --state open --limit 1000 --json number --jq length`, unless today's
-   line exists without `done`: that is this session restarted, so keep it and add none. Any other line, whatever its
-   date, is another session's.
+   line exists without `done`: that is this session restarted, so keep it and add none. A line whose date is the
+   `session-date:` of a carried-over `current-session.md` holding `workflow-*` lines belongs to that run, even
+   today: append this session's own line. Any other line, whatever its date, is another session's.
 3. **Unfinished work.** Normally there is none: step 2 found no `current-session.md`, `.claude/backlog/parallel/` is
    empty or absent, and after `git worktree prune`, `git worktree list` shows only the main checkout,
    `gh pr list --author @me --state open` is empty, and `git branch` shows `main` alone. Then go to step 4.
@@ -153,37 +149,35 @@ from inside a worktree is fine.
 6. **Choose the chunk.** Read `.claude/backlog/config` ("Shakedown", "Budgets"): an unreadable value is the default,
    said in the proposal. Then choose the chunk (below), or take the issues the arguments name ("Arguments"), propose
    it, and wait for the user's OK; with `plan`, print the proposal and end there instead. The user may swap or trim
-   it.
-   A swapped-in issue gets the proposal's per-issue items (comments, earlier pieces, kind, halt questions) in a
+   it. A swapped-in issue gets the proposal's per-issue items (comments, earlier pieces, kind, halt questions) in a
    follow-up message; like the permission follow-up (`permissions.md`), it is not a second question round. Then write
    `current-session.md`, or add the chunk to the one that already exists (a step 4 fix started it, or `leftovers.md`
    left a parallel run's parked issues in it); never overwrite one. Either way its `session-date:` line names the
    date of the line this session's step 2 appended, and the halt answers and allowed commands go in with the chunk;
    for a bug chunk the `started:` line goes in now too ("Budgets"), since the OK begins the unattended part. A file
    `leftovers.md` says a running parallel run owns gets no chunk: the session chooses none, says why, and goes to
-   step 8, because that run's merge queue is the only thing that may pull `main` or touch worktrees while it runs,
-   and a second merger would collide with it.
+   step 8, because that run's merge queue is the only thing that may pull `main` or touch worktrees while it runs.
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
-9. **Summary.** Write the end-of-run report ("End-of-run report" gives its sections and what goes in each) and send
-   it as one message. Then append `done` to the `session-log.md` line step 2 appended or kept (its date, not today's:
-   a run crosses midnight, and step 6 copies that date into `session-date:`). Delete `current-session.md`, unless
-   `leftovers.md` says a running parallel run owns it (leave it as it is) or left parked issues in it (trim it to
-   them, as `/work-backlog-parallel`'s "Ending" step 4 says).
+9. **Summary.** Write the end-of-run report ("End-of-run report") and send it as one message. Then append `done` to
+   the `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies
+   that date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run
+   owns it (leave it as it is) or left parked issues in it (trim it to them, as `/work-backlog-parallel`'s "Ending"
+   step 4 says).
 
 ## Choosing the chunk
 
 Run `<main>/.claude/skills/work-backlog/backlog-index` (with the issue numbers when the arguments name them), with
-`<main>` the main checkout's absolute path, since its allow rule (`permissions.md`) names that path and a rule matches
-the command's literal prefix. It writes every
-open issue, body included, to `.claude/tmp/issues.json` and prints one tab-separated row per issue: `number`,
-`state`, `kind`, `labels`, `title`, `repro`, `refs`, `umbrella`, `bytes`. The bodies run to well over what the Bash
-tool shows, and a classification read from a cut-off listing misses issues, so classify from the rows and read a full
-body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only for a row whose `kind`
-is `?`, a non-bug row with `repro` `yes`, and every issue the proposal takes. A body the Bash tool would cut off
-(`bytes` past about 16000) is written to `.claude/tmp/issue-<N>.md` instead and read with the Read tool, which
-pages. `refs` and `umbrella` show the dependencies and umbrella issues "Order" and the proposal need. A non-zero
-exit is a failed `gh` call (step 1).
+`<main>` the main checkout's absolute path, which its allow rule (`permissions.md`) names. It writes every open
+issue, body included, to the main checkout's `.claude/tmp/issues.json` and prints one tab-separated row per issue:
+`number`, `state`, `kind`, `labels`, `title`, `repro`, `refs`, `umbrella`, `bytes`. The bodies run to well over what
+the Bash tool shows, and a classification read from a cut-off listing misses issues, so classify from the rows and
+read a full body (`jq --raw-output '.[] | select(.number == <N>) | .body' .claude/tmp/issues.json`) only for a row
+whose `kind` is `?`, a non-bug row with `repro` `yes`, and every issue the proposal takes; for those `?` and `repro`
+rows read the comments too ("Comments" below) before classifying, since a kind or a size can live only there. A body
+the Bash tool would cut off (`bytes` past about 16000) the script also writes to `.claude/tmp/issue-<N>.md`: read
+that with the Read tool, which pages. `refs` (open issues only) and `umbrella` show the dependencies and umbrella
+issues "Order" and the proposal need. A non-zero exit is a failed `gh` call (step 1).
 
 An issue is a bug when it has the `bug` label, its title starts `fix:`, or its body reports something that is wrong
 now with a way to reproduce it; otherwise it is a feature, whatever other labels it carries. The body counts because
@@ -191,11 +185,11 @@ few issues carry the label, and a three-line fix sent down the feature flow cost
 review. A check that fails on `main` today, or a config whose present value is wrong, is a reproduction; a `ci:` or
 `chore:` title is a judgment call the proposal names. The `kind` column decides only the first two (`bug`, or
 `feature` from a `feat:` title or the `enhancement` label); `?` is neither. The proposal names every issue whose kind
-was a judgment call, so
-the user can correct it with the chunk OK: a bug found from its body alone, and a `?` row. An issue whose kind
-follows from its label or title is not named. A kind the OK corrects re-sorts the chunk: the issue follows the
-corrected flow, and a chunk now holding both kinds splits as "Arguments" says, bugs this chunk and features the
-runner-up. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is features. A bug the
+was a judgment call, so the user can correct it with the chunk OK: a bug found from its body alone, and a `?` row. An
+issue whose kind follows from its label or title is not named. A kind the OK corrects re-sorts the chunk: the issue
+follows the corrected flow, and a chunk now holding both kinds splits as "Arguments" says, bugs this chunk and
+features the runner-up. If any open issue is a bug the session can do, the chunk is bugs; otherwise it is features. A
+bug the
 session cannot do at all (below) does not count, or it would block every later chunk until the user acts.
 
 - **Bugs:** related bugs together (same code, same root cause). With none related, a batch of several small bugs.
@@ -212,8 +206,12 @@ session cannot do at all (below) does not count, or it would block every later c
   proposed part, with a shared helper designed so the rest can reuse it.
 - **Combined changes:** an issue body or comment that asks for its change to land together with another's still
   gets one PR per issue ("PRs" below): order the two by the dependency between them, and say so in the proposal.
-- **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments`. A decision the
-  user left in a comment changes the proposal, and the list query returns bodies only.
+  The partner is classified with its requester when the body rule allows (a `?` row asked to land with a bug is a
+  bug); otherwise it is named as the runner-up, with the dependency, since a chunk follows one flow.
+- **Comments:** for the issues in the proposed chunk, also read `gh issue view <number> --comments` (off a terminal
+  it prints only the comments, which is what is wanted: the body is in the index). A decision or requirement the
+  user left in a comment changes the proposal and binds the build as the body does, so the builder reads the
+  comments again when it starts the issue.
 - **Earlier pieces:** for each issue in the proposed chunk, also run
   `gh pr list --state merged --limit 1000 --search '"Part of #<number>" in:body' --json number,title,body` (the
   quotes keep the phrase whole; unquoted, the search matches the three words anywhere in a body), then confirm the
@@ -267,10 +265,10 @@ those steps refer to.
 
 - **Branches:** `<type>/<N>-<description>`, where N is the issue number, so a branch or worktree can be tied to its
   issue without a PR. An umbrella's pieces use the umbrella's number with their own descriptions. The worktree
-  directory is `.claude/worktrees/<N-description>`. A fix with no issue (a "fix it now" from
-  `findings-walkthrough.md`) has no N: its branch is `fix/finding-<slug>` and its worktree
-  `.claude/worktrees/finding-<slug>`, with the slug taken from the finding's symptom line, so `leftovers.md` can tell
-  it apart from the user's branches.
+  directory is `.claude/worktrees/<N-description>`. A change with no issue (a "fix it now" or a known-gap comment
+  from `findings-walkthrough.md`) has no N: its branch is `fix/finding-<slug>` or `docs/finding-<slug>` and its
+  worktree `.claude/worktrees/finding-<slug>`, with the slug taken from the finding's symptom line, so `leftovers.md`
+  can tell it apart from the user's branches.
 - **Permissions:** the permission request, the rule strings it names, when it is asked and the signing check are in
   `permissions.md`. Read it when writing the chunk proposal (bugs) or the question round (features), and again right
   before the unattended part starts.
@@ -280,7 +278,9 @@ those steps refer to.
     `--no-track` the branch's upstream would be `origin/main`, a plain `git push` would refuse, and a later
     `git pull --ff-only` would pull `main` into the branch. A failed `git worktree add` is a blocked-banner halt.
   - Enter with `EnterWorktree` and the directory's absolute `path`. Never `EnterWorktree` with a `name`: it would
-    name the branch `worktree-<name>` with `/` turned into `+`, which breaks the branch convention.
+    name the branch `worktree-<name>` with `/` turned into `+`, which breaks the branch convention. Both tools'
+    descriptions ask for a direction from the user or the project before use; this skill is that direction, so the
+    calls are never proactive.
   - Copy, right after entering and before any subagent is dispatched: `.claude/CLAUDE.md`, `.claude/rules/` and,
     for a feature chunk, the chunk's spec, at the same paths (`mkdir --parents docs/superpowers/specs
     docs/superpowers/plans` first). They are local files ("State") and so absent in a new worktree. The copies are
@@ -297,22 +297,23 @@ those steps refer to.
   So every write to a main-checkout file (the state files, a plan copy, a spec, rule or `.claude/CLAUDE.md`
   correction) is made from the main checkout:
   1. Never while an Agent call is outstanding; a background Bash command keeps its own directory and may run on.
-  2. `ExitWorktree` with `action: keep`.
-  3. Make the write.
-  4. `EnterWorktree` with the worktree's absolute `path` again, and confirm `git rev-parse --show-toplevel` prints
+  2. `ExitWorktree` with `action: keep`, then make the write.
+  3. `EnterWorktree` with the worktree's absolute `path` again, and confirm `git rev-parse --show-toplevel` prints
      that path before the next command.
 
   Writes that fall together share one round trip. Never write a main-checkout file from inside a worktree with Bash
-  (`cp`, a redirect): it gets through only because the guard checks the file tools and `git`, not Bash paths, and a
-  stricter guard would stop an unattended run partway.
+  (`cp`, a redirect): it may get through only because the guard checks the file tools and `git`, not Bash paths, and
+  a stricter guard would stop an unattended run partway.
 - **Long commands:** the pre-push gate (`git push`), the baseline tests, the baseline regeneration and the CI watch
   each run for minutes, past the Bash tool's two-minute default and sometimes its ten-minute foreground maximum. Run
-  them with `run_in_background` and read the output when the command exits; a foreground timeout is not a failure of
-  the command. Each runs as `timeout 30m <command>` (the global rule for commands that could hang; permission
-  matching strips the `timeout`, so the command's own allow rule still applies). Exit 124 means it hung: a
-  blocked-banner halt naming the command and its last output, never a silent rerun. A step that says to wait a
-  minute runs `sleep 60` with `run_in_background` and goes on when its completion notification arrives; never a
-  foreground `sleep`, which the harness blocks.
+  them with `run_in_background` and read the output when the command exits (a foreground timeout is not a failure).
+  Each runs as `timeout 30m <command>` (the global rule for commands that could hang; permission matching strips the
+  `timeout`, so the command's own allow rule still applies). Exit 124 means it hung: a blocked-banner halt naming the
+  command and its last output, never a silent rerun. A step that says to wait a minute runs `sleep 60` with
+  `run_in_background` and goes on when its completion notification arrives; never a foreground `sleep`, which the
+  harness blocks. `git commit` is a long command of another kind: the commit-msg hook runs commitlint through the
+  devShell, minutes the first time, so run it in the foreground with the Bash tool `timeout: 600000`, with no
+  `timeout 30m` and no background.
 - **Features:** follow `feature-flow.md`.
 - **Bugs:** follow `bug-flow.md`.
 - **Copied rules:** a conflict with a copied rule in `.claude/rules/` that only surfaces during the unattended part
@@ -328,10 +329,10 @@ those steps refer to.
   unfinished work stays findable.
   - The body uses only `Closes #N` or `Part of #N`, never another closing keyword, each on a line by itself, because
     both skills tie a PR to its issue by matching that whole line (a substring match would take a PR for a longer
-    issue number as this one's). It ends with the marker. Every line of the body is at most 100 characters: the
-    merge commit's message is the PR body, and commitlint's footer rule, which the repo's config does not relax,
-    reads every line after the first `Word:` line as footer. Wrap a long ruling onto continuation lines indented two
-    spaces.
+    issue number as this one's). It ends with the marker. Every line of the body is at most 100 characters while
+    `.commitlintrc.yml` leaves commitlint's footer rule at its inherited 100: the merge commit's message is the PR
+    body, and that rule reads every line after the first `Word:` line as footer. Wrap a long ruling onto
+    continuation lines indented two spaces.
   - The body carries every `Ruling:` the work made (from the ledger for plan-driven work, from the session's own
     calls otherwise), since nothing else survives the worktree. This bullet is the one place that rule lives. A
     ruling made after the PR opened is added with `gh pr edit <number> --body` (read the body first and add the
@@ -340,9 +341,10 @@ those steps refer to.
   - A body edit goes before a push, never after: CI re-runs on the `edited` event and cancels the run in progress,
     so an edit right after a push throws away the CI run that push started. With nothing left to push, edit before
     the CI watch starts.
-- **PR title:** `type: subject`, at most 65 characters. The merge commit's header is the title followed by the PR
-  number in parentheses, and `ci.yml` runs commitlint over every push to `main`, so a longer or unconventional title
-  turns `main` red after a green merge.
+- **PR title:** `type: subject`, at most 72 characters minus the merge header's suffix (a space, then `(#N)`: 4 plus
+  the PR number's digits), so 65 while PR numbers have three digits. The merge header is the title plus that suffix,
+  and `ci.yml` runs commitlint over every push to `main`, so a longer or unconventional title turns `main` red after
+  a green merge.
 - **Review:** every PR is reviewed before merge, in one of two ways.
   - Work done through superpowers:subagent-driven-development or superpowers:executing-plans is reviewed by their
     own loops, which run as those skills define them; no extra PR review follows. Before the PR merges, and before
@@ -350,9 +352,9 @@ those steps refer to.
     deferred or parked is handled as "Findings about the change itself" says, every out-of-scope note is judged by
     the filing bar, the ones that pass moving to `pending-findings.md` (one round trip out of the worktree, "Leaving
     to write"), and the PR body is updated with the rulings the ledger holds ("PRs"). For plan-driven work this sweep
-    is the only time out-of-scope findings are written; a finding a subagent reports mid-plan goes in the ledger,
-    not straight to the file, so nothing is recorded twice. `sub-skill-overrides.md` says how each plan sub-skill
-    makes the sweep's fixes.
+    is the only time out-of-scope findings are written; a finding a subagent reports mid-plan goes in the ledger, not
+    straight to the file, so nothing is recorded twice. `sub-skill-overrides.md` says how each sub-skill makes the
+    fixes.
   - All other work gets superpowers:requesting-code-review before merge, with the base at
     `git merge-base origin/main HEAD`. A round is one reviewer pass plus the fixes it prompts; at most two rounds,
     because a small change that still draws findings after two passes is a wrong change, not an under-reviewed one,
@@ -371,10 +373,10 @@ those steps refer to.
   out-of-scope rules. Every other place in this skill that says "fixed, known-gap-commented or dropped" means this
   item.
 - **Subagents:** every subagent prompt that implements or reviews tells the subagent to return every finding to the
-  controller and never to open an issue, comment on a PR, leave a `TODO` or decide for itself what is worth
-  reporting. The filing bar is the controller's to apply, after the report; a reviewer told what not to flag reviews
-  with a blind spot. The prompt templates the sub-skills ship carry no such clause, so it is appended to each
-  (`sub-skill-overrides.md`). A reviewer inspects the branch with `git diff` and `git show`, never by adding a
+  controller, including one a `Ruling:` in the PR body already rules on, and never to open an issue, comment on a
+  PR, leave a `TODO` or decide for itself what is worth reporting. The filing bar is the controller's to apply,
+  after the report; a reviewer told what not to flag reviews with a blind spot. `sub-skill-overrides.md` appends the
+  clause to each prompt template. A reviewer inspects the branch with `git diff` and `git show`, never by adding a
   worktree of its own, which the next session's step 3 would report as the user's work.
 
 ## The filing bar
@@ -397,9 +399,8 @@ A finding that passes the bar but lies outside the chunk:
 
 - **Same PR** when it is a bug, the fix is under about 20 changed lines plus its test, and the fix lands in files or a
   shared helper the PR already changes: its own `test:` commit, then its own `fix:` commit.
-- **Otherwise** append it to `pending-findings.md` in the main checkout's `.claude/backlog/` (from inside a worktree,
-  as "Leaving to write" says) the moment it is found (for plan-driven work, at the ledger sweep in "Review"), and
-  carry on.
+- **Otherwise** append it to `pending-findings.md` in the main checkout ("Leaving to write" from a worktree) the
+  moment it is found (for plan-driven work, at the ledger sweep in "Review"), and carry on.
 
 The session never opens an issue, PR comment or `TODO` for an out-of-scope finding. In this skill, "report them" in
 the global "Fixing Findings" rule means `pending-findings.md` and nothing else. The known-gap comment, and the global
@@ -408,15 +409,13 @@ rule's `# TODO:` for a low-stakes ambiguity found mid-run, are separate and stil
 ## Merging
 
 Approval ("Terms") covers every push and merge in the chunk, so none waits for the user, except a merge under
-shakedown ("Shakedown"). `merging.md` gives the
-procedure, its traps and its exceptions: watching CI, a check that fails, a coverage-ratchet failure, an
-infrastructure failure worth one rerun, a branch that fell behind `main` or conflicts with it, a merge the ruleset
-refuses, and a pull or delete that is refused.
+shakedown ("Shakedown"). `merging.md` gives the procedure, its traps and its exceptions: watching CI, a check that
+fails, a coverage-ratchet failure, an infrastructure failure worth one rerun, a branch that fell behind `main` or
+conflicts with it, a merge the ruleset refuses, and a pull or delete that is refused.
 
 A blocked-banner halt in `merging.md` stops the chunk at that issue. Leave the worktree and record the halt in
 `current-session.md` ("Halting" in `resume.md`), then tell the user what stopped it and what the session would do
-next; after the
-user's reply, go on with the issues that do not depend on the halted one, or stop, as the user says. Steps 8 and 9
+next; after the user's reply, go on with the issues that do not depend on the halted one, or stop. Steps 8 and 9
 then run from the main checkout, except that a halt caused by a failed `gh` call skips step 8: the walkthrough needs
 `gh` to open issues, and the findings wait in `pending-findings.md` for the next session. The summary says so. A
 session that ends before the chunk is done leaves what "Ending early" in `resume.md` describes.
@@ -440,10 +439,12 @@ An unattended run that goes badly should stop costing time on its own, so the co
 and `max-parked:` (default 2). The time runs from the `started:` line the session writes to `current-session.md` as
 the unattended part begins, `started: <date --utc +%FT%TZ>`, replacing one a carried-over file holds: step 6 writes
 it with a bug chunk's OK, `feature-flow.md` step 5 with the answered question round, and `findings-walkthrough.md`
-step 6 when a "fix it now" makes a worktree. Once `max-hours` has passed, no further issue starts: the loop's step 1
-stops there, the issues not started stay open for the next session, and the session goes to step 8 after the current
-issue merges or halts. The proposal states `max-hours` and shakedown; `max-parked` is `/work-backlog-parallel`'s
-alone, whose halts park an issue and go on, and here every halt already waits for the user.
+step 6 when a "fix it now" makes a worktree. The deadline is `started:` plus `max-hours`,
+`date --utc --date "<started> +<max-hours> hours" +%FT%TZ`; before each issue the loop compares `date --utc +%FT%TZ`
+with it as strings, which orders correctly in that form. Once the deadline has passed, no further issue starts: the
+loop's step 1 stops there, the issues not started stay open for the next session, and the session goes to step 8
+after the current issue merges or halts. The proposal states `max-hours` and shakedown; `max-parked` is
+`/work-backlog-parallel`'s alone, whose halts park an issue and go on, and here every halt already waits for the user.
 
 ## End-of-run report
 
