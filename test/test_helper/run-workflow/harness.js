@@ -11,6 +11,14 @@
 // script is expected to reject the args. `case` reaches the scenario as
 // `process.env.CASE`. Exit 0 when every check passes, 1 when one fails, 2 when
 // the harness itself breaks.
+//
+// A scenario that also exports `replay: { firstRespond, completed }` models a
+// relaunch with resumeFromRunId: the script runs once with `firstRespond`, the
+// first `completed` agent calls of that run count as finished, and the script
+// runs again with `respond`, where a call whose (prompt, opts) equals a
+// finished one returns that call's result without reaching `respond` (the
+// Workflow tool's per-call cache). `check` sees the second run, with the
+// first run's trace as `trace.first` and each cached call marked `cached`.
 'use strict'
 const fs = require('fs')
 const path = require('path')
@@ -31,7 +39,11 @@ function loadBody() {
   return src.slice(metaEnd + 3)
 }
 
-async function runScript(scenario) {
+// The Workflow tool's cache key: an agent() call with the same prompt and
+// options is the same call.
+const keyOf = (prompt, opts) => JSON.stringify([prompt, opts])
+
+async function runScript(scenario, respond = scenario.respond, cache = new Map()) {
   const trace = { calls: [], running: new Map(), maxRunning: {}, order: [], logs: [] }
   let seq = 0
   const countKind = (kind) => [...trace.running.values()].filter((v) => v === kind).length
@@ -46,6 +58,13 @@ async function runScript(scenario) {
       const kind = label.split(' ')[0]
       const call = { id, label, kind, prompt, opts }
       trace.calls.push(call)
+      const cached = cache.get(keyOf(prompt, opts))
+      if (cached && cached.length) {
+        call.cached = true
+        call.result = cached.shift()
+        trace.order.push(`cached ${label}`)
+        return call.result
+      }
       trace.order.push(`start ${label}`)
       trace.running.set(id, kind)
       trace.maxRunning.buildfix = Math.max(trace.maxRunning.buildfix || 0, countKind('build') + countKind('fix'))
@@ -53,7 +72,7 @@ async function runScript(scenario) {
       try {
         // Yield once so concurrent starts interleave the way real agents do.
         await new Promise((resolve) => setImmediate(resolve))
-        const result = await scenario.respond(label, prompt, opts, call, trace)
+        const result = await respond(label, prompt, opts, call, trace)
         call.result = result
         if (opts.schema && result && typeof result === 'object') {
           for (const key of opts.schema.required || []) {
@@ -83,7 +102,19 @@ async function main() {
   const name = path.basename(file) + (process.env.CASE ? ` [${process.env.CASE}]` : '')
   let out
   try {
-    out = await runScript(scenario)
+    if (scenario.replay) {
+      const first = await runScript(scenario, scenario.replay.firstRespond)
+      const cache = new Map()
+      for (const call of first.trace.calls.slice(0, scenario.replay.completed)) {
+        if (!('result' in call)) continue
+        const key = keyOf(call.prompt, call.opts)
+        cache.set(key, [...(cache.get(key) || []), call.result])
+      }
+      out = await runScript(scenario, scenario.respond, cache)
+      out.trace.first = first.trace
+    } else {
+      out = await runScript(scenario)
+    }
   } catch (error) {
     if (scenario.expectThrow) {
       scenario.expectThrow(error)
