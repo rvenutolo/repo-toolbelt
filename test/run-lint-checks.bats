@@ -2,9 +2,9 @@
 
 bats_require_minimum_version 1.5.0
 
-# Stubs stand in for every linter and for .ci/vuln; each prints a marker and
-# the arguments it received, so no real linter runs. run-lint-checks lists
-# files through git, so the fixture commits one file of each kind it selects.
+# Stubs stand in for every linter, .ci/vuln and .ci/check-skill-xrefs; each
+# prints a marker and the arguments it received, so no real linter runs.
+# run-lint-checks lists files through git, so the fixture commits one file of each kind it selects.
 
 # @description Write an executable stub that prints "<name>-ran <args>" and
 #              exits with $<NAME>_EXIT, defaulting to 0.
@@ -67,6 +67,7 @@ function setup() {
   write_stub "${STUB_BIN}/go" go GO_EXIT
   write_stub "${STUB_BIN}/typos" typos TYPOS_EXIT
   write_stub .ci/vuln vuln VULN_EXIT
+  write_stub .ci/check-skill-xrefs check-skill-xrefs CHECK_SKILL_XREFS_EXIT
   write_stub .ci/x ci-x CI_X_EXIT
   write_stub .coverage/y coverage-y COVERAGE_Y_EXIT
   write_stub tool tool TOOL_EXIT
@@ -87,7 +88,7 @@ function setup() {
   assert_success
   local -a expected=(
     shellcheck just statix deadnix actionlint zizmor yamllint markdownlint-cli2
-    golangci-lint go go vuln typos
+    golangci-lint go go vuln check-skill-xrefs typos
   )
   local -a ran=()
   local line
@@ -102,7 +103,7 @@ function setup() {
 @test 'shellcheck gets the shell files and skips .coverage' {
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success
-  assert_line 'shellcheck-ran --external-sources .ci/vuln .ci/x test/a.bats tool'
+  assert_line 'shellcheck-ran --external-sources .ci/check-skill-xrefs .ci/vuln .ci/x test/a.bats tool'
   local line
   for line in "${lines[@]}"; do
     [[ "${line}" != shellcheck-ran*'.coverage/y'* ]]
@@ -115,7 +116,7 @@ function setup() {
   commit_all
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success
-  assert_line 'shellcheck-ran --external-sources .ci/vuln .ci/x formatters/shell/shell test/a.bats tool'
+  assert_line 'shellcheck-ran --external-sources .ci/check-skill-xrefs .ci/vuln .ci/x formatters/shell/shell test/a.bats tool'
 }
 
 @test 'each linter gets only its kind' {
@@ -142,7 +143,8 @@ function setup() {
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_success
   local -a text_files=(
-    .ci/vuln .ci/x .coverage/y .github/workflows/w.yml README.md a.nix notes.txt test/a.bats tool x.yaml
+    .ci/check-skill-xrefs .ci/vuln .ci/x .coverage/y .github/workflows/w.yml README.md a.nix notes.txt test/a.bats
+    tool x.yaml
   )
   local -a tracked=()
   local file
@@ -176,8 +178,15 @@ function setup() {
   assert_output --partial 'one or more linters failed'
 }
 
+@test 'a dangling skill section reference fails the run and typos still runs' {
+  CHECK_SKILL_XREFS_EXIT=1 run "${REPO_DIR}/.ci/run-lint-checks"
+  assert_failure 1
+  assert_output --partial 'typos-ran'
+  assert_output --partial 'one or more linters failed'
+}
+
 @test 'no shell files at all fails that step and the rest still run' {
-  untrack_and_commit .ci/vuln .ci/x tool test/a.bats
+  untrack_and_commit .ci/check-skill-xrefs .ci/vuln .ci/x tool test/a.bats
   run "${REPO_DIR}/.ci/run-lint-checks"
   assert_empty_list_failure 'shell files' typos
   refute_output --partial 'shellcheck-ran'
@@ -214,7 +223,7 @@ function setup() {
 }
 
 @test 'a repo whose tracked files are all empty fails the typos step' {
-  untrack_and_commit .ci/vuln .ci/x .coverage/y tool
+  untrack_and_commit .ci/check-skill-xrefs .ci/vuln .ci/x .coverage/y tool
   : > test/a.bats
   : > README.md
   : > notes.txt

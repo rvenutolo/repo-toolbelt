@@ -1,0 +1,24 @@
+Add monitoring/logging for future investigation
+Ask for help
+Ask them now
+Attention Banners
+Declined to judge
+Do not dispatch a re-review
+Final Review
+Finish
+Fixing Findings
+Generated with Claude Code
+Long Multi-Step Tasks
+No checks reported
+Not a bug
+Note Minor issues for later
+Prioritizing Work Items
+Run this skill's `scripts/task-start PLAN_FILE N`
+Same PR
+Sandbox fallback
+Size the Work
+Strictly one issue at a time
+The agent should run requesting-code-review
+Unattended Execution / Pre-Answer Halt Questions
+Wait a minute
+While bypass permissions mode is active

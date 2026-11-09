@@ -5,7 +5,8 @@
 #              the Nix files, actionlint and zizmor over the workflows,
 #              yamllint, markdownlint and typos, plus the Go checks:
 #              golangci-lint run, `go mod tidy -diff`, `go mod verify` and
-#              govulncheck through `.ci/vuln`. Shell and Go formatting are the
+#              govulncheck through `.ci/vuln`, and `.ci/check-skill-xrefs` over
+#              the section names the skills cite. Shell and Go formatting are the
 #              dogfooded check-shell-formatted's and check-go-formatted's job
 #              in run-all-checks, and formatting of everything else is
 #              `nix flake check`'s.
@@ -204,6 +205,9 @@ function main() {
 
   log_info 'running govulncheck'
   ./.ci/vuln || rc=1
+
+  log_info 'checking the section names the skills cite'
+  ./.ci/check-skill-xrefs || rc=1
 
   log_info 'running typos'
   # Every tracked text file. A bare `typos` skips hidden paths (.ci, .github)
