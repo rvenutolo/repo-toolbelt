@@ -35,16 +35,16 @@ either skill may be the one that finds them.
 **A run may still be going.** A long parallel run crosses midnight, so the date proves nothing. Read
 `current-session.md`'s `workflow-*` lines first:
 
-- `workflow-done`: the run finished and its result is recorded; only its "Ending" is left. Run
-  `/work-backlog-parallel`'s "Ending" step 1 (its fold, and its shakedown merge as the `ready-to-merge` bullet below
-  says) instead of asking (redo it if its output is missing), then write the items its "Ending" step 3 would name into
+- `workflow-done`: the run finished and its result is recorded; only `/work-backlog-parallel`'s "Ending" is left. Run
+  its step 1 (its fold, and its shakedown merge as the `ready-to-merge` bullet below
+  says) instead of asking (redo it if its output is missing), then write the items its step 3 would name into
   `.claude/backlog/parallel/summary.md` before its step 4 deletes the files they come from, then run its step 4 and
   carry on with this session; its step 2 park questions and finish-now offer are this file's parked handling below, and
   while `shakedown-parallel:` is on, its step 5 lift offer follows this session's summary. Its walkthrough is this
   session's step 4, which comes after every leftover is finished, and this session's step 9 reads `summary.md` into its
   own summary and then deletes it, so the user gets one summary.
 - `workflow-result` with no `workflow-done`: the run finished, and its result waits in
-  `.claude/backlog/parallel/result.json`. Record from it as the parallel skill's "The run" step 5 does, delete the
+  `.claude/backlog/parallel/result.json`. Record from it as `/work-backlog-parallel`'s "The run" step 5 does, delete the
   file, and treat the run as `workflow-done`.
 - `workflow-run` (written with `workflow-script` and `workflow-args` at launch) and neither of those, or
   `workflow-launching` with no `workflow-run` (the tool may have launched a run before the session died): ask with the
@@ -54,7 +54,7 @@ either skill may be the one that finds them.
   below). Taking over strips the `workflow-*` and `cap:` lines from `current-session.md` first, so the parallel skill
   never resumes a run whose issues moved on. Whether the run can still be resumed, and how, is decided as
   `/work-backlog-parallel`'s "The run" step 4 says; recommend the resume when that step finds it possible. Leaving
-  keeps `current-session.md` as the run's file, whose `session-date:` that run's "Ending" and lost-run check read:
+  keeps `current-session.md` as the run's file, whose `session-date:` the run's ending and lost-run check read:
   this session chooses no chunk (`SKILL.md` step 6), because that run's merge queue is the only thing that may pull
   `main` or touch worktrees while it runs, and step 9 leaves the file in place. Its
   `session-log.md` line is the run's too; step 2 appended this session's own.
@@ -73,16 +73,17 @@ Then fold the files, before sorting anything:
     `ruling:` that names a `.claude/CLAUDE.md` edit to the main checkout's copy, sort the worktrees it lists
     (below), then delete the file.
   - `skipped`: confirm the issue or PR is closed (`gh issue view`, `gh pr view`), then sort its `worktrees:` before
-    deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they
-    were for. Ask, in the one question above, whether to remove each worktree and its branch, recommending removal.
-    A budget skip is the exception: its note says the issue was never started (a budget, the deadline, or a
-    prerequisite waiting for its merge OK), its issue is still open and no worktree or PR was made. There is nothing
-    to confirm or sort: delete the file, and the issue stays in the backlog for the next chunk.
-  - `ready-to-merge`: an open PR the run built and reviewed, waiting for the shakedown's merge OK
-    (`/work-backlog-parallel` "Shakedown and budgets"). Ask and merge as `/work-backlog-parallel` "Ending" step 1
-    says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On a first no,
-    write `state: pr open, not merged` to the file in place of `ready-to-merge` and leave the PR open: the next
-    session asks once more.
+    deleting the file: they are not unfinished work, whatever the issue's state, since the user closed what they were
+    for. Ask, in the one question above, whether to remove each worktree and its branch, recommending removal. A budget
+    skip is the exception: its note says the issue was never started (a budget, the deadline, the stop file, a
+    prerequisite the stop file skipped, or a prerequisite waiting for its merge OK), its issue is still open and no
+    worktree or PR was made. There is nothing to confirm or sort: delete the file, and the issue stays in the backlog
+    for the next chunk.
+  - `ready-to-merge`: an open PR the run built and reviewed, waiting for the shakedown's merge OK, or stopped before its
+    merge by the stop file (`/work-backlog-parallel` "Shakedown and budgets"). Ask and merge as `/work-backlog-parallel`
+    "Ending" step 1 says, in the worktree it names, with no requesting-code-review pass. Then handle it as `merged`. On
+    a first no, write `state: pr open, not merged` to the file in place of `ready-to-merge` and leave the PR open: the
+    next session asks once more.
   - `pr open, not merged`: a `ready-to-merge` issue the user said no to once. Ask again as for `ready-to-merge`; on a
     second no, delete the file, record `#<N> left to user` in `current-session.md`, leave the PR to the user and
     name it in the proposal, as the serial second no does ("To resume" below).

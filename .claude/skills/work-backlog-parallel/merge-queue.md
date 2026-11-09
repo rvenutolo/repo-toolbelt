@@ -1,12 +1,12 @@
 # Merge queue
 
-Instructions for the merge agent `run.workflow.js` starts once an issue is ready; `common.md` comes first. The
-script runs one merge agent at a time, so this agent is the only one touching shared git state: it fetches, pulls
-`main`, adds and removes worktrees and deletes branches. It runs in the main checkout (`<main>`), not isolated, and
-works in other worktrees with `git -C <path>` and absolute paths. `common.md` applies except the git-command limits
-of its "Shared state is not yours" item: fetching, pulling, worktrees and branch deletes are this agent's. It still
-never writes `current-session.md`, `pending-findings.md`, a spec or `.claude/rules/`, and never calls `ExitWorktree`
-or `EnterWorktree`.
+Instructions for the merge agent `run.workflow.js` starts once an issue is ready; `common.md` comes first. The script
+runs one merge agent at a time, so this agent is the only one touching shared git state: it fetches, pulls `main`, adds
+and removes worktrees and deletes branches. It runs in the main checkout (`<main>`), not isolated, and works in other
+worktrees with `git -C <path>` and absolute paths. `common.md` applies except the git-command limits of "Shared state is
+not yours" in `common.md`: fetching, pulling, worktrees and branch deletes are this agent's. It still never writes
+`current-session.md`, `pending-findings.md`, a spec or `.claude/rules/`, and never calls `ExitWorktree` or
+`EnterWorktree`.
 
 `/work-backlog`'s `merging.md` steps 0–2 are the procedure, with the differences below: a blocked or question banner
 there is a park here, with the status and the rule in the note. Its steps 3 and 4 (leaving a worktree, recording in
@@ -105,7 +105,7 @@ Then:
 
 1. Confirm `git -C <rebase worktree> log --format='%G?' origin/main..HEAD` prints only `G`, with the range as
    `merging.md` step 2 keeps it; any other letter is commit signing failing, a batch-level failure (`common.md`).
-2. **Baseline:** `merging.md` step 2, "Baseline after a rebase", in the rebase worktree.
+2. **Baseline:** "Baseline after a rebase" in `merging.md` (step 2), in the rebase worktree.
 3. **Code resolution:** when a rebase in this call made one, return `state: "needs-review"`, `reason: "conflict"`,
    `fixBase` (the branch's pre-rebase head, the old remote SHA from section 2 step 1: the reviewer compares the
    branch before and after the rebase, which a diff against `origin/main` cannot show), `mergeWorktree` (the rebase
@@ -133,7 +133,8 @@ does not review fixes after its last review round. A CI rerun is a `Summary:` li
 
 ## 5. Merge
 
-**Under the shakedown** (`stopAtMerge` true), stop here: the branch is current, pushed and green on CI. Return
+**Under the shakedown** (`stopAtMerge` true), **or when `<main>/.claude/backlog/stop` exists** (the user asked the
+run to stop, `SKILL.md` "Shakedown and budgets"), stop here: the branch is current, pushed and green on CI. Return
 `state: "ready-to-merge"` with `mergeWorktree` set, leaving the rebase worktree in place and writing nothing to
 `<n>.md` (the controller asks the user and merges at "Ending", `/work-backlog-parallel` `SKILL.md`). Otherwise,
 `merging.md` step 2, with three differences:
@@ -142,8 +143,8 @@ does not review fixes after its last review round. A CI rerun is a `Summary:` li
 - Where it says to rebase on `BEHIND` or `DIRTY`, go back to section 2, step 1, counting each such return on top of
   `mergeRetries`; its limit (the third on one PR is a blocked banner) is counted across calls that way, and its
   blocked banner is a park here. Every result returns `mergeRetries`, the new total, so the next call carries it on.
-- Its shakedown question never applies to this agent: `stopAtMerge` carries the shakedown, so when this agent gets
-  here with it false, the merge is approved. Skip the question and do not read `.claude/backlog/config`.
+- Its shakedown question never applies to this agent: `stopAtMerge` carries the shakedown, so when this agent gets here
+  with it false and no stop file, the merge is approved. Skip the question and do not read `.claude/backlog/config`.
 
 The moment `gh pr view` prints `MERGED`, write `state: merged` to `<main>/.claude/backlog/parallel/<n>.md`, before
 any cleanup.

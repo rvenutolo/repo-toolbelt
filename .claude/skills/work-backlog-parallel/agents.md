@@ -52,7 +52,9 @@ merged before it started), `haltAnswers` (the user's answers to this batch's hal
      `git push origin HEAD:refs/heads/<branch>`. Resume the plan from the ledger; work never committed in the dead
      worktree is lost and is redone. With no ledger, the branch's commits beyond `origin/main` say how far it got: a
      feature whose plan tasks are all committed, or a bug with its `fix:` commit, goes straight to step 4.
-2. **Fresh start** (nothing found). First the run's time budget: when `date --utc +%FT%TZ` prints a time later
+2. **Fresh start** (nothing found). First the stop file (`SKILL.md` "Shakedown and budgets"): when
+   `<main>/.claude/backlog/stop` exists, return `state: "skipped"` with `parkNote` `stopped: .claude/backlog/stop`,
+   having changed nothing. Then the run's time budget: when `date --utc +%FT%TZ` prints a time later
    than `deadline` (compare the two as strings), return `state: "skipped"`, `deadlinePassed: true` and a `parkNote`
    saying the deadline passed before this issue started, having changed nothing (the script replaces that note with
    its own fixed wording, so the exact text does not matter). Work found by step 1 is finished
