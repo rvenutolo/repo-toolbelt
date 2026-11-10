@@ -28,7 +28,7 @@ const review = (over = {}) => ({
 })
 const merge = (over = {}) => ({
   state: 'merged', parkNote: '', batchHalt: '', mergeWorktree: '', conflictedFiles: [], leftInPlace: [], rulings: [],
-  findings: [], reason: '', failure: '', fixBase: '', ...over,
+  findings: [], reason: '', failure: '', fixBase: '', mergeRetries: 0, ...over,
 })
 const finding = (symptom) => ({ symptom, file: 'f', trigger: 't', whyReal: 'w', foundWhile: 'issue 1' })
 

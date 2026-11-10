@@ -2,11 +2,7 @@
 
 # @description Wait for a regular file to exist with content, for at most a given number of seconds.
 #              Workflow agents use it to wait on a background command that
-#              writes its exit status to a file. It is its own script, not a
-#              `timeout … bash -c` loop, so one allow rule naming its path
-#              pre-approves every wait: permission matching strips a `timeout`
-#              prefix and then sees only `bash -c`, which no rule can name
-#              safely. With a hang limit, the first wait writes its time to
+#              writes its exit status to a file. With a hang limit, the first wait writes its time to
 #              `<file>.start` and later waits keep it, so a command is judged
 #              hung by the time since it started, not by how many waits ran:
 #              the Bash tool may cut a wait short, which makes a count wrong.
@@ -14,11 +10,12 @@
 # @arg $2 seconds how long to wait, a positive whole number
 # @arg $3 hang-seconds optional; how long after the start time a missing status means a hang
 # @exitcode 0 the file exists, is a regular file and is not empty
+# @exitcode 1 with a hang limit, `<file>.start` could not be written, as when the file's directory does not exist
 # @exitcode 2 wrong arguments, the path exists and is not a regular file, or `<file>.start` holds no whole number
 # @exitcode 3 the hang limit has passed since the start time and the file is still missing or empty
 # @exitcode 124 the file did not appear in time, the code `timeout` uses
 
-# devshell-exempt: a work-backlog-parallel skill helper Claude Code runs on the host by the path its allow rule names, outside any gate; it needs only bash and sleep
+# devshell-exempt: a work-backlog-parallel skill helper workflow agents run on the host by its path, outside any gate; it needs only bash and sleep
 
 set -Eeuo pipefail
 IFS=$'\n\t'

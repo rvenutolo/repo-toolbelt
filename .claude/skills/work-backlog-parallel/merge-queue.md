@@ -10,14 +10,13 @@ or `EnterWorktree`.
 
 `/work-backlog`'s `merging.md` steps 0–2 are the procedure, with the differences below: a blocked or question banner
 there is a park here, with the status and the rule in the note. Its steps 3 and 4 (leaving a worktree, recording in
-`current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here replace them. Git commands in the
-rebase worktree run as `git -C <rebase worktree> …`. Every rebase and every `rebase --continue` runs as
-`git -C <rebase worktree> -c rerere.enabled=false rebase …`: with rerere on, a replayed resolution is staged, so the
-conflicted-file listing comes back empty and hides the conflict section 3 must judge. `rebase --continue` never
-waits on an editor: Claude Code sets `GIT_EDITOR=true` for every Bash call. Devshell commands run there as
-`cd <rebase worktree> && ./.ci/in-devshell …`. Long commands (the push, the baseline regeneration and its tests,
-`gh pr checks --watch`) follow `common.md` "Long commands", with their status files in the rebase worktree's
-`.claude/tmp/`, never the main checkout's.
+`current-session.md`, the pull and cleanup) never apply: sections 5 and 6 here replace them. Git commands in the rebase
+worktree run as `git -C <rebase worktree> …`. Every rebase and every `rebase --continue` runs as `git -C <rebase
+worktree> -c rerere.enabled=false rebase …`, for the reason `merging.md` step 2 gives. `rebase --continue` never waits
+on an editor: Claude Code sets `GIT_EDITOR=true` for every Bash call. Devshell commands run there as `cd <rebase
+worktree> && ./.ci/in-devshell …`. Long commands (a commit, the push, every `./.ci/in-devshell` command, the baseline
+regeneration's tests, `gh pr checks --watch`) follow `common.md` "Long commands", with their status files in the rebase
+worktree's `.claude/tmp/`, never the main checkout's.
 
 Inputs: `n`, `branch`, `pr`, `worktrees` (every worktree path the issue's agents used, the build agent's first), `kind`,
 `spec`, `plan` and `haltAnswers` (for a merge-time fix, which must keep to what the issue was for and to the user's
@@ -25,9 +24,10 @@ answers), `stopAtMerge` (true under the shakedown: section 5), `resolutionReview
 returned `needs-review` and the review has run), `resolutionFindings` (that review's findings, possibly none),
 `pendingRulings` (the rulings earlier calls for this issue returned with `needs-review` (`Summary:` lines excluded); a
 call that stops for review may not have pushed, so they may not be in the PR body yet), `lastReason` (the `reason` the
-previous call returned with `needs-review`: `conflict`, `gate` or `ci`; empty on the first call), `date`, `main`.
-Nothing else carries over between calls: what a call needs from an earlier one (the old remote SHA, the rebase worktree)
-it reads again from git.
+previous call returned with `needs-review`: `conflict`, `gate` or `ci`; empty on the first call), `mergeRetries` (how
+many times earlier calls for this issue went back to rebase on `BEHIND` or `DIRTY`; 0 on the first call), `date`,
+`main`. Nothing else carries over between calls: what a call needs from an earlier one (the old remote SHA, the rebase
+worktree) it reads again from git.
 
 ## 1. Reconcile
 
@@ -103,9 +103,8 @@ is handled the same way as a batch PR.
 
 Then:
 
-1. Confirm `git -C <rebase worktree> log --format='%G?' origin/main..HEAD` prints only `G`; any other letter is
-   commit signing failing, a batch-level failure (`common.md`). Keep the range as written: GitHub's own merge
-   commits on `main` show `E`, so a wider range would halt on them.
+1. Confirm `git -C <rebase worktree> log --format='%G?' origin/main..HEAD` prints only `G`, with the range as
+   `merging.md` step 2 keeps it; any other letter is commit signing failing, a batch-level failure (`common.md`).
 2. **Baseline:** `merging.md` step 2, "Baseline after a rebase", in the rebase worktree.
 3. **Code resolution:** when a rebase in this call made one, return `state: "needs-review"`, `reason: "conflict"`,
    `fixBase` (the branch's pre-rebase head, the old remote SHA from section 2 step 1: the reviewer compares the
@@ -140,8 +139,9 @@ does not review fixes after its last review round. A CI rerun is a `Summary:` li
 `merging.md` step 2, with three differences:
 
 - Where it says to go to step 3 (after `MERGED`), go to section 6 here.
-- Where it says to rebase on `BEHIND` or `DIRTY`, go back to section 2, step 1; its limit on how often that happens
-  holds within this call. Nothing counts across calls; the script's three merge calls per issue bound the rest.
+- Where it says to rebase on `BEHIND` or `DIRTY`, go back to section 2, step 1, counting each such return on top of
+  `mergeRetries`; its limit (the third on one PR is a blocked banner) is counted across calls that way, and its
+  blocked banner is a park here. Every result returns `mergeRetries`, the new total, so the next call carries it on.
 - Its shakedown question never applies to this agent: `stopAtMerge` carries the shakedown, so when this agent gets
   here with it false, the merge is approved. Skip the question and do not read `.claude/backlog/config`.
 

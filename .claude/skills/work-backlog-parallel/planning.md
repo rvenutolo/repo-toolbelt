@@ -5,23 +5,24 @@ workflow starts. It is `/work-backlog`'s `choosing.md` and `feature-flow.md` ste
 
 ## Choosing the batch
 
-`/work-backlog` `choosing.md` holds, minus what `SKILL.md` "Named exceptions" replaces (size, the bugs-only
-or one-family rule, every piece of an umbrella issue). What is left to say here is how to propose a size: ask
+`/work-backlog` `choosing.md` holds, minus what `SKILL.md` "Named exceptions to `/work-backlog`" replaces (size, the
+bugs-only or one-family rule, every piece of an umbrella issue). What is left to say here is how to propose a size: ask
 nothing about it up front; propose the size the `short` or `long` argument named (`SKILL.md` "Arguments"), or the
 session shape the user asked for, and when they named none, propose a short one and name the long batch the backlog
 would support. Issues the user named as arguments are the batch, whatever their size. While this skill's shakedown
-(`shakedown-parallel:`, `SKILL.md` "Shakedown and budgets") is on, the batch is one issue, chosen as
-`/work-backlog` "Shakedown" says, with the short batch standing in for the chunk.
+(`shakedown-parallel:`, `SKILL.md` "Shakedown and budgets") is on, the batch is one issue, chosen as `/work-backlog`
+"Shakedown" says, with the short batch standing in for the chunk.
 
-- **Short:** the doable bugs, or one feature family when there are none, about two hours by the estimate below.
+- **Short:** the doable bugs, in order, up to about two hours by the estimate below (every one when they fit), or one
+  feature family when there are none. Bugs past the two hours go to the long batch.
 - **Long:** the doable bugs plus as many feature families as fit an unattended run of about eight hours by that
   estimate. Every family adds a brainstorm and a spec to the sitting, so name the families and let the user drop
   some.
 
-The runner-up `/work-backlog`'s proposal names is the other size here (the long batch beside a short proposal, the
-short one beside a long proposal), or "none" when the backlog holds nothing more; while the shakedown is on, it is
-the short batch the one issue was taken from. The second half of `choosing.md`'s `Runner-up` holds as it is: the
-issues the session cannot do at all, each with what the user would have to do.
+The runner-up `/work-backlog`'s proposal names is the other size here (the long batch beside a short proposal, the short
+one beside a long proposal), or "none" when the backlog holds nothing more; while the shakedown is on, it is the rest of
+the short batch the one issue was taken from, then the long batch, both named. The second half of `choosing.md`'s
+`Runner-up` holds as it is: the issues the session cannot do at all, each with what the user would have to do.
 
 An umbrella issue's one piece is the next unbuilt piece its spec names, recorded as the issue's `piece`. Each
 issue's `kind` in `run-args.json` (`bug` or `feature`) is the kind "Kinds" in `choosing.md` decides.
@@ -52,16 +53,19 @@ batch too.
 
 One message, beginning with the question banner, laid out as "The proposal" in `choosing.md` fixes it: the same
 section labels in the same order, so the user reads both skills' proposals the same way. The `Reply` line is the
-serial one with two changes, both named exceptions in `SKILL.md`: it leaves out `skip the permissions`, which this
-skill does not accept, and it adds `OK, short` and `OK, long` to take a batch size without a second proposal. Four
+serial one with two changes, both named exceptions in `SKILL.md`: it leaves out every permission form, since this
+skill runs only bypassed, and it adds `OK, short` and `OK, long` to take a batch size without a second proposal,
+except while the shakedown is on, when the batch is one issue whatever the size. Four
 sections are inserted after `Chunk`, in this order:
 
-- `Graph`: the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece, in the
-  order "Order" in `choosing.md` gives (by leverage, not bugs before features);
+- `Graph`: the `issue <N> after <M>` lines `current-session.md` will hold, with each umbrella issue's piece, bugs
+  ahead of features where the graph allows and each kind in the order "Order" in `choosing.md` gives
+  (`SKILL.md` "Named exceptions to `/work-backlog`");
 - `Cap`: how many build and fix agents run at once (default 4, and 1 during the shakedown; each runs the full
   pre-push gate when it pushes); the one merge agent runs beside them, so at most cap + 1 gates run;
 - `Estimate`: a wall-clock range, not a promise. When a report under `.claude/backlog/reports/` opens with a
-  `Skill:` line naming this skill, its `Timings` are the figures; otherwise per issue, guess its work from the issue
+  `Skill:` line naming this skill and this batch's flow, the last such report's `Timings` are the figures, as
+  `choosing.md` takes them; otherwise per issue, guess its work from the issue
   and spec: a small bug about 30 minutes to a ready PR, a lint or workflow feature one to two hours, plus about 15
   minutes for review and fixes. A merge round is about 15 minutes, and 30 to 40 when it meets a code conflict or a
   baseline regeneration (every new lint after the first in a batch meets one in the shared registry files); merges
@@ -71,21 +75,23 @@ sections are inserted after `Chunk`, in this order:
   except while the shakedown is on: its one-issue batch exists to try this skill, so it never gains on `/work-backlog`
   and is proposed anyway. An estimate longer than the time budget names the issues that would likely skip;
 - `Agents`: about three per issue (build, review, merge), up to ten with review rounds, merge retries and resolution
-  reviews. Say whether that exceeds the session's workflow size guideline, which the Workflow tool's description
-  states: it is advice for whoever writes a script, not a limit, and nothing needs changing for the run to proceed.
+  reviews, each retried once if it dies. Say whether that exceeds the session's workflow size guideline, which the
+  Workflow tool's description states: it is advice for whoever writes a script, not a limit, and nothing needs
+  changing for the run to proceed. With no Workflow tool (a plan-only rehearsal), say `guideline unknown: no Workflow
+  tool`. When the batch would reach the tool's hard limits, the concurrent-agent ceiling or the agents-per-run
+  ceiling its description gives, name the limit and what it does to the estimate.
 
 Two of the shared sections read differently here. `Budgets and shakedown` states `max-hours`, not a clock time, since
-the deadline is computed at launch, after the sitting (`SKILL.md` "Shakedown and budgets"), and while the shakedown
-is on its expected-time line reads `Shakedown: one issue; expect the merge question at Ending, about <N> minutes
-after launch, which follows this sitting`, in place of the serial line, because the merge OK is asked once the run
-completes (`SKILL.md` "Named exceptions"). N is the span from `started:` to the merge question in the `Timings` of
-the last report whose opening `Skill:` line names `/work-backlog-parallel` and this batch's flow, as `choosing.md`
-takes it for the serial line; with no such report, the
+the deadline is computed at launch, after the sitting (`SKILL.md` "Shakedown and budgets"), and `max-parked`, the budget
+only this skill uses ("Budgets"); and while the shakedown is on its expected-time line reads `Shakedown: one issue;
+expect the merge question at Ending, about <N> minutes after launch, which follows this sitting`, in place of the serial
+line, because the merge OK is asked once the run completes (`SKILL.md` "Named exceptions to `/work-backlog`"). N is the
+span from `started:` to the merge question in the `Timings` of the last report whose opening `Skill:` line names
+`/work-backlog-parallel` and this batch's flow, as `choosing.md` takes it for the serial line; with no such report, the
 `Estimate` section's figure. `Runner-up` is the other batch size, as "Choosing the batch" says.
 
-For a bug batch, the halt questions and the permission request ride on the proposal, as in `/work-backlog`; the
-`Permissions` section reads as `choosing.md`'s `Permissions` bullet says (`bypassed` when the session runs with
-permissions bypassed). Ask every likely halt question, as
+For a bug batch, the halt questions ride on the proposal, as in `/work-backlog`; the `Permissions` section reads
+`bypassed`, since the session is ("The permission request" below). Ask every likely halt question, as
 `/work-backlog` does, working through `/work-backlog` `halt-questions.md` for each issue: a halt parks the issue here
 instead of stopping the session, but a park still waits for a later session to ask the same question.
 
@@ -96,15 +102,14 @@ instead of stopping the session, but a park still waits for a later session to a
 2. **Spec, builder check, Fable review** per spec (`feature-flow.md` steps 2–4).
 3. **One question round** for the whole batch (`feature-flow.md` step 5, without the `started:` line it appends:
    "The run" step 3 in `SKILL.md` writes it at launch): every held question from every spec, the
-   halt questions (`halt-questions.md` again, for each issue), rule conflicts and the permission request (as
-   `choosing.md`'s `Permissions` bullet says, `bypassed` when the session is), in one message.
+   halt questions (`halt-questions.md` again, for each issue) and rule conflicts, in one message, with `Permissions:
+   bypassed`.
 
 ## The permission request
 
-The list is `/work-backlog` `permissions.md`'s "Rule strings" plus "Workflow agents add", which says what a missed
-rule costs here. The list is long and one miss stalls a chain of issues, so recommend running the session with
-permissions bypassed; `SKILL.md` "The session" step 0 asks about it before planning, and "The run" step 2 checks
-again before launch.
+There is none: this skill runs only in a bypassed session (`SKILL.md` "Named exceptions to `/work-backlog`"), which
+"The session" step 0 checks before planning and "The run" step 2 checks again before launch, so no rule is asked
+for. A plan-only rehearsal's `Permissions` section reads `bypass required`.
 
 ## Writing it down
 

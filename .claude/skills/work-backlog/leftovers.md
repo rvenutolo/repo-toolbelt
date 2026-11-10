@@ -212,8 +212,11 @@ To resume:
 
 ## Done
 
-A branch other than `main` that the `--merged` listing shows with upstream `[gone]`, or a leftover PR's branch once
-`gh pr view` prints `MERGED`. If a worktree under `.claude/worktrees/` still holds it (a session that died between
+A branch named as this skill names its own (`<type>/<N>-<description>`, `fix/finding-<slug>` or
+`docs/finding-<slug>`, "Branches" in `SKILL.md`, or a parallel run's `worktree-wf_*`) that the `--merged` listing
+shows with upstream `[gone]`, or a leftover PR's branch once `gh pr view` prints `MERGED`. A merged `[gone]` branch
+named any other way is the user's ("The user's own work"): this step runs before the user has said anything, so it
+deletes only what this skill made. If a worktree under `.claude/worktrees/` still holds it (a session that died between
 the merge and the cleanup), remove that worktree first (the path `git worktree list` shows holding the branch:
 `<N-description>`, or a parallel run's `<runId>-<k>` or `merge-<N>`), since the delete fails while the branch is
 checked out; then `git branch --delete <name>`, naming each, and list the deleted names in the session summary. A
@@ -223,5 +226,5 @@ delete refused because local `main` lacks the merge waits for a later session, a
 
 Left alone and named in the chunk proposal so the user knows it was seen: every other worktree, every other open PR
 (one without the marker is the user's even when it says `Closes #N`), every branch in the `--no-merged` listing that
-is not a leftover PR's or leftover worktree's branch, and a merged branch whose upstream still exists or that never
-had one (it may be a branch the user just made).
+is not a leftover PR's or leftover worktree's branch, a merged branch whose upstream still exists or that never
+had one (it may be a branch the user just made), and a merged `[gone]` branch not named as "Done" names this skill's.

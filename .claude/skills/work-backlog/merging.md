@@ -48,8 +48,12 @@ background.
    `main` without it, so it waits for the next session); steps 3 and 4 are the merge path and do not run. The PR stays
    this skill's unfinished work: the next session's step 3 asks once more and, on a second no, records `#<N> left to
    user` (`leftovers.md` "To resume"), leaves it to the user and goes on to choose a chunk. Coming back here after a
-   `BEHIND` rebase asks again, since the user approved a different head. Then `gh pr merge <number> --merge`: the repo
-   allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local branch is
+   `BEHIND` rebase asks again, since the user approved a different head. Then
+   `gh pr merge <number> --merge --match-head-commit <sha>`, with `<sha>` the head CI passed on (`git rev-parse HEAD`
+   in the worktree, which the last push sent): the merge then fails instead of taking a head that moved after CI or
+   after the user's OK, and a refusal saying the head was modified is a blocked banner, since someone else pushed.
+   The repo allows merge commits only and deletes the remote branch itself. Do not pass `--delete-branch`; the local
+   branch is
    checked out in the worktree and the delete would fail. Confirm with the same `gh pr view` printing `MERGED`, then go
    straight to step 3, which records the merge; a compaction before that record is caught by this `MERGED` check. A
    refused merge is read from `gh pr view <number> --json mergeStateStatus --jq .mergeStateStatus`:
@@ -63,7 +67,8 @@ background.
      rerere with autoupdate, which replays a recorded resolution and stages it; the rebase still stops, but the
      conflicted-file listing comes back empty and hides what a rule here must judge), regenerate
      the baseline when "Baseline after a rebase" below says so,
-     confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner),
+     confirm `git log --format='%G?' origin/main..HEAD` prints only `G` (any other letter: do not push, blocked banner;
+     keep the range as written, since GitHub's own merge commits on `main` show `E` and a wider range halts on them),
      push with `timeout 30m git push --force-with-lease=<branch>:<old-remote-sha>` (the pre-push hook runs the full
      gate again, a long command;
      a fix for a gate failure here is a merge-time fix, "Merge-time fixes" below), and go back to step 1 for the new

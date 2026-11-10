@@ -114,9 +114,11 @@ const MERGE = {
     // made on; for a conflict resolution the pre-rebase head (the old remote SHA), since a diff from origin/main
     // would show the branch's whole change to the file and hide a dropped main-side line.
     reason: { type: 'string', enum: ['', 'conflict', 'gate', 'ci'] }, failure: str, fixBase: str,
+    // The PR's BEHIND/DIRTY retries so far, this call's included; the next call starts from it.
+    mergeRetries: { type: 'integer', minimum: 0 },
   },
   required: ['state', 'parkNote', 'batchHalt', 'mergeWorktree', 'conflictedFiles', 'leftInPlace', 'rulings',
-    'findings', 'reason', 'failure', 'fixBase'],
+    'findings', 'reason', 'failure', 'fixBase', 'mergeRetries'],
 }
 
 // merge-queue.md is one agent's whole instruction set, so its prompt names the file, not a section of it.
@@ -264,6 +266,8 @@ async function mergeIssue(rec, item) {
   // A call that returns needs-review has not pushed, so its rulings are not in the PR body yet; the next call writes
   // them before its push.
   const pendingRulings = []
+  // merging.md's third-retry limit counts per PR, not per call, so the count crosses calls.
+  let mergeRetries = 0
   // Parking here, between merge calls, leaves work no agent pushed; the note must say where it is and what it is,
   // because leftovers.md keys its recommendation on these sentences.
   const park = (note, cause = '') => ({
@@ -280,7 +284,9 @@ async function mergeIssue(rec, item) {
   // worktree sentence leftovers.md relies on.
   for (const attempt of [1, 2, 3]) {
     const merge = await unlessHalted(() => ask(
-      prompt('merge-queue.md', '', { ...inputs, resolutionReviewed, resolutionFindings, pendingRulings, lastReason }),
+      prompt('merge-queue.md', '', {
+        ...inputs, resolutionReviewed, resolutionFindings, pendingRulings, lastReason, mergeRetries,
+      }),
       { label: `merge #${rec.n}${attempt > 1 ? ` a${attempt}` : ''}`, phase: 'Merge', schema: MERGE })
       .then((r) => countPark(rec, r)))
     if (merge === HALTED) return park(haltNote())
@@ -290,6 +296,7 @@ async function mergeIssue(rec, item) {
     if (merge.mergeWorktree && !rec.worktrees.includes(merge.mergeWorktree)) rec.worktrees.push(merge.mergeWorktree)
     rec.rulings.push(...(merge.rulings || []))
     rec.unrecorded.push(...(merge.findings || []))
+    mergeRetries = Math.max(mergeRetries, merge.mergeRetries || 0)
     if (merge.state !== 'needs-review') return merge
     // The resolution review needs both to judge the change; without them it would review nothing.
     if (!merge.mergeWorktree || !merge.reason) {
@@ -424,6 +431,8 @@ async function runIssue(item) {
     halt(fix.batchHalt)
     // A fix skipped after the build pushed leaves the build's worktree behind.
     if (fix.state === 'skipped') rec.leftInPlace = [...rec.worktrees]
+    // A fix that found the PR merged still needs the queue's pull and cleanup, as a build that reconciled does.
+    if (fix.state === 'merged') return mergeAndEnd(rec, item)
     if (fix.state !== 'ready') return end(rec, fix.state, writerNote(fix))
     last = fix
     head = fix.worktree

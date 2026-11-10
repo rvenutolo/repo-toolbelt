@@ -48,8 +48,8 @@ exports.check = (r, t, test) => {
   test('merge inputs', () => {
     const inputs = L.inputsOf(t.calls.find((call) => call.label === 'merge #1').prompt)
     L.assert.deepStrictEqual(Object.keys(inputs).sort(),
-      ['branch', 'date', 'haltAnswers', 'kind', 'lastReason', 'main', 'n', 'pendingRulings', 'plan', 'pr',
-        'resolutionFindings', 'resolutionReviewed', 'spec', 'stopAtMerge', 'worktrees'])
+      ['branch', 'date', 'haltAnswers', 'kind', 'lastReason', 'main', 'mergeRetries', 'n', 'pendingRulings', 'plan',
+        'pr', 'resolutionFindings', 'resolutionReviewed', 'spec', 'stopAtMerge', 'worktrees'])
   })
   test('worktrees recorded', () => L.assert.deepStrictEqual(L.recOf(r, 1).worktrees, ['/main/.claude/worktrees/wf_1-1']))
 }

@@ -311,11 +311,12 @@ function check_names_of_stdin() {
   assert_line --regexp '^WARN config: line 2 "shakedown-parallel: maybe" ignored; default used'
 }
 
-@test 'warns notification-hook when no settings file has one, showing a notify-send example' {
+@test 'warns notification-hook in one short line naming notify-send, with no settings JSON in it' {
   rm --force -- "${CLAUDE_CONFIG_DIR}/settings.json"
   run "${PREFLIGHT}"
   assert_success
   assert_line --regexp '^WARN notification-hook: none set; .*notify-send'
+  refute_line --regexp '^WARN notification-hook: .*[{}]'
 }
 
 @test 'passes notification-hook from the repo settings.local.json, ignoring a settings file that is not JSON' {

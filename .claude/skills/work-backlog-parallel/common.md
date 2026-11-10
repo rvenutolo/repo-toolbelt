@@ -10,8 +10,8 @@ never your worktree's copy.
 ## Exceptions to `/work-backlog`
 
 Where your role departs from `/work-backlog`, and why; each rule is stated in full in the section it names, and
-every one exists because a workflow builds the issues (`/work-backlog-parallel` `SKILL.md` "Named exceptions" lists
-the controller's). Read this list to know why a rule differs, not as the rule.
+every one exists because a workflow builds the issues (`/work-backlog-parallel` `SKILL.md` "Named exceptions to
+`/work-backlog`" lists the controller's). Read this list to know why a rule differs, not as the rule.
 
 - **A refused pull of local `main` ends the run** (`merge-queue.md` section 6): `merging.md` step 3 carries on from
   `origin/main`, but here every later merge would hit the same refusal.
@@ -26,7 +26,9 @@ the controller's). Read this list to know why a rule differs, not as the rule.
   `.claude/CLAUDE.md` changes are `Ruling:` lines the controller applies at the end, and the review stage copies
   the plan. Replaces `/work-backlog` "Leaving to write" for workflow agents.
 - **Agents wait with `wait-for`** ("Long commands" below): a background notification reaches an agent only while it
-  keeps working. Replaces `/work-backlog` "Long commands" for workflow agents.
+  keeps working, and a background agent's foreground call can be cut off near three minutes. Replaces
+  `/work-backlog` "Long commands" for workflow agents, and the foreground-command sentence of the "Subagents" bullet,
+  which is for the subagents a controller dispatches.
 - **No early push or early PR for a build agent** (`agents.md` "Build" step 4): a resumed run takes any open PR as a
   finished build. Replaces the early push and early PR of `/work-backlog` "PRs" for build agents.
 - **The plan's workspace is deleted after the PR exists** (`agents.md` "Build" step 4), not at the plan's "Finish":
@@ -46,7 +48,8 @@ the controller's). Read this list to know why a rule differs, not as the rule.
 Read only what your role needs; the controller already settled everything else.
 
 Every role reads `/work-backlog` `SKILL.md` "Terms", its "Never" section, and these bullets of its "Doing the work":
-"Findings about the change itself", "Subagents" and "Copied rules". Every role also reads the first two entries of
+"Findings about the change itself", "Subagents" (except its sentence on running commands in the foreground: this
+file's "Long commands" replaces it) and "Copied rules". Every role also reads the first two entries of
 `sub-skill-overrides.md` (the prompt templates, and the skill that is never invoked, which executing-plans' "Finish"
 would otherwise call). Then:
 
@@ -114,13 +117,16 @@ working, and nothing that arrives after your final message changes it.
 - **The superpowers plugin directory** is what `<main>/.claude/skills/work-backlog/permission-diff --superpowers-dir`
   prints: `code-reviewer.md` is `<it>/skills/requesting-code-review/code-reviewer.md`, and the plan scripts are under
   `<it>/skills/<skill>/scripts/`. The config directory is not `~/.claude`, so a guessed path misses.
-- **Long commands** (`git push`, whose pre-push hook runs the full gate, `./run-tests`,
-  `gh pr checks --watch`, and superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash
+- **Long commands** (`git commit`, whose hooks run through the devShell and take minutes the first time in a fresh
+  worktree, `git push`, whose pre-push hook runs the full gate, `./run-tests`, every other `./.ci/in-devshell`
+  command, `gh pr checks --watch`, and superpowers:executing-plans' `task-done` when it runs them) can outlast the Bash
   tool's limits. Each one writes its exit status to a file in the worktree it runs in, by absolute path:
   `<wt>/.claude/tmp/<n>-<role>-<step>-<k>.status`, where `<wt>` is that worktree (your `pwd`; for the merge agent,
-  its rebase worktree), `<role>` is `build`, `fix` or `merge`, `<step>` names the command (`push`, `tests`, `ci`),
-  and `<k>` is the lowest number with no such file in `ls <wt>/.claude/tmp/`. A worktree outlives one agent (a
-  resumed build, three merge calls), so a name an earlier agent used would return its old status at once.
+  its rebase worktree), `<role>` is `build`, `fix` or `merge`, `<step>` names the command (`commit`, `push`, `tests`,
+  `ci`, or a short word for another devShell command), and `<k>` is the lowest number for which `ls <wt>/.claude/tmp/`
+  shows neither `<name>.status` nor `<name>.status.start`. A worktree outlives one agent (a resumed build, three merge
+  calls), so a name an earlier agent used would return its old status at once, and a start file left by an agent
+  that died mid-wait would make a fresh command look hung.
   `.claude/tmp/` is ignored by git.
   1. `mkdir --parents <wt>/.claude/tmp`, then run the command with `run_in_background`, as
      `cd <wt> && timeout 30m <command>; echo $? > <status path>` (devshell commands as `cd <wt> && timeout 30m
@@ -137,18 +143,18 @@ working, and nothing that arrives after your final message changes it.
      The time since the start decides it, never a count of calls, because the tool may cut a call short (a
      background agent's foreground call can be capped near three minutes, which the 170 seconds fit). A hang is a
      park, or a batch-level failure when its cause is one (the "Batch-level failures" rule above), with the command
-     and its last output in the note.
+     and its last output in the note. Exit 1 or 2 means the path or its directory is wrong (a skipped `mkdir`, a
+     mistyped name, a start file that holds no time): check both, then retry the wait once; a second 1 or 2 parks,
+     with the command and the wait's output in the note.
   3. Read the output and the exit status.
 
-  Use that helper, by that path, for every wait: the allow rule that pre-approves waits names it, and a
-  `timeout … bash -c` loop or a write under `/tmp` would stop at a permission prompt nobody answers. Neither the
+  Use that helper, by that path, for every wait: it is the one wait procedure every role uses, and a
+  `timeout … bash -c` loop cannot judge a hang by elapsed time. Neither the
   Monitor tool nor a background notification waits for you: both reach you only while you keep working. Your final
   message is your result and nothing that arrives after it can change it; a background shell still running when you
   finish is stopped a few minutes later, its exit unseen. Never end your turn while a command runs. "Wait a minute"
   is `wait-for` on a status path nothing writes, with `60`.
 
-  `git commit` is a long command of another kind: run it as `/work-backlog` "Long commands" says (in the
-  foreground, with the Bash tool `timeout: 600000`); it needs no status file.
 - **A git ref-lock error** (`cannot lock ref`, `index.lock` exists) comes from another agent's command on the shared
   git directory: wait a minute and retry once.
 - **Your worktree is the worktree.** superpowers:using-git-worktrees, loaded by executing-plans, finds this one

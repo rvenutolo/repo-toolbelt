@@ -31,7 +31,8 @@ Out-of-scope findings waiting for the user's decision, one entry each:
 
 The resume record, written as soon as the session has anything to resume: at step 6 once the chunk is approved, or
 earlier when a "fix it now" in step 4 makes a worktree. Step 3 reads a copy of any date as the point to resume from
-and reconciles it against git and GitHub (`leftovers.md`), and step 9 deletes it. Code is recovered from git and
+and reconciles it against git and GitHub (`leftovers.md`), and step 9 deletes or trims it ("Trimming at the
+end"). Code is recovered from git and
 GitHub; approvals, halt answers and spec paths survive only in this file and under `docs/superpowers/`. Its lines:
 
 - `session-date: YYYY-MM-DD`: the date of the `session-log.md` line this session's step 2 appended; a file carried
@@ -77,6 +78,16 @@ session-date: 2026-02-03
 `/work-backlog-parallel` adds its own lines (`cap:`, the `workflow-*` lines, its `started:` at launch and, after
 its Ending, `park-answer <N>: <text>` for a parked issue the user already answered; its `SKILL.md` "State"); a file
 holding them is sorted by `leftovers.md` "A parallel run's files".
+
+### Trimming at the end
+
+A session that ends with issues still to resume (parked ones, a `#<N> pr open, not merged` line, a `#<N> left to
+user` line) keeps `current-session.md` instead of deleting it, trimmed to what the next session of either skill needs
+to resume them through `leftovers.md`: the `session-date:` and `flow:` lines and, for those issues only, their
+`issue` lines (`piece` and `kind` included), halt answers, spec paths, plan paths, allowed commands and park notes,
+plus every `#<N> pr open, not merged` and `#<N> left to user` line. Every other line goes, so a stale `at:`, count or
+`started:` line is never read as this session's. `/work-backlog-parallel`'s "Ending" step 4 adds what its own lines
+need.
 
 ## `config`
 

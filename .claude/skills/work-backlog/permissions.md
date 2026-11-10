@@ -5,23 +5,33 @@ user comes back (the global "Long Multi-Step Tasks" rule). Saying "allowed" in c
 prompting; only an allow rule or a session run with permissions bypassed does. So the permission request ("Terms" in
 `SKILL.md`) names the allow rules the run needs and the allowlists lack, and asks the user to add them to the main
 checkout's `.claude/settings.local.json` (a local file, ignored like the rest of "State" in `SKILL.md`) or to restart
-with permissions bypassed. A session already running with permissions bypassed omits the request; the
-`backlog-preflight` rerun in "When to ask" still runs. A session whose system prompt carries the paragraph beginning
+with permissions bypassed. A session already running with permissions bypassed omits the request and step 1's
+rule question; the `backlog-preflight` rerun in "When to ask" still runs. A session whose system prompt carries the
+paragraph beginning
 "While bypass permissions mode is active" runs with permissions bypassed; one without it treats itself as not
 bypassed and makes the request, which costs one answer, where the wrong guess costs a stalled run. `defaultMode` in
 the settings is only a hint, since a session can be started in another mode.
 
+No allow rule reaches `.claude/` in the main checkout: it is a protected path, whose writes prompt in every mode but
+bypass however the allowlists read, since Claude Code checks protected paths before allow rules. The state files,
+the issue listing, rule copies and `.claude/CLAUDE.md` corrections all live there, as does
+`.claude/settings.local.json`, so `write the rules` itself costs one prompt outside bypass mode. `SKILL.md` step 0
+says how a session not bypassed gets past them: the prompt's own "for this session" answer for the project's
+`.claude` folder. Claude's worktrees under `.claude/worktrees/` are exempt, so the rules below for them hold.
+`/work-backlog-parallel` requires bypass (its "Named exceptions to `/work-backlog`").
+
 ## When to ask
 
-- In step 1 of "The session", before the preflight, when a "Run while the user is there" rule is missing
-  (`write the rules` / `continue`), so the first run's listings do not each prompt on their own.
+- In step 1 of "The session", before the preflight, when the session is not bypassed and a "Run while the user is
+  there" rule is missing (`write the rules` / `continue`), so the first run's listings do not each prompt on their
+  own.
 - With the chunk proposal (bugs) or in the question round (features, `feature-flow.md` step 5). A "fix it now" from
   `findings-walkthrough.md` asks first if this session has not asked yet.
-- Again right before the unattended part starts (the chunk OK for bugs, the answered question round for features, the
-  launch for `/work-backlog-parallel`): re-read the allowlists, since the user may have changed them in between, and
-  run `backlog-preflight` again; any `FAIL` stops the start. A sitting is long: a key can be unloaded meanwhile, and a
-  commit the user made on local `main` would refuse the pull that follows every merge, so a `main-current` failure
-  asks them to move it off first.
+- Again right before the unattended part starts (the chunk OK for bugs, the answered question round for features):
+  re-read the allowlists, since the user may have changed them in between, and run `backlog-preflight` again; any `FAIL`
+  stops the start. `/work-backlog-parallel`'s launch reruns only the preflight, since it checks bypass instead. A
+  sitting is long: a key can be unloaded meanwhile, and a commit the user made on local `main` would refuse the pull
+  that follows every merge, so a `main-current` failure asks them to move it off first.
 
 The request tells the user how to add the rules and names the three replies the proposal's `Reply` line offers ("The
 proposal" in `choosing.md`): `rules added` means the user added them with `/permissions` or by editing
@@ -29,7 +39,8 @@ proposal" in `choosing.md`): `rules added` means the user added them with `/perm
 append every missing rule string to the main checkout's `.claude/settings.local.json` under `permissions.allow`
 (creating the file if absent, keys sorted alphabetically at every level, as the user's settings rule asks), re-run
 `permission-diff` and go on, since Claude Code re-reads the settings files while a session runs, so the rules apply at
-once and the user types nothing; `skip the permissions` is a refusal, and an answer: go on, and say the run will stop
+once and the user answers only the write's own protected-path prompt; `skip the
+permissions` is a refusal, and an answer: go on, and say the run will stop
 at its first prompt until the user returns. A deferral ("do whatever you think") answers no permission question: the
 request still needs its own answer, and a follow-up message carrying only the request is allowed and is not a second
 question round. Never drop a command to avoid its rule.
@@ -70,11 +81,15 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
 
 **The unattended part.**
 
-- `Bash(cp *)`, `Bash(mkdir --parents *)` (all): the instruction-file copy on every worktree entry ("Worktrees" in
-  `SKILL.md`).
+- `Bash(cp <main>/.claude/CLAUDE.md *)`, `Bash(cp --recursive <main>/.claude/rules *)`,
+  `Bash(cp <main>/docs/superpowers/specs/*)` and `Bash(mkdir --parents *)` (all; the spec copy features only), with
+  `<main>` written out: the instruction-file copy on every worktree entry ("Worktrees" in `SKILL.md`), run in exactly
+  these forms, so no rule allows a `cp` that overwrites anything else.
 - `Bash(./.ci/in-devshell *)` (all): the gate, lint checks, a bug's reproduction and the baseline regeneration's
   `go run` in `merging.md`.
-- `Bash(./run-tests *)` (all): the baseline tests and the tests of the baseline regeneration in `merging.md`;
+- `Bash(./run-tests)` and `Bash(./run-tests *)` (all): the baseline tests, run bare, and the tests of the baseline
+  regeneration in `merging.md`; a rule ending in a space and `*` needs an argument after the space, so the bare
+  form has its own.
   `run-tests` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
 - `Bash(./.ci/test-image *)` (all): the one step that needs a container ("Long commands" in `SKILL.md`);
   `.ci/test-image` enters the devShell itself, so it runs without the `./.ci/in-devshell` prefix.
@@ -103,13 +118,11 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   ("Budgets" in `SKILL.md`), and the parallel run's `deadline`.
 - `Bash(jq *)` (all): reading an issue body from the index ("The index" in `choosing.md`) and a PR body before an
   edit.
-- `Bash(rm <main>/.claude/backlog/current-session.md)` and `Bash(rm <main>/.claude/backlog/parallel/*)` (all), with
-  `<main>` written out: step 9's delete of `current-session.md`, and the deletes of the parallel run's files
-  (`leftovers.md` "A parallel run's files", `/work-backlog-parallel` "Ending"), which run after the work is done and
-  would otherwise prompt with nobody there.
-- `Bash(echo *)` and `Bash(ls *)` (all): a background command's exit status written to a file and the check for an
-  existing status file (`/work-backlog-parallel` `common.md` "Long commands"), and the listing of a directory before
-  a delete.
+- `Bash(rm <main>/.claude/backlog/current-session.md)` (all) and `Bash(rm <main>/.claude/backlog/parallel/*)`
+  (leftovers), with `<main>` written out: step 9's delete of `current-session.md`, which runs after the work is done
+  and would otherwise prompt with nobody there, and the deletes of a parallel run's files (`leftovers.md` "A parallel
+  run's files"). Both targets lie under `.claude/`, so outside bypass mode they still prompt unless the session's
+  `.claude` answer was given (`SKILL.md` step 0).
 - The plan sub-skills' helper scripts (features), each run by its absolute path from the installed superpowers
   plugin, without a `bash` prefix (`sub-skill-overrides.md`), so one rule per script matches. `<plugin dir>` is what
   `permission-diff --superpowers-dir` prints, written out:
@@ -122,53 +135,14 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
 - `Bash(rm --recursive --force <main>/.claude/worktrees/*/.superpowers/sdd/*)` (features), with `<main>` written out:
   the plan workspace delete after the ledger sweep. `sdd-workspace` prints the workspace as an absolute path, and the
   delete names that path in long options (`sub-skill-overrides.md`), so a relative `rm -rf` rule never matches it.
-- `Edit` rules (all) for every file the run writes, omitted when `permission-diff` prints `defaultMode: acceptEdits`
-  or `bypassPermissions`, or the session runs with permissions bypassed: a wrong omission costs
-  one prompt at the first write, the `current-session.md` write right after the OK, while the user is still there.
-  `Edit(/<main>/.claude/worktrees/**)` for the code, and
-  `Edit(/<main>/.claude/backlog/**)`, `Edit(/<main>/.claude/tmp/**)`, `Edit(/<main>/docs/superpowers/**)`,
-  `Edit(/<main>/.claude/rules/**)` and `Edit(/<main>/.claude/CLAUDE.md)` for the state files, the issue listing,
-  specs, plans, rule copies and `.claude/CLAUDE.md` corrections. `<main>` is the main checkout's absolute path, so
-  each rule starts with `//`, which Claude Code reads as an absolute path. An `Edit` rule covers the Write tool too.
+- `Edit` rules (all) for the files the run writes outside the protected `.claude/` folder, omitted when
+  `permission-diff` prints `defaultMode: acceptEdits` or `bypassPermissions`, or the session runs with permissions
+  bypassed: `Edit(/<main>/.claude/worktrees/**)` for the code (Claude's worktrees are exempt from the protection) and
+  `Edit(/<main>/docs/superpowers/**)` for specs and plans. No rule is asked for the state files, the issue listing,
+  rule copies or `.claude/CLAUDE.md`: no allow rule reaches them (the opening of this file). `<main>` is the main
+  checkout's absolute path, so each rule starts with `//`, which Claude Code reads as an absolute path. An `Edit`
+  rule covers the Write tool too.
 - Any tool the spec's work, or a bug's fix, needs beyond the devShell's.
-
-## Workflow agents add
-
-`/work-backlog-parallel`'s agents run unattended in their own worktrees, and one that meets a prompt waits for an
-answer nobody gives, holding its slot and stalling its issue and every issue that depends on it. A missed rule costs a
-chain of issues, not one pause, which is why that skill settles the permission mode before planning and takes no
-`skip the permissions`. Its request adds the commands the agents run (its `planning.md` "The permission request"):
-
-- `Bash(cd *)`: the merge agent runs `cd <worktree> && ./.ci/in-devshell …`.
-- `Bash(git switch --detach *)`, `Bash(git branch --move *)` and `Bash(git branch --list *)`: a build agent's branch
-  rename and a fix agent's detached checkout (`agents.md`), and the merge queue's branch listing.
-- The merge agent runs its git in the rebase worktree as `git -C <rebase worktree> …`, which no rule above matches.
-  Each form is its own rule, for the reason the `git -C` bullet above gives, and only the forms `merge-queue.md` and
-  `agents.md` "Review" use are named:
-  - `Bash(git -C * -c rerere.enabled=false rebase *)`
-  - `Bash(git -C * rebase --abort)`
-  - `Bash(git -C * switch *)`
-  - `Bash(git -C * merge --ff-only *)`
-  - `Bash(git -C * checkout --ours *)`
-  - `Bash(git -C * add *)`
-  - `Bash(git -C * commit *)`
-  - `Bash(git -C * log *)`
-  - `Bash(git -C * status *)`
-  - `Bash(git -C * merge-base *)`
-  - `Bash(git -C * diff *)`
-  - `Bash(git -C * range-diff *)`
-  - `Bash(git -C * blame *)`
-  - `Bash(git -C * rev-parse *)`
-  - `Bash(git -C * push --force-with-lease=*)`
-- `Bash(<main>/.claude/skills/work-backlog-parallel/wait-for *)`: the waits in its `common.md` "Long commands". The
-  status files those waits poll live under `.claude/tmp/` in the worktree the command runs in, named by absolute
-  path; every agent's worktree, the merge agent's rebase worktree included, lies under `.claude/worktrees/`, which
-  that `Edit` rule covers.
-- `Edit(/<main>/.claude/backlog/parallel/**)` is covered by the `.claude/backlog/` rule above; the review stage
-  writes there.
-- `Bash(git worktree unlock *)`, `Bash(kill -0 *)`, `Bash(date --utc *)` and `Bash(sysctl net.ipv4.ip_forward)` (the
-  merge queue's cleanup, a build agent's deadline check, the Docker check) from "Rule strings", whatever flows the
-  session runs.
 
 ## Signing
 

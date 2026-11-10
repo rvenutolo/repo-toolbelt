@@ -31,11 +31,6 @@ readonly PERMISSION_DIFF="${SCRIPT_DIR}/permission-diff"
 readonly OVERRIDES="${SCRIPT_DIR}/sub-skill-overrides.md"
 readonly CONTAINER_STEP='./.ci/test-image'
 readonly LIFETIME_NOTE='lifetime cannot be read; confirm the key was added with no lifetime that ends during the run'
-# One line, since the detail is printed on the check's own line.
-HOOK_EXAMPLE='{"hooks":{"Notification":[{"hooks":[{"type":"command",'
-# shellcheck disable=SC2016 # the $(...) is part of the example hook command, not something to expand here
-HOOK_EXAMPLE+='"command":"notify-send Claude \"$(jq --raw-output .message)\""}]}]}}'
-readonly HOOK_EXAMPLE
 
 FAILS=0
 WARNS=0
@@ -258,7 +253,7 @@ function check_notification_hook() {
       return
     fi
   done
-  report WARN notification-hook "none set; a hook such as ${HOOK_EXAMPLE} in settings.json shows a halt on the desktop"
+  report WARN notification-hook "none set; a Notification hook in settings.json that runs notify-send shows a halt on the desktop"
 }
 
 # @description What .claude/backlog/ holds, for the reader; never a failure.
