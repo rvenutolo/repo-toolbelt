@@ -1,9 +1,11 @@
 #!/usr/bin/env bats
 
-# run-all-checks runs in a fixture repo, so every step it calls by path is a
-# stub there, and a stub `nix` comes first on PATH. Each stub appends
-# its name and arguments to CALLS, and exits with the status in its
-# <NAME>_STATUS variable (0 when unset).
+# A copy of run-all-checks runs in a fixture repo, so every step it calls by
+# path is a stub there, and a stub `nix` comes first on PATH. The script takes
+# its repo root from its own path, so the copy sits at the same depth in the
+# fixture as in the real repo. Each stub appends its name and arguments to
+# CALLS, and exits with the status in its <NAME>_STATUS variable (0 when
+# unset).
 
 # The runner's arguments in CI, up to the lints it is given.
 readonly TOOLBELT_RUN='toolbelt run --hook ci --base origin/main --head HEAD --default-branch main'
@@ -59,7 +61,9 @@ STUB
   chmod +x .ci/build-dist
   # The stubs must shadow the real tools for this test only.
   PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
-  git add .ci run-tests
+  cp -- "${REPO_DIR}/run-all-checks" run-all-checks
+  cp -- "${REPO_DIR}/.ci/dogfood-formatters.bash" .ci/dogfood-formatters.bash
+  git add .ci run-all-checks run-tests
   git -c user.name=t -c user.email=t@example.invalid commit --quiet --message 'test: fixture'
 }
 
@@ -79,7 +83,7 @@ STUB
 }
 
 @test 'runs every check in order, the dogfooded lints last through the built runner' {
-  run "${REPO_DIR}/run-all-checks"
+  run "${FIXTURE_REPO}/run-all-checks"
   assert_success
   run cat "${CALLS}"
   assert_line --index 0 "nix flake check --no-eval-cache ${FIXTURE_REPO}"
@@ -105,7 +109,7 @@ check-coverage-drop check-patch-coverage"
 printf 'nix %s\n' "$*" >> "${CALLS}"
 [[ "$1" != build ]]
 STUB
-  run "${REPO_DIR}/run-all-checks"
+  run "${FIXTURE_REPO}/run-all-checks"
   assert_failure 1
   assert_output --partial 'one or more checks failed'
   run cat "${CALLS}"
@@ -115,7 +119,7 @@ STUB
 }
 
 @test 'leaves no scratch directory behind' {
-  run "${REPO_DIR}/run-all-checks"
+  run "${FIXTURE_REPO}/run-all-checks"
   assert_success
   local built
   built="$(sed --quiet 's|^build-dist \(.*\)/dist$|\1|p' "${CALLS}")"
@@ -127,7 +131,7 @@ STUB
   local step
   for step in NIX_STATUS LINT_STATUS EXAMPLES_STATUS RUNNER_STATUS BASELINE_STATUS PINS_STATUS; do
     : > "${CALLS}"
-    run env "${step}=1" "${REPO_DIR}/run-all-checks"
+    run env "${step}=1" "${FIXTURE_REPO}/run-all-checks"
     assert_failure 1
     assert_output --partial 'one or more checks failed'
     run grep --count '' "${CALLS}"
@@ -136,7 +140,7 @@ STUB
 }
 
 @test 'failing tests fail the gate and run the dogfooded lints without the coverage lints' {
-  TESTS_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  TESTS_STATUS=1 run "${FIXTURE_REPO}/run-all-checks"
   assert_failure 1
   assert_output --partial 'skipping the coverage lints: the tests failed'
   assert_output --partial 'one or more checks failed'
@@ -147,7 +151,7 @@ STUB
 }
 
 @test 'a stale baseline fails the gate' {
-  BASELINE_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  BASELINE_STATUS=1 run "${FIXTURE_REPO}/run-all-checks"
   assert_failure 1
   assert_output --partial 'one or more checks failed'
   run grep '^toolbelt update-coverage-baseline' "${CALLS}"
@@ -155,14 +159,14 @@ STUB
 }
 
 @test 'the baseline check is skipped when the tests fail' {
-  TESTS_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  TESTS_STATUS=1 run "${FIXTURE_REPO}/run-all-checks"
   assert_failure 1
   run grep --count '^toolbelt update-coverage-baseline' "${CALLS}"
   assert_output 0
 }
 
 @test 'a layout that does not build fails the gate without running the runner' {
-  BUILD_STATUS=1 run "${REPO_DIR}/run-all-checks"
+  BUILD_STATUS=1 run "${FIXTURE_REPO}/run-all-checks"
   assert_failure 1
   assert_output --partial 'one or more checks failed'
   run grep --count '^toolbelt \|^check-toolbelt-pins ' "${CALLS}"
@@ -171,7 +175,7 @@ STUB
 
 @test 'warns about untracked files and passes' {
   touch untracked.txt
-  run "${REPO_DIR}/run-all-checks"
+  run "${FIXTURE_REPO}/run-all-checks"
   assert_success
   assert_output --partial 'untracked: untracked.txt'
 }

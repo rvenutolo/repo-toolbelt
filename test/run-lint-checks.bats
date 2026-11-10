@@ -4,7 +4,8 @@ bats_require_minimum_version 1.5.0
 
 # Stubs stand in for every linter, .ci/vuln and .ci/check-skill-xrefs; each
 # prints a marker and the arguments it received, so no real linter runs.
-# run-lint-checks lists files through git, so the fixture commits one file of each kind it selects.
+# run-lint-checks lists files through git, so the fixture commits one file of
+# each kind it selects. A copy of the script runs in the fixture.
 
 # @description Write an executable stub that prints "<name>-ran <args>" and
 #              exits with $<NAME>_EXIT, defaulting to 0.
@@ -79,12 +80,17 @@ function setup() {
   printf '# readme\n' > README.md
   printf 'plain text\n' > notes.txt
   commit_all
+  # The gate takes its repo root from its own path, so a copy at the same depth
+  # makes the fixture the repo it lints. The copy stays untracked and excluded,
+  # so it is no file the gate lists.
+  cp -- "${REPO_DIR}/.ci/run-lint-checks" .ci/run-lint-checks
+  printf '%s\n' '.ci/run-lint-checks' >> .git/info/exclude
   # Only the stub dir goes ahead of the devShell PATH.
   PATH="${STUB_BIN}:${PATH}"
 }
 
 @test 'runs every linter and passes' {
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   local -a expected=(
     shellcheck just statix deadnix actionlint zizmor yamllint markdownlint-cli2
@@ -101,7 +107,7 @@ function setup() {
 }
 
 @test 'shellcheck gets the shell files and skips .coverage' {
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   assert_line 'shellcheck-ran --external-sources .ci/check-skill-xrefs .ci/vuln .ci/x test/a.bats tool'
   local line
@@ -114,13 +120,13 @@ function setup() {
   mkdir --parents formatters/shell
   write_stub formatters/shell/shell fmt-shell FMT_SHELL_EXIT
   commit_all
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   assert_line 'shellcheck-ran --external-sources .ci/check-skill-xrefs .ci/vuln .ci/x formatters/shell/shell test/a.bats tool'
 }
 
 @test 'each linter gets only its kind' {
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   assert_line 'just-ran --fmt --check --unstable --justfile .justfile'
   assert_line 'statix-ran check a.nix'
@@ -133,14 +139,14 @@ function setup() {
 @test 'golangci-lint runs as the lint gate only, never as a formatter' {
   # check-go-formatted holds Go formatting, so no second gate with
   # golangci-lint's bundled formatter versions can disagree with it.
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   assert_line 'golangci-lint-ran run ./...'
   refute_output --partial 'golangci-lint-ran fmt'
 }
 
 @test 'typos gets every tracked text file' {
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_success
   local -a text_files=(
     .ci/check-skill-xrefs .ci/vuln .ci/x .coverage/y .github/workflows/w.yml README.md a.nix notes.txt test/a.bats
@@ -157,7 +163,7 @@ function setup() {
 @test 'an empty file list fails that step' {
   git rm --quiet a.nix
   git -c user.name=t -c user.email=t@t commit --quiet --message 'drop nix'
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'no nix files found; this is a failure, not a clean pass'
   refute_output --partial 'statix-ran'
@@ -166,20 +172,20 @@ function setup() {
 }
 
 @test 'a failing linter fails the run and the rest still run' {
-  SHELLCHECK_EXIT=1 run "${REPO_DIR}/.ci/run-lint-checks"
+  SHELLCHECK_EXIT=1 run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'typos-ran'
   assert_output --partial 'one or more linters failed'
 }
 
 @test 'a failing vuln scan fails the run' {
-  VULN_EXIT=1 run "${REPO_DIR}/.ci/run-lint-checks"
+  VULN_EXIT=1 run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'one or more linters failed'
 }
 
 @test 'a dangling skill section reference fails the run and typos still runs' {
-  CHECK_SKILL_XREFS_EXIT=1 run "${REPO_DIR}/.ci/run-lint-checks"
+  CHECK_SKILL_XREFS_EXIT=1 run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'typos-ran'
   assert_output --partial 'one or more linters failed'
@@ -187,21 +193,21 @@ function setup() {
 
 @test 'no shell files at all fails that step and the rest still run' {
   untrack_and_commit .ci/check-skill-xrefs .ci/vuln .ci/x tool test/a.bats
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_empty_list_failure 'shell files' typos
   refute_output --partial 'shellcheck-ran'
 }
 
 @test 'a missing justfile fails that step and the rest still run' {
   untrack_and_commit .justfile
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_empty_list_failure 'justfile' typos
   refute_output --partial 'just-ran'
 }
 
 @test 'no workflow files fails the workflow and .github steps' {
   untrack_and_commit .github/workflows/w.yml
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_empty_list_failure 'workflow files' typos
   assert_output --partial 'no files under .github/ found; this is a failure, not a clean pass'
   refute_output --partial 'actionlint-ran'
@@ -210,14 +216,14 @@ function setup() {
 
 @test 'no yaml files fails that step and the rest still run' {
   untrack_and_commit .github/workflows/w.yml x.yaml
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_empty_list_failure 'yaml files' typos
   refute_output --partial 'yamllint-ran'
 }
 
 @test 'no markdown files fails that step and the rest still run' {
   untrack_and_commit README.md
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_empty_list_failure 'markdown files' typos
   refute_output --partial 'markdownlint-cli2-ran'
 }
@@ -228,7 +234,7 @@ function setup() {
   : > README.md
   : > notes.txt
   git -c user.name=t -c user.email=t@t commit --quiet --all --message 'empty'
-  run "${REPO_DIR}/.ci/run-lint-checks"
+  run "${FIXTURE_REPO}/.ci/run-lint-checks"
   assert_failure 1
   assert_output --partial 'no text files found; this is a failure, not a clean pass'
   assert_output --partial 'vuln-ran'

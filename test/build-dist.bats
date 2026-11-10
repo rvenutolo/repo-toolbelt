@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 
-# build-dist builds the repo containing its working directory, so most tests
-# run it from the real repo and the rest from a fixture repo; a `go` stub on PATH stands in for the
-# compiler: it creates the file named by -o and records its arguments. A
-# fixture repo's formatters.toml is empty unless the test is about formatters.
+# build-dist builds the repo holding the script, so most tests run it from the
+# real repo and the rest run a copy inside a fixture repo; a `go` stub on PATH
+# stands in for the compiler: it creates the file named by -o and records its
+# arguments. A fixture repo's formatters.toml is empty unless the test is about
+# formatters.
 
 function setup() {
   load test_helper/common
@@ -21,6 +22,15 @@ STUB
   chmod +x "${BATS_TEST_TMPDIR}/bin/go"
   PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
   cd "${REPO_DIR}" || return 1
+}
+
+# @description Put a copy of the script at the same depth in the fixture repo:
+#              the script takes its repo root from its own path, so the copy
+#              makes the fixture the repo it builds.
+# @noargs
+function install_build_dist() {
+  mkdir --parents .ci
+  cp -- "${REPO_DIR}/.ci/build-dist" .ci/build-dist
 }
 
 @test 'builds the runner, every Go lint, every bash lint and lib' {
@@ -89,11 +99,12 @@ STUB
   # Run from a subdirectory, so a path resolved against the repo root
   # instead of the caller's directory lands somewhere else.
   make_repo
+  install_build_dist
   mkdir --parents lib sub
   printf '[[lint]]\nname = "check-x"\nlanguage = "go"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
   touch formatters.toml
   cd sub
-  run "${REPO_DIR}/.ci/build-dist" rel-out
+  run "${FIXTURE_REPO}/.ci/build-dist" rel-out
   assert_success
   assert [ -x "${FIXTURE_REPO}/sub/rel-out/bin/toolbelt" ]
   assert [ -d "${FIXTURE_REPO}/sub/rel-out/lib" ]
@@ -102,16 +113,18 @@ STUB
 
 @test 'a lint in an unsupported language fails with its name' {
   make_repo
+  install_build_dist
   mkdir lib
   printf '[[lint]]\nname = "check-x"\nlanguage = "rust"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
   touch formatters.toml
-  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  run "${FIXTURE_REPO}/.ci/build-dist" "${OUT}"
   assert_failure 1
   assert_output --partial 'lint check-x has unsupported language rust'
 }
 
 @test 'a failing build fails the script with the compiler status and stops' {
   make_repo
+  install_build_dist
   mkdir lib
   printf '[[lint]]\nname = "check-x"\nlanguage = "go"\nspeed = "quick"\ndescription = "d"\n' > lints.toml
   touch formatters.toml
@@ -120,7 +133,7 @@ STUB
 printf 'go %s\n' "$*" >> "${CALLS}"
 exit 3
 STUB
-  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  run "${FIXTURE_REPO}/.ci/build-dist" "${OUT}"
   assert_failure 3
   assert_output --partial 'ERROR: line'
   run grep --count '^go ' "${CALLS}"
@@ -129,6 +142,7 @@ STUB
 
 @test 'builds a bash formatter and a Go formatter at formatters/<name>/<name>' {
   make_repo
+  install_build_dist
   mkdir --parents lib formatters/shell
   touch lints.toml
   printf '[[formatter]]\nname = "shell"\nlanguage = "bash"\n[[formatter]]\nname = "go"\nlanguage = "go"\n' \
@@ -136,7 +150,7 @@ STUB
   printf '#!/usr/bin/env bash\n' > formatters/shell/shell
   chmod +x formatters/shell/shell
   touch formatters/shell/helper.bash
-  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  run "${FIXTURE_REPO}/.ci/build-dist" "${OUT}"
   assert_success
   assert [ -x "${OUT}/formatters/shell/shell" ]
   assert [ -f "${OUT}/formatters/shell/helper.bash" ]
@@ -147,10 +161,11 @@ STUB
 
 @test 'a formatter in an unsupported language fails with its name' {
   make_repo
+  install_build_dist
   mkdir lib
   touch lints.toml
   printf '[[formatter]]\nname = "rust"\nlanguage = "rust"\n' > formatters.toml
-  run "${REPO_DIR}/.ci/build-dist" "${OUT}"
+  run "${FIXTURE_REPO}/.ci/build-dist" "${OUT}"
   assert_failure 1
   assert_output --partial 'formatter rust has unsupported language rust'
 }

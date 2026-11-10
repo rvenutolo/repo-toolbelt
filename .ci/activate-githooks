@@ -13,6 +13,9 @@
 #              Standalone on purpose: it runs from the shellHook, including
 #              under `nix develop --ignore-environment`, so it depends on
 #              nothing but bash and git.
+#
+#              Acts on the repository the caller is in, not the one holding
+#              this script.
 # @noargs
 # @stderr One line naming the change, on the runs that change something.
 # @exitcode 0 the tracked hooks are active, already or as of this run.

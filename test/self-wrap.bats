@@ -277,6 +277,7 @@ function assert_in_devshell() {
   local scratch="${BATS_TEST_TMPDIR}/other-repo"
   mkdir --parents -- "${scratch}/.claude/skills/x"
   # An inert dangling reference: the check rejects it if it grades this tree.
+  # shellcheck disable=SC2016 # the backticks are Markdown, not a substitution
   printf '# x\n\nSee the "Nowhere Section" section of `nowhere.md`.\n' > "${scratch}/.claude/skills/x/SKILL.md"
   git -C "${scratch}" init --quiet
   git -C "${scratch}" add -- '.claude/skills/x/SKILL.md'

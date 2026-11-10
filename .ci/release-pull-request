@@ -73,10 +73,10 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # host PATH behind the flake's tools: a tool the flake lacks would resolve from
 # the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
 # recursion.
+SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+SELF_REPO="${SELF_PATH%/*/*}"
 if [[ -z "${IN_DEVSHELL:-}" ]]; then
-  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-  SELF_DIR="${SELF_PATH%/*}"
-  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+  exec "${SELF_REPO}/.ci/in-devshell" "${SELF_PATH}" "$@"
 fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
@@ -257,7 +257,7 @@ function main() {
   done
 
   local top repo last base_branch base_sha head
-  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
+  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then # cwd-root: releases the repository the caller is in
     fail 'not inside a git repository'
   fi
   local -r changelog="${top}/CHANGELOG.md"
