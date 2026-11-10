@@ -22,5 +22,8 @@ Each default is the answer that never needs undoing.
   opened, unless the user opts in.
 - **A copied rule the planned code cannot satisfy.** Default: satisfy the rule ("Copied rules" in `SKILL.md`); ask
   only when satisfying it changes what gets built.
+- **A fix makes nearby code dead.** The change leaves code the issue does not mention with nothing left to do (a
+  pass-through, a fallback, a branch no input reaches). Default: leave it and record it as an out-of-scope finding, so
+  the PR stays the change the issue asked for and the user decides the removal in the walkthrough.
 - **A lint change that fails consumers.** A changed lint would fail a repo that uses this one. Default: name the
   consumers in the PR body and the summary, so they are fixed before the release reaches them through Renovate.

@@ -11,7 +11,8 @@
 # @arg $3 hang-seconds optional; how long after the start time a missing status means a hang
 # @exitcode 0 the file exists, is a regular file and is not empty
 # @exitcode 1 with a hang limit, `<file>.start` could not be written, as when the file's directory does not exist
-# @exitcode 2 wrong arguments, the path exists and is not a regular file, or `<file>.start` holds no whole number
+# @exitcode 2 wrong arguments, the path exists and is not a regular file, or `<file>.start` holds no whole number or
+#              was written at least twice the hang limit ago, so it belongs to a dead caller's command
 # @exitcode 3 the hang limit has passed since the start time and the file is still missing or empty
 # @exitcode 124 the file did not appear in time, the code `timeout` uses
 
@@ -56,13 +57,22 @@ function main() {
   local hung_at=''
   if [[ -n "${hang}" ]]; then
     local -r start_file="${file}.start"
+    local inherited=1
     if [[ ! -e "${start_file}" ]]; then
       printf '%s\n' "${EPOCHSECONDS}" > "${start_file}"
+      inherited=0
     fi
     local start
     start="$(< "${start_file}")"
     if [[ ! "${start}" =~ ^[0-9]+$ ]]; then
       usage
+    fi
+    # A wait at or past the hang limit exits 3 at once and its caller acts on
+    # that, so no live command is still waited on twice the limit after its
+    # start: a start file that old belongs to a dead caller's command.
+    if ((inherited && EPOCHSECONDS - 10#${start} >= 2 * 10#${hang})); then
+      printf '%s: stale start file %s; use a new status name\n' "${0##*/}" "${start_file}" >&2
+      exit 2
     fi
     hung_at="$((10#${start} + 10#${hang}))"
   fi

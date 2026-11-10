@@ -81,6 +81,46 @@ function run_scenario() {
   run_scenario last-reason-ci-park.js
 }
 
+@test 'every build parking spends the parked budget, skips the queued builds and halts nothing' {
+  run_scenario every-build-parks.js
+}
+
+@test 'a conflict resolution then a CI fix each get reviewed, and the rulings and reasons thread between merge calls' {
+  run_scenario conflict-then-ci-fix.js
+}
+
+@test 'a dead merge agent is retried once, then parks with its dependent while another issue merges' {
+  run_scenario dead-merge-retried.js
+}
+
+@test 'a merge agent that throws twice after a resolution parks with the diverges sentence' {
+  run_scenario merge-throws-after-resolution.js
+}
+
+@test 'a build that returns ready without a PR parks with its dependent and starts no review' {
+  run_scenario ready-without-pr-parks.js
+}
+
+@test 'a dead resolution review parks with the ahead-of sentence and the queue moves on' {
+  run_scenario dead-resolution-review.js
+}
+
+@test 'two review rounds that both find changes go to the merge with no third review' {
+  run_scenario review-two-rounds-cap.js
+}
+
+@test 'a two-issue shakedown ends both ready-to-merge, their merge agents one at a time with stopAtMerge' {
+  run_scenario shakedown-two-independent.js
+}
+
+@test 'the stop file skips a build and its dependent, and leaves a merge ready-to-merge' {
+  run_scenario stop-file.js
+}
+
+@test 'a resumed run returns finished calls from the cache and runs only the unfinished one live' {
+  run_scenario resume-replays-finished-calls.js
+}
+
 @test 'checkArgs rejects a dependency cycle' {
   run_scenario check-args.js cycle
 }

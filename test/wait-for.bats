@@ -136,6 +136,20 @@ function setup() {
   assert_failure 2
 }
 
+@test 'exits 2 when an existing start file is at least twice the hang limit old' {
+  printf '%s\n' "$(($(date +%s) - 200))" > "${STATUS}.start"
+  SECONDS=0
+  run "${WAIT_FOR}" "${STATUS}" 60 100
+  assert_failure 2
+  assert_output --partial 'stale start file'
+  assert [ "${SECONDS}" -lt 30 ]
+}
+
+@test 'a start file it writes itself is never stale' {
+  run "${WAIT_FOR}" "${STATUS}" 1 1
+  assert_failure 3
+}
+
 @test 'a status name with no start file of its own starts fresh beside an old start file of another name' {
   printf '%s\n' "$(($(date +%s) - 3600))" > "${BATS_TEST_TMPDIR}/other.status.start"
   run "${WAIT_FOR}" "${STATUS}" 1 100

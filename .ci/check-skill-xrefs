@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+
+# @description Check that the section names the repo's skills cite exist. Each
+#              skill under .claude/skills/ cites sections by quoted name. A
+#              quote with a file beside it cites that file:
+#              `"Name" in `file.md``, `file.md` "Name" and the same with a
+#              `/skill` before the file name; `/skill` "Name" cites that skill's
+#              SKILL.md, and README "Name" or `README.md` "Name" the repo's
+#              README.md. A quote joined to a cited one by a comma, "and" or
+#              "or" cites the same file. A bare `"Name"` cites the citing file,
+#              its skill's SKILL.md, or, for a file under
+#              work-backlog-parallel/, work-backlog's SKILL.md, which that
+#              skill inherits. skill-xrefs/citations.awk lists the exact forms.
+#              A cited name must match a Markdown heading, a bold label
+#              (`**Name**`, `**Name:**`, `**Name.**`) or a `Name:` line in a
+#              file it may cite; a bare file name is looked up in the citing
+#              skill's directory, then in every other skill's, then at the repo
+#              root. Only a bare name shaped like a section name is checked (it
+#              starts with a capital, has at most six words and no sentence
+#              punctuation), since the skills also quote prose, reply forms and
+#              sub-skill text; skill-xrefs/not-references.txt lists the quoted
+#              text of that shape that is not a reference. Fenced code is
+#              skipped, and a quote broken across lines is read whole. Run it
+#              inside the repo; the repo is the one containing the working
+#              directory, and only its tracked files are read. Re-runs itself
+#              inside the devShell when started outside it.
+# @noargs
+# @stdout One finding per line, as `<path>:<line>: <message>`, then a count
+#         line when there is any.
+# @stderr The reason for a setup failure.
+# @exitcode 0 every cited name exists.
+# @exitcode 1 one or more findings.
+# @exitcode 2 a usage error, or no skill file is tracked.
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "${BASH_COMMAND}" >&2' ERR
+
+# An interactive `nix develop` or direnv shell leaves IN_DEVSHELL unset and the
+# host PATH behind the flake's tools: a tool the flake lacks would resolve from
+# the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
+# recursion.
+if [[ -z "${IN_DEVSHELL:-}" ]]; then
+  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+  SELF_DIR="${SELF_PATH%/*}"
+  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+fi
+
+# `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
+shopt -s inherit_errexit
+
+readonly SKILLS_DIR='.claude/skills'
+SCRIPT_DIR="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="${SCRIPT_DIR%/*}"
+readonly SCRIPT_DIR
+
+# Quoted text shaped like a section name that the skills quote as prose, not
+# as a reference, one per line: superpowers sub-skill sections and wording,
+# headings of the user's global instructions, and text Claude Code, gh or a
+# reply prints.
+readonly NOT_REFERENCES_FILE='skill-xrefs/not-references.txt'
+
+# @description Print `<path>\t<label>` for every heading and bold label in the
+#              given Markdown files.
+# @arg $@ files the Markdown files
+function labels() {
+  awk -f "${SCRIPT_DIR}/skill-xrefs/labels.awk" "$@"
+}
+
+# @description Print `<path>\t<line>\t<name>\t<target>` for every quoted name
+#              the given Markdown files cite, with an empty target for a bare
+#              name. A target is `<file>` or `<skill>/<file>`.
+# @arg $@ files the Markdown files
+function citations() {
+  awk -f "${SCRIPT_DIR}/skill-xrefs/citations.awk" "$@"
+}
+
+# @description Whether a bare quoted name has the shape of a section name.
+# @arg $1 name the quoted text
+# @exitcode 0 it does.
+# @exitcode 1 it does not.
+function looks_like_section() {
+  local -r name="$1"
+  if [[ ! "${name}" =~ ^[A-Z] || "${name}" =~ [\;,.?!:\<\>\#\(\)\|] || "${name}" == *' ' ]]; then
+    return 1
+  fi
+  local -a words
+  IFS=' ' read -r -a words <<< "${name}"
+  ((${#words[@]} <= 6))
+}
+
+# @description Whether a bare cited name is a label of the citing file, of its
+#              skill's SKILL.md, or, for a work-backlog-parallel file, of
+#              work-backlog's SKILL.md. Reads the in_file map main fills.
+# @arg $1 path the citing file
+# @arg $2 name the cited name
+# @exitcode 0 one of those files has the label.
+# @exitcode 1 none has it.
+function bare_found() {
+  local -r path="$1"
+  local -r name="$2"
+  local -a candidates=("${path}" "${path%/*}/SKILL.md")
+  if [[ "${path}" == "${SKILLS_DIR}/work-backlog-parallel/"* ]]; then
+    candidates+=("${SKILLS_DIR}/work-backlog/SKILL.md")
+  fi
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "${in_file["${candidate}"$'\t'"${name}"]:-}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# @description Check every citation in the tracked skill files.
+# @noargs
+function main() {
+  local -a skill_files=()
+  git ls-files -- "${SKILLS_DIR}/*/*.md" > "${TMP_FILE}"
+  mapfile -t skill_files < "${TMP_FILE}"
+  if ((${#skill_files[@]} == 0)); then
+    printf '%s: no tracked Markdown file under %s/<skill>/\n' "${0##*/}" "${SKILLS_DIR}" >&2
+    exit 2
+  fi
+  local -a label_files=("${skill_files[@]}")
+  if [[ -n "$(git ls-files -- README.md)" ]]; then
+    label_files+=(README.md)
+  fi
+
+  local -A in_file=() exempt=()
+  local path label
+  labels "${label_files[@]}" > "${TMP_FILE}"
+  while IFS=$'\t' read -r path label; do
+    in_file["${path}"$'\t'"${label}"]=1
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+  local text
+  while IFS= read -r text; do
+    exempt["${text}"]=1
+  done < "${SCRIPT_DIR}/${NOT_REFERENCES_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+
+  local -a findings=()
+  local line name target dir skill candidate found
+  citations "${skill_files[@]}" > "${TMP_FILE}"
+  while IFS=$'\t' read -r path line name target; do
+    if [[ -z "${target}" ]]; then
+      if [[ -n "${exempt["${name}"]:-}" ]] || ! looks_like_section "${name}" || bare_found "${path}" "${name}"; then
+        continue
+      fi
+      findings+=("${path}:${line}: \"${name}\" is no heading or bold label in this file or the SKILL.md it reads")
+      continue
+    fi
+    found=0
+    if [[ "${target}" == */* ]]; then
+      skill="${target%%/*}"
+      candidate="${SKILLS_DIR}/${skill}/${target#*/}"
+      if [[ -n "${in_file["${candidate}"$'\t'"${name}"]:-}" ]]; then
+        found=1
+      fi
+    else
+      dir="${path%/*}"
+      for candidate in "${dir}/${target}" "${SKILLS_DIR}"/*/"${target}" "${target}"; do
+        if [[ -n "${in_file["${candidate}"$'\t'"${name}"]:-}" ]]; then
+          found=1
+          break
+        fi
+      done
+    fi
+    if ((found == 0)); then
+      findings+=("${path}:${line}: \"${name}\" is no heading or bold label in ${target}")
+    fi
+  done < "${TMP_FILE}" # coverage-exempt: kcov scores this line; it never executes as bash
+
+  if ((${#findings[@]} == 0)); then
+    return 0
+  fi
+  printf '%s\n' "${findings[@]}"
+  printf '%s: %d dangling reference(s)\n' "${0##*/}" "${#findings[@]}"
+  exit 1
+}
+
+if (($# != 0)); then
+  printf 'usage: %s\n' "${0##*/}" >&2
+  exit 2
+fi
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+readonly REPO_ROOT
+cd "${REPO_ROOT}" || exit 2
+TMP_FILE="$(mktemp)"
+readonly TMP_FILE
+trap 'rm --force -- "${TMP_FILE}"' EXIT
+
+main "$@"

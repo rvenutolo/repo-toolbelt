@@ -9,7 +9,7 @@
 #              else it reads the checkout the script itself lives in.
 # @noargs
 # @stdout sections `Session`, `Issues`, `Parallel`, `Pull requests`,
-#         `Worktrees`, `Branches` and `Findings`, each a heading line then
+#         `Worktrees`, `Branches`, `Findings` and `Stop`, each a heading line then
 #         indented lines
 # @exitcode 0 the status was printed, whether or not a session is in progress
 # @exitcode 2 wrong arguments, or neither the working directory nor the
@@ -304,6 +304,19 @@ function section_findings() {
   printf '  %s pending\n' "${count}"
 }
 
+# @description Whether a stop was asked for, and how to ask for one: the
+#              session checks for `.claude/backlog/stop` before starting each
+#              issue.
+# @noargs
+function section_stop() {
+  printf 'Stop\n'
+  if [[ -e "${BACKLOG}/stop" ]]; then
+    printf '  requested (.claude/backlog/stop exists)\n'
+  else
+    printf '  touch .claude/backlog/stop (starts no new issue; work in progress finishes, or in a parallel run stops before its merge)\n'
+  fi
+}
+
 # @description Resolve the main checkout and print every section.
 # @noargs
 function main() {
@@ -330,6 +343,7 @@ function main() {
   section_worktrees
   section_branches
   section_findings
+  section_stop
 }
 
 if (($# != 0)); then

@@ -53,13 +53,13 @@ file's "Long commands" replaces it) and "Copied rules". Every role also reads th
 `sub-skill-overrides.md` (the prompt templates, and the skill that is never invoked, which executing-plans' "Finish"
 would otherwise call). Then:
 
-- **Build, bug:** the "PRs", "PR title", "Branches" and "Worktrees" bullets of "Doing the work" and the "Comments"
-  bullet of `choosing.md`; the
-  `sub-skill-overrides.md` entries for systematic-debugging, test-driven-development and using-git-worktrees (its
-  red-baseline rule); `bug-flow.md`; and "The filing bar", used only to judge your own issue (`bug-flow.md` step 3).
+- **Build, bug:** the "PRs", "PR title", "Branches" and "Worktrees" bullets of "Doing the work" and the bullet
+  "Comments" in `choosing.md`; the `sub-skill-overrides.md` entries for systematic-debugging, test-driven-development
+  and using-git-worktrees (its red-baseline rule); `bug-flow.md`; and "The filing bar", used only to judge your own
+  issue (`bug-flow.md` step 3).
 - **Build, feature:** as for a bug, plus the "Review" bullet, the entries for writing-plans and executing-plans, and
   `feature-flow.md` step 6.
-- **Review:** the "Comments" bullet of `choosing.md`.
+- **Review:** the bullet "Comments" in `choosing.md`.
 - **Fix:** the "PRs" bullet; the entries for systematic-debugging, test-driven-development and receiving-code-review.
 - **Merge:** the "PRs" bullet; the test-driven-development entry; `merging.md` steps 0–2.
 
@@ -145,7 +145,9 @@ working, and nothing that arrives after your final message changes it.
      park, or a batch-level failure when its cause is one (the "Batch-level failures" rule above), with the command
      and its last output in the note. Exit 1 or 2 means the path or its directory is wrong (a skipped `mkdir`, a
      mistyped name, a start file that holds no time): check both, then retry the wait once; a second 1 or 2 parks,
-     with the command and the wait's output in the note.
+     with the command and the wait's output in the note. One exit 2 is not a wrong path: `stale start file` on
+     stderr means `<status path>.start` was written at least twice the hang limit ago, by an agent that died mid-wait
+     on a name you reused. Pick a new `<k>` as the status-path rule above says and run the command again under it.
   3. Read the output and the exit status.
 
   Use that helper, by that path, for every wait: it is the one wait procedure every role uses, and a

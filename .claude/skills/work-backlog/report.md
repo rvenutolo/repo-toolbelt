@@ -18,7 +18,8 @@ later proposal can find the last report of its own skill and flow. Sections, eac
   session (the walkthrough, `bug-flow.md` step 3, `triage.md`).
 - `Consumer-impacting changes`: any merged change that alters an existing lint's or formatter's behavior, naming the
   consumers it would fail, so the user knows to fix them before the next release reaches them.
-- `Budgets and shakedown`: a budget that stopped new issues from starting and the issues it left ("Budgets"); while
+- `Budgets and shakedown`: a budget or the stop file that stopped new issues from starting and the issues it left
+  ("Budgets"); while
   shakedown is on, that it is on and that a follow-up question offers to lift it ("Shakedown").
 - `Timings`: one line per issue with its PR number, then the spans PR opened → CI green → merged, from
   `gh pr view <n> --json createdAt,mergedAt` and `gh run list --branch <branch> --workflow ci.yml --json
@@ -36,5 +37,5 @@ later proposal can find the last report of its own skill and flow. Sections, eac
   - a sub-skill pause whose quoted phrase the installed superpowers version no longer has (`sub-skill-overrides.md`);
   - a piece skipped because the user closed its issue;
   - an issue the brainstorm added to or dropped from the chunk;
-  - every item in `.claude/backlog/parallel/summary.md`, which `leftovers.md` writes when step 3 finishes a parallel
-    run's "Ending" (delete that file once the summary is sent).
+  - every item in `.claude/backlog/parallel/summary.md`, which `leftovers.md` writes when step 3 finishes
+    `/work-backlog-parallel`'s "Ending" for a run (delete that file once the summary is sent).

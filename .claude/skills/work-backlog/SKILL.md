@@ -21,6 +21,16 @@ session), "Copied rules" under "Doing the work" and "Out-of-scope findings".
 `resume.md` says what to do after a compaction, how a halt is recorded, and what a session that ends early leaves;
 `state.md` gives the state files' formats. Read `resume.md` first after a compaction.
 
+## What to read, when
+
+Read up to the proposal only what the proposal needs, so the first message is not delayed by rules for later steps:
+
+- **Before the proposal:** this file from the top through "Choosing the chunk", then "The filing bar", "Shakedown",
+  "Budgets", "Never" and "Red flags"; `permissions.md`, `choosing.md`, `halt-questions.md`, and `state.md` before
+  step 6 writes `current-session.md`. `leftovers.md` and `findings-walkthrough.md` only when step 3 or 4 finds work.
+- **After the OK:** "Doing the work", "Out-of-scope findings", "Merging", `merging.md`, the chunk's flow
+  (`bug-flow.md` or `feature-flow.md`) and `sub-skill-overrides.md`; `report.md` at step 9.
+
 ## How the session runs
 
 The user takes part at fixed points and the rest runs unattended. A decision needs the user only when it changes
@@ -106,6 +116,7 @@ creates the directory and the first two files if any is missing.
 - `config`: the user's settings for both skills ("Shakedown", "Budgets"), written only on the user's word; never a
   leftover.
 - `reports/`: one file per finished session, named by its `session-date:` (`report.md`); kept, never a leftover.
+- `stop`: the user's request to end the run after the current issue ("Budgets"); its content is ignored.
 
 Every path in this skill is relative to the main checkout. Work happens in worktrees under `.claude/worktrees/`, so
 from inside one, the main checkout is `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`. The
@@ -126,8 +137,8 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
    user answers the first `.claude/` write prompt with "Yes, and allow Claude to edit files in this project's .claude
    folder for this session", which covers the rest of the session; other prompts come as the allowlists leave them.
    With `plan` this is reported, not asked (`plan.md`).
-1. **Preconditions.** First, unless the session runs with permissions bypassed, run `permission-diff` over the "Run
-   while the user is there" rules (`permissions.md`): when any is missing, ask once with the question banner, `write the
+1. **Preconditions.** First, unless the session runs with permissions bypassed, run `permission-diff` over the rules of
+   "Run while the user is there" in `permissions.md`: when any is missing, ask once with the question banner, `write the
    rules` (recommended) or `continue`, so a first run meets one question instead of a prompt per command before the
    proposal. Then `git status --porcelain` must print nothing before `git switch main`, since a switch would carry
    uncommitted work onto `main`; after the switch (the user's branch stays as it was, checked out nowhere), run
@@ -164,15 +175,16 @@ read-only and runs from any terminal, so the user can watch an unattended run wi
    (`state.md`), the halt answers, the allowed commands and, for a bug chunk, the `started:` line ("Budgets"), since the
    OK begins the unattended part; a file that already exists is added to as `leftovers.md` says, and one a running
    parallel run owns means this session chooses no chunk and goes to step 8 (`leftovers.md` "A parallel run's files").
+   Delete a stop file left from an earlier session ("Budgets").
 7. **Do the work** (below), one PR per issue, merging each on green CI.
 8. **New findings.** Walk through every entry in `pending-findings.md` with `findings-walkthrough.md`.
 9. **Summary.** Write the end-of-run report (`report.md`) and send it as one message. Then append `done` to the
    `session-log.md` line step 2 appended or kept (its date, not today's: a run crosses midnight, and step 6 copies that
-   date into `session-date:`). Delete `current-session.md`, unless `leftovers.md` says a running parallel run owns it
-   (leave it as it is), or it holds parked issues, a PR recorded `pr open, not merged` by a shakedown "no", or a
-   `#<N> left to user` line: trim it as `state.md` "Trimming at the end" says, so the next session's step 3 still
-   knows the first "no" was given. Only then send the shakedown-lift follow-up ("Shakedown"), so a session that dies
-   waiting for that answer has already logged `done`.
+   date into `session-date:`). Delete the stop file if there is one ("Budgets"). Delete `current-session.md`, unless
+   `leftovers.md` says a running parallel run owns it (leave it as it is), or it holds parked issues, a PR recorded `pr
+   open, not merged` by a shakedown "no", or a `#<N> left to user` line: trim it as `state.md` "Trimming at the end"
+   says, so the next session's step 3 still knows the first "no" was given. Only then send the shakedown-lift follow-up
+   ("Shakedown"), so a session that dies waiting for that answer has already logged `done`.
 
 ## Choosing the chunk
 
@@ -188,7 +200,7 @@ The loop for one issue:
 
 1. Check the issue is still open: `gh issue view <number> --json state --jq .state`. `CLOSED` means the user decided
    against it since the chunk was approved: skip it, leave its part of any spec unbuilt, name it in the summary, and
-   go on to the next. Then check the time budget ("Budgets"); a spent one starts no further issue.
+   go on to the next. Then check the time budget and the stop file ("Budgets"); either starts no further issue.
 2. Create a worktree and enter it, copy the instruction files in, and run the baseline tests ("Worktrees").
 3. Build the change (`feature-flow.md` or `bug-flow.md`). Read `sub-skill-overrides.md` before the session's first
    sub-skill invocation: it names the pauses this skill has already settled.
@@ -391,6 +403,12 @@ loop's step 1 stops there, the issues not started stay open for the next session
 after the current issue merges or halts. The proposal states `max-hours` and shakedown; `max-parked` is
 `/work-backlog-parallel`'s alone, whose halts park an issue and go on, and here every halt already waits for the user.
 
+The user stops a run early without interrupting the session by creating the stop file, `touch .claude/backlog/stop`
+in the main checkout (`backlog-status` prints the command). The loop's step 1 checks for it beside the deadline and
+treats it the same way: the current issue finishes, no further one starts, and the summary says the stop file ended
+the run. One already there at the OK is stale, from a session that ended before its step 9, and is deleted at
+step 6's OK; step 9 deletes it too, so the next session starts normally.
+
 ## Never
 
 - Cut a release, tag, or bump a version. Releases are the user's own step.
@@ -399,8 +417,8 @@ after the current issue merges or halts. The proposal states `max-hours` and sha
   chunk, whose issues the merged PRs close.
 - Force-add a local file ("State").
 - Force a delete: no `git branch -D`, no `git worktree remove --force`, no `gh pr merge --admin`.
-- Text-merge `.coverage-baseline.txt`: a rebase that touches it regenerates it (`merging.md` step 2, "Baseline after
-  a rebase").
+- Text-merge `.coverage-baseline.txt`: a rebase that touches it regenerates it ("Baseline after a rebase" in
+  `merging.md`, step 2).
 - Edit `CHANGELOG.md`; the release tooling writes it.
 
 ## Red flags

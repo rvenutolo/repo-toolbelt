@@ -18,7 +18,7 @@ the issue listing, rule copies and `.claude/CLAUDE.md` corrections all live ther
 `.claude/settings.local.json`, so `write the rules` itself costs one prompt outside bypass mode. `SKILL.md` step 0
 says how a session not bypassed gets past them: the prompt's own "for this session" answer for the project's
 `.claude` folder. Claude's worktrees under `.claude/worktrees/` are exempt, so the rules below for them hold.
-`/work-backlog-parallel` requires bypass (its "Named exceptions to `/work-backlog`").
+`/work-backlog-parallel` requires bypass ("Named exceptions to `/work-backlog`" in `/work-backlog-parallel` `SKILL.md`).
 
 ## When to ask
 
@@ -118,10 +118,11 @@ costs a prompt, not a stall; `git pull --ff-only` and `git worktree list` run un
   ("Budgets" in `SKILL.md`), and the parallel run's `deadline`.
 - `Bash(jq *)` (all): reading an issue body from the index ("The index" in `choosing.md`) and a PR body before an
   edit.
-- `Bash(rm <main>/.claude/backlog/current-session.md)` (all) and `Bash(rm <main>/.claude/backlog/parallel/*)`
-  (leftovers), with `<main>` written out: step 9's delete of `current-session.md`, which runs after the work is done
-  and would otherwise prompt with nobody there, and the deletes of a parallel run's files (`leftovers.md` "A parallel
-  run's files"). Both targets lie under `.claude/`, so outside bypass mode they still prompt unless the session's
+- `Bash(rm <main>/.claude/backlog/current-session.md)` (all), `Bash(rm <main>/.claude/backlog/stop)` (all) and
+  `Bash(rm <main>/.claude/backlog/parallel/*)` (leftovers), with `<main>` written out: step 9's deletes of
+  `current-session.md` and the stop file ("Budgets"), which run after the work is done and would otherwise prompt with
+  nobody there, and the deletes of a parallel run's files (`leftovers.md` "A parallel
+  run's files"). All three targets lie under `.claude/`, so outside bypass mode they still prompt unless the session's
   `.claude` answer was given (`SKILL.md` step 0).
 - The plan sub-skills' helper scripts (features), each run by its absolute path from the installed superpowers
   plugin, without a `bash` prefix (`sub-skill-overrides.md`), so one rule per script matches. `<plugin dir>` is what

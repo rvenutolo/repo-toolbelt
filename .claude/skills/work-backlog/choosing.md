@@ -89,6 +89,12 @@ is long when the backlog is; every section is present, `none` when empty.
     ("PRs") unless the user opts in the proposal to have the sub-issues opened instead;
   - when the chunk holds several independent issues and a long unattended run, that `/work-backlog-parallel` would
     finish it sooner.
+- `What happens`: three to five plain lines for a reader new to the skill, since the rest of the proposal assumes its
+  terms: what runs unattended after the reply (each issue built in its own worktree, reviewed, pushed and merged on
+  green CI, one at a time; for a feature chunk, the brainstorm and question round come first), each point the user is
+  asked again (the merge question while shakedown is on, the findings walkthrough, the shakedown-lift offer), the
+  expected time from `Budgets and shakedown`, how to watch (`backlog-status`, from any terminal) and how to stop (the
+  stop file, "Budgets" in `SKILL.md`).
 - `Runner-up`: while shakedown is on, first the rest of the chunk it trimmed; then the runner-up chunk and why it
   lost, so the user can swap with one word, or `none` when no other chunk could be formed (every doable issue of the
   chosen kind is already in this one); and any issue the session cannot
@@ -102,13 +108,15 @@ is long when the backlog is; every section is present, `none` when empty.
   covers only the named issues when the arguments name some), or `Backlog: <now> open, first session` when this
   session's line is the first; the stall check sees only three sessions apart, and this shows growth between any two.
   When step 5 found a stall, the line ends `, stalled over three sessions`.
-- `Budgets and shakedown`: the time budget and whether shakedown is on ("Budgets", "Shakedown"), so the user can
-  change either with the OK. While shakedown is on, the line `Shakedown: one issue; expect the merge question in
-  about <N> minutes`, so the user knows to stay or come back: N is the `Timings` span from `started:` to the merge
-  question in the last report under `.claude/backlog/reports/` whose opening `Skill:` line names this skill and this
-  chunk's flow (`report.md`), else 45. Then
-  every `WARN` line `backlog-preflight` printed in step 1, each prefixed `Preflight:`. This is the one place a real run
-  shows a `WARN`, so each appears once.
+- `Budgets and shakedown`: the time budget and whether shakedown is on ("Budgets", "Shakedown"), so the user can change
+  either with the OK. While shakedown is on, the line `Shakedown: one issue; expect the merge question in about <N>
+  minutes`, so the user knows to stay or come back: N is the `Timings` span from `started:` to the merge question in the
+  last report under `.claude/backlog/reports/` whose opening `Skill:` line names this skill and this chunk's flow
+  (`report.md`), else 45. Then the subagents the chunk will dispatch, so the user can weigh its cost: for a bug, a
+  reviewer per review round, at most two ("Review" in `SKILL.md`); for a feature, the plan's implementer and reviewers
+  per task plus its final review, as superpowers:subagent-driven-development runs them. Then every `WARN` line
+  `backlog-preflight` printed in step 1, each prefixed `Preflight:`. This is the one place a real run shows a `WARN`, so
+  each appears once.
 - `Halt questions`: for a bug chunk, every likely halt question for the unattended part ("Terms"; `halt-questions.md`
   lists the kinds that recur, each with its default answer), one per line as
   `Q<k>: <question> Recommended: <answer> (<reason>)`. The OK on the chunk answers them. A feature chunk asks them in

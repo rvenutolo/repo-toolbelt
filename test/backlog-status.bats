@@ -101,6 +101,7 @@ function section() {
   assert_line 'Findings'
   assert_equal "$(section 'Pull requests')" '  none (no session in progress)'
   assert_equal "$(section 'Findings')" '  0 pending'
+  assert_line 'Stop'
 }
 
 @test 'the Session section reads the date, flow, started time with elapsed, and the at line' {
@@ -277,6 +278,17 @@ function section() {
   printf '## a\n\n- File: x\n\n## b\n' > .claude/backlog/pending-findings.md
   run "${STATUS}"
   assert_equal "$(section 'Findings')" '  2 pending'
+}
+
+@test 'the Stop section says how to stop when no stop is asked for' {
+  run "${STATUS}"
+  assert_equal "$(section 'Stop')" '  touch .claude/backlog/stop (starts no new issue; work in progress finishes, or in a parallel run stops before its merge)'
+}
+
+@test 'the Stop section says requested when the stop file exists' {
+  : > .claude/backlog/stop
+  run "${STATUS}"
+  assert_equal "$(section 'Stop')" '  requested (.claude/backlog/stop exists)'
 }
 
 @test 'reads the main checkout from inside a worktree' {
