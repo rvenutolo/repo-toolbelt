@@ -5,7 +5,9 @@
 # list it is handed and answers the script's reads from files the test writes,
 # so no call reaches GitHub. It knows the exact argument list of every read and
 # the leading words of every write; any other call fails, so a read the script
-# grows is a failing test here, not a silent blank.
+# grows is a failing test here, not a silent blank. The script takes its repo
+# root from its own path, so each repository holds a copy at
+# `.ci/release-pull-request`, and the copy is what runs.
 
 bats_require_minimum_version 1.5.0
 
@@ -28,7 +30,6 @@ readonly GIT_REFS='repos/gh-owner/report/git/refs'
 function setup() {
   load test_helper/common
   load test_helper/release
-  SCRIPT="${REPO_DIR}/.ci/release-pull-request"
   RELEASE_VERSION="${REPO_DIR}/.ci/release-version"
   write_skeleton
 }
@@ -141,7 +142,7 @@ function run_script() {
   : > "${STUB}/body.md"
   cd "${RELEASE_REPO}" || return 1
   # The stub shadows the real gh; each test runs in its own process.
-  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' run --separate-stderr "${SCRIPT}" "$@"
+  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' run --separate-stderr "${RELEASE_REPO}/.ci/release-pull-request" "$@"
   CALLS="$(< "${STUB}/calls.log")"
 }
 
@@ -559,15 +560,37 @@ STUB
   assert_only_calls
 }
 
-@test 'outside a git repository the script fails before asking GitHub' {
+@test 'a copy in a tree that is no repository fails before asking GitHub' {
   pr_repo v1.0.0
-  mkdir "${BATS_TEST_TMPDIR}/not-a-repo"
+  install_release_scripts "${BATS_TEST_TMPDIR}/not-a-repo"
   : > "${STUB}/calls.log"
   cd "${BATS_TEST_TMPDIR}/not-a-repo" || return 1
-  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' run --separate-stderr "${SCRIPT}"
+  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' run --separate-stderr "${BATS_TEST_TMPDIR}/not-a-repo/.ci/release-pull-request"
   assert_failure 1
-  assert_stderr --partial 'not inside a git repository'
+  assert_stderr --partial 'is not a git repository'
   assert_equal "$(< "${STUB}/calls.log")" ''
+}
+
+@test 'run from another repository, the script files the release for its own' {
+  pr_repo v1.0.0
+  commit_empty "${RELEASE_REPO}" 'feat: add widget'
+  local head
+  head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
+  local -r own="${RELEASE_REPO}" own_stub="${STUB}"
+  : > "${own_stub}/calls.log"
+  : > "${own_stub}/changelog.b64"
+  : > "${own_stub}/body.md"
+  # The stub answers the default branch's head from this file, not from the cwd.
+  printf '%s\n' "${head}" > "${own_stub}/main-sha"
+  # Another repository, with a commit of its own and no changelog.
+  release_repo
+  commit_empty "${RELEASE_REPO}" 'fix: elsewhere'
+  cd "${RELEASE_REPO}" || return 1
+  PATH="${own_stub}/bin:${PATH}" GITHUB_REPOSITORY='gh-owner/report' run --separate-stderr "${own}/.ci/release-pull-request"
+  assert_success
+  CALLS="$(< "${own_stub}/calls.log")"
+  assert_call '--field headline=chore(release): v1.1.0'
+  assert_call "--field oid=${head}"
 }
 
 @test 'between the merge of a release pull request and its tag, the next release is not proposed' {
@@ -647,7 +670,7 @@ STUB
   commit_empty "${RELEASE_REPO}" 'feat: add widget'
   : > "${STUB}/calls.log"
   cd "${RELEASE_REPO}" || return 1
-  PATH="${STUB}/bin:${PATH}" run --separate-stderr env --unset=GITHUB_REPOSITORY "${SCRIPT}"
+  PATH="${STUB}/bin:${PATH}" run --separate-stderr env --unset=GITHUB_REPOSITORY "${RELEASE_REPO}/.ci/release-pull-request"
   assert_failure 1
   assert_stderr --partial 'GITHUB_REPOSITORY is not set'
   assert_equal "$(< "${STUB}/calls.log")" ''

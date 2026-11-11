@@ -379,7 +379,8 @@ A release that only adds lints changes nothing in a consuming repo, because each
 Every tool runs inside the Nix devShell, so nothing needs installing but Nix and Docker. The scripts and git hooks
 enter the devShell themselves: started with `IN_DEVSHELL` unset, as from a plain or a direnv shell, each re-runs
 itself through `.ci/in-devshell`, which enters `nix develop --ignore-environment` for the repo it lives in, so a tool
-the flake lacks fails here as it would in CI. `.ci/in-devshell <command>` is for commands that are not scripts, such as
+the flake lacks fails here as it would in CI. A gate script takes that same repo as its root, whatever directory it is run
+from. `.ci/in-devshell <command>` is for commands that are not scripts, such as
 `./.ci/in-devshell go test ./...`. The exceptions are `.ci/in-devshell` itself, the wrapper every other script
 re-runs through, and the scripts marked `# devshell-exempt:` with their reason: `.ci/activate-githooks`, which the
 devShell's own startup runs, the shipped formatters and lints and the example consumer hooks, which run in consumer

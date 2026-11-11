@@ -1,10 +1,12 @@
 #!/usr/bin/env bats
 
-# The pre-commit hook runs in a fixture repo holding a copy of the real
-# .ci/run-built-toolbelt and the build-dist stub test_helper/built-runner
+# A copy of the pre-commit hook runs in a fixture repo holding a copy of the
+# real .ci/run-built-toolbelt and the build-dist stub test_helper/built-runner
 # describes, so the whole chain runs with nothing real built or checked. The
-# suite runs inside the devShell, so the hook runs the chain directly; its
-# re-run through .ci/in-devshell from outside is test/self-wrap.bats' concern.
+# scripts take their repo root from their own path, so the copies sit at the
+# same depth in the fixture as in the real repo. The suite runs inside the
+# devShell, so the hook runs the chain directly; its re-run through
+# .ci/in-devshell from outside is test/self-wrap.bats' concern.
 
 readonly FIX_HINT='pre-commit: formatting check failed; run ./.ci/fmt and stage the result'
 readonly COULD_NOT_RUN='pre-commit: the formatting check could not run; see the error above'
@@ -17,10 +19,13 @@ function setup() {
   export CALLS
   write_build_dist_stub
   cp -- "${REPO_DIR}/.ci/run-built-toolbelt" .ci/run-built-toolbelt
+  cp -- "${REPO_DIR}/.ci/dogfood-formatters.bash" .ci/dogfood-formatters.bash
+  mkdir --parents .githooks
+  cp -- "${REPO_DIR}/.githooks/pre-commit" .githooks/pre-commit
 }
 
 @test 'checks the dogfooded formatters with the built runner, directly inside the devShell' {
-  run "${REPO_DIR}/.githooks/pre-commit"
+  run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_success
   assert_output --partial 'pre-commit: formatting check passed'
   run cat "${CALLS}"
@@ -35,28 +40,28 @@ function setup() {
 @test 'runs from a subdirectory of the checkout' {
   mkdir sub
   cd sub
-  run "${REPO_DIR}/.githooks/pre-commit"
+  run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_success
   run grep --count '^toolbelt run --hook pre-commit ' "${CALLS}"
   assert_output 1
 }
 
 @test 'hands the runner the index git is committing' {
-  GIT_INDEX_FILE="${BATS_TEST_TMPDIR}/index.lock" run "${REPO_DIR}/.githooks/pre-commit"
+  GIT_INDEX_FILE="${BATS_TEST_TMPDIR}/index.lock" run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_success
   run grep '^index ' "${CALLS}"
   assert_output "index ${BATS_TEST_TMPDIR}/index.lock"
 }
 
 @test 'never rewrites: the runner is never asked to fmt' {
-  run "${REPO_DIR}/.githooks/pre-commit"
+  run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_success
   run grep --count '^toolbelt fmt' "${CALLS}"
   assert_output 0
 }
 
 @test 'a finding fails the commit and names the fix' {
-  RUNNER_STATUS=1 run "${REPO_DIR}/.githooks/pre-commit"
+  RUNNER_STATUS=1 run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_failure 1
   assert_output --partial "${FIX_HINT}"
   refute_output --partial "${COULD_NOT_RUN}"
@@ -64,7 +69,7 @@ function setup() {
 }
 
 @test 'a runner error fails the commit and says the check could not run' {
-  RUNNER_STATUS=2 run "${REPO_DIR}/.githooks/pre-commit"
+  RUNNER_STATUS=2 run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_failure 1
   assert_output --partial "${COULD_NOT_RUN}"
   refute_output --partial "${FIX_HINT}"
@@ -72,7 +77,7 @@ function setup() {
 }
 
 @test 'leaves no scratch directory behind' {
-  RUNNER_STATUS=1 run "${REPO_DIR}/.githooks/pre-commit"
+  RUNNER_STATUS=1 run "${FIXTURE_REPO}/.githooks/pre-commit"
   local built
   built="$(built_scratch_dir)"
   assert [ -n "${built}" ]
@@ -80,7 +85,7 @@ function setup() {
 }
 
 @test 'a layout that does not build fails the commit and says the check could not run' {
-  BUILD_STATUS=1 run "${REPO_DIR}/.githooks/pre-commit"
+  BUILD_STATUS=1 run "${FIXTURE_REPO}/.githooks/pre-commit"
   assert_failure 1
   assert_output --partial "${COULD_NOT_RUN}"
   refute_output --partial "${FIX_HINT}"

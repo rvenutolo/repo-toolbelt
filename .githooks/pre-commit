@@ -28,23 +28,23 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # re-run here: under `git commit --all` or `git commit <path>` it is a
 # temporary index, not .git/index, and without it the runner's
 # unstaged-changes warning compares the working tree with the wrong index.
+SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+SELF_REPO="${SELF_PATH%/*/*}"
 if [[ -z "${IN_DEVSHELL:-}" ]]; then
-  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-  SELF_DIR="${SELF_PATH%/*}"
   if [[ -n "${GIT_INDEX_FILE:-}" ]]; then
-    exec "${SELF_DIR}/../.ci/in-devshell" env "GIT_INDEX_FILE=${GIT_INDEX_FILE}" "${SELF_PATH}" "$@"
+    exec "${SELF_REPO}/.ci/in-devshell" env "GIT_INDEX_FILE=${GIT_INDEX_FILE}" "${SELF_PATH}" "$@"
   fi
-  exec "${SELF_DIR}/../.ci/in-devshell" "${SELF_PATH}" "$@"
+  exec "${SELF_REPO}/.ci/in-devshell" "${SELF_PATH}" "$@"
 fi
 
 # shellcheck source=.ci/dogfood-formatters.bash
-source "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/../.ci/dogfood-formatters.bash"
+source "${SELF_REPO}/.ci/dogfood-formatters.bash"
 
 # @description Run the formatter checks; abort the commit on failure.
 # @noargs
 function main() {
   local repo_dir
-  repo_dir="$(git rev-parse --show-toplevel)"
+  repo_dir="${SELF_REPO}"
   printf 'pre-commit: checking formatting\n' >&2
   local status=0
   "${repo_dir}/.ci/run-built-toolbelt" run --hook pre-commit "${DOGFOOD_FORMATTER_CHECKS[@]}" || status=$?

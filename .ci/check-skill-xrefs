@@ -41,19 +41,17 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # host PATH behind the flake's tools: a tool the flake lacks would resolve from
 # the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
 # recursion.
+SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+SELF_REPO="${SELF_PATH%/*/*}"
 if [[ -z "${IN_DEVSHELL:-}" ]]; then
-  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-  SELF_DIR="${SELF_PATH%/*}"
-  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+  exec "${SELF_REPO}/.ci/in-devshell" "${SELF_PATH}" "$@"
 fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
 readonly SKILLS_DIR='.claude/skills'
-SCRIPT_DIR="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="${SCRIPT_DIR%/*}"
-readonly SCRIPT_DIR
+readonly SCRIPT_DIR="${SELF_REPO}/.ci"
 
 # Quoted text shaped like a section name that the skills quote as prose, not
 # as a reference, one per line: superpowers sub-skill sections and wording,
@@ -183,7 +181,7 @@ if (($# != 0)); then
   printf 'usage: %s\n' "${0##*/}" >&2
   exit 2
 fi
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="${SELF_REPO}"
 readonly REPO_ROOT
 cd "${REPO_ROOT}" || exit 2
 TMP_FILE="$(mktemp)"

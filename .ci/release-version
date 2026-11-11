@@ -6,8 +6,8 @@
 #              changes nothing; the caller decides what to write where.
 #
 #              The git subcommands (last-tag, next, section) work on the
-#              repository the current directory is in and read cliff.toml
-#              from its top level. The rest touch only their arguments.
+#              repository this script lives in, whatever directory it is
+#              run from, and read cliff.toml from its top level. The rest touch only their arguments.
 #
 #              Subcommands:
 #
@@ -45,7 +45,7 @@
 # @arg $1 subcommand one of the subcommands above
 # @arg $@ the subcommand's arguments
 # @exitcode 0 success; for greater, a is the higher version
-# @exitcode 1 a runtime failure: not a repository, a shallow clone, no
+# @exitcode 1 a runtime failure: the script is not in a repository, a shallow clone, no
 #             cliff.toml, an unreadable file, a first heading that is not
 #             a version, a version with no section; for greater, a is not
 #             the higher version
@@ -61,10 +61,10 @@ trap 'printf "[%s] ERROR: line %s (exit %s): %s\n" "${0##*/}" "${LINENO}" "$?" "
 # host PATH behind the flake's tools: a tool the flake lacks would resolve from
 # the host. Re-run through in-devshell, which sets IN_DEVSHELL and so stops the
 # recursion.
+SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
+SELF_REPO="${SELF_PATH%/*/*}"
 if [[ -z "${IN_DEVSHELL:-}" ]]; then
-  SELF_PATH="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-  SELF_DIR="${SELF_PATH%/*}"
-  exec "${SELF_DIR}/in-devshell" "${SELF_PATH}" "$@"
+  exec "${SELF_REPO}/.ci/in-devshell" "${SELF_PATH}" "$@"
 fi
 
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
@@ -142,8 +142,9 @@ function is_greater() {
   return 1
 }
 
-# @description Print the top level of the repository the current directory
-#              is in, or exit 1 outside one or in a shallow clone. Every
+# @description Print the top level of the repository this script lives in, or
+#              exit 1 when the script is not at the top of one, or in a
+#              shallow clone. Every
 #              subcommand that reads tags or history starts here. A shallow
 #              clone holds neither the older tags nor the commits between
 #              them and HEAD, and git reports no error for what it does not
@@ -151,10 +152,10 @@ function is_greater() {
 # @stdout the absolute path
 function repo_top() {
   local top shallow
-  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then
-    fail 'not inside a git repository'
+  if ! top="$(git -C "${SELF_REPO}" rev-parse --show-toplevel 2> /dev/null)" || [[ "${top}" != "${SELF_REPO}" ]]; then
+    fail "${SELF_REPO} is not a git repository"
   fi
-  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+  if ! shallow="$(git -C "${SELF_REPO}" rev-parse --is-shallow-repository 2> /dev/null)"; then
     fail 'cannot tell whether the repository is a shallow clone'
   fi
   if [[ "${shallow}" != 'false' ]]; then
@@ -168,7 +169,7 @@ function repo_top() {
 # @stdout one tag per line
 function reachable_release_tags() {
   local tags tag
-  if ! tags="$(git tag --list --merged HEAD 2> /dev/null)"; then
+  if ! tags="$(git -C "${SELF_REPO}" tag --list --merged HEAD 2> /dev/null)"; then
     fail 'cannot list the tags HEAD reaches; the repository has no commit'
   fi
   while IFS= read -r tag; do
@@ -222,7 +223,7 @@ function cliff() {
   # tag on another branch or a lower version tagged later would otherwise
   # be what the bump starts from.
   local all_tags tag ignore=''
-  all_tags="$(git tag --list)"
+  all_tags="$(git -C "${SELF_REPO}" tag --list)"
   while IFS= read -r tag; do
     if [[ "${tag}" =~ ${VERSION_PATTERN} && "${tag}" != "${last}" ]]; then
       ignore+="${ignore:+|}${tag//./\\.}"
@@ -239,7 +240,7 @@ function cliff() {
   if [[ -n "${last}" ]]; then
     range="${last}..HEAD"
   fi
-  merges="$(git rev-list --merges "${range}")"
+  merges="$(git -C "${SELF_REPO}" rev-list --merges "${range}")"
   while IFS= read -r sha; do
     if [[ -n "${sha}" ]]; then
       args+=(--skip-commit "${sha}")

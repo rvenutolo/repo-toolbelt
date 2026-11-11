@@ -2,7 +2,9 @@
 
 # release-version against throwaway repositories with the real git and the real
 # git-cliff. No stub: what is under test is what git-cliff makes of this repo's
-# cliff.toml, and a stub could only repeat the expectation back.
+# cliff.toml, and a stub could only repeat the expectation back. The script
+# takes its repo root from its own path, so each repository holds a copy at
+# `.ci/release-version`, and run_in runs the copy that serves the directory.
 
 bats_require_minimum_version 1.5.0
 
@@ -21,7 +23,7 @@ function run_in() {
   local -r dir="$1"
   shift
   cd "${dir}" || return 1
-  run --separate-stderr "${SCRIPT}" "$@"
+  run --separate-stderr "$(own_script "${dir}")" "$@"
 }
 
 @test 'validate accepts exactly vMAJOR.MINOR.PATCH' {
@@ -85,15 +87,43 @@ function run_in() {
   assert_output 'v2.0.0'
 }
 
-@test 'last-tag outside a repository fails' {
-  mkdir "${BATS_TEST_TMPDIR}/not-a-repo"
+@test 'last-tag from a copy in a tree that is no repository fails' {
+  install_release_scripts "${BATS_TEST_TMPDIR}/not-a-repo"
   run_in "${BATS_TEST_TMPDIR}/not-a-repo" last-tag
   assert_failure 1
-  assert_stderr --partial 'not inside a git repository'
+  assert_stderr --partial 'is not a git repository'
+}
+
+@test 'the git subcommands act on the repository the script lives in, whatever repository they are run from' {
+  release_repo v1.0.0
+  commit_empty "${RELEASE_REPO}" 'feat: add widget'
+  local -r own="${RELEASE_REPO}"
+  release_repo v5.0.0
+  commit_empty "${RELEASE_REPO}" 'fix: elsewhere'
+  local -r other="${RELEASE_REPO}"
+  cd "${other}" || return 1
+  run --separate-stderr "${own}/.ci/release-version" last-tag
+  assert_success
+  assert_output 'v1.0.0'
+  run --separate-stderr "${own}/.ci/release-version" next
+  assert_success
+  assert_output 'v1.1.0'
+}
+
+@test 'a script reached through a symlink acts on its own repository' {
+  release_repo v1.0.0
+  commit_empty "${RELEASE_REPO}" 'feat: add widget'
+  mkdir "${BATS_TEST_TMPDIR}/elsewhere"
+  ln --symbolic -- "${RELEASE_REPO}/.ci/release-version" "${BATS_TEST_TMPDIR}/elsewhere/link"
+  cd "${BATS_TEST_TMPDIR}/elsewhere" || return 1
+  run --separate-stderr "${BATS_TEST_TMPDIR}/elsewhere/link" next
+  assert_success
+  assert_output 'v1.1.0'
 }
 
 @test 'last-tag in a repository with no commit fails' {
   git init --quiet "${BATS_TEST_TMPDIR}/empty"
+  install_release_scripts "${BATS_TEST_TMPDIR}/empty"
   run_in "${BATS_TEST_TMPDIR}/empty" last-tag
   assert_failure 1
   assert_stderr --partial 'the repository has no commit'
@@ -106,6 +136,7 @@ function run_in() {
   local -r shallow="${BATS_TEST_TMPDIR}/shallow"
   git clone --quiet --depth 1 "file://${RELEASE_REPO}" "${shallow}"
   cp -- "${REPO_DIR}/cliff.toml" "${shallow}/cliff.toml"
+  install_release_scripts "${shallow}"
   run_in "${shallow}" last-tag
   assert_failure 1
   assert_stderr --partial 'shallow clone'
@@ -595,10 +626,11 @@ EOF
   local -r dir="${BATS_TEST_TMPDIR}/round-trip"
   mkdir "${dir}"
   cd "${RELEASE_REPO}" || return 1
-  "${SCRIPT}" section v2.0.0 > "${dir}/section.md"
-  "${SCRIPT}" prepend "${SKELETON}" "${dir}/section.md" > "${dir}/first.md"
-  "${SCRIPT}" section v2.1.0 > "${dir}/section.md"
-  "${SCRIPT}" prepend "${dir}/first.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
+  local -r script="${RELEASE_REPO}/.ci/release-version"
+  "${script}" section v2.0.0 > "${dir}/section.md"
+  "${script}" prepend "${SKELETON}" "${dir}/section.md" > "${dir}/first.md"
+  "${script}" section v2.1.0 > "${dir}/section.md"
+  "${script}" prepend "${dir}/first.md" "${dir}/section.md" > "${dir}/CHANGELOG.md"
   run_in "${dir}" top "${dir}/CHANGELOG.md"
   assert_output 'v2.1.0'
   local want

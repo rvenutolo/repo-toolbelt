@@ -26,10 +26,44 @@ function write_skeleton() {
   export SKELETON
 }
 
+# @description Copy the release scripts into a directory's `.ci/`. The scripts
+#              take their repo root from their own path, so a copy at the same
+#              depth makes that directory the repo they release. release-version
+#              goes along because the others call it from beside themselves.
+# @arg $1 dir the repository's path
+function install_release_scripts() {
+  local -r dir="$1"
+  local script
+  mkdir --parents -- "${dir}/.ci"
+  for script in release-version release-publish release-pull-request; do
+    cp -- "${REPO_DIR}/.ci/${script}" "${dir}/.ci/${script}"
+  done
+}
+
+# @description Print the path of the copy of a release script that serves a
+#              directory: the one in the nearest enclosing directory, up to the
+#              per-test temp dir, that holds one; the real script when none
+#              does.
+# @arg $1 dir the directory the script is run in
+# @arg $2 name the script's name, release-version by default
+# @stdout the script's path
+function own_script() {
+  local dir="$1"
+  local -r name="${2:-release-version}"
+  while [[ "${dir}" == "${BATS_TEST_TMPDIR}"/* ]]; do
+    if [[ -x "${dir}/.ci/${name}" ]]; then
+      printf '%s\n' "${dir}/.ci/${name}"
+      return 0
+    fi
+    dir="${dir%/*}"
+  done
+  printf '%s\n' "${REPO_DIR}/.ci/${name}"
+}
+
 # @description Create a throwaway repository with one commit, `chore: start`,
 #              optionally tagged, and set RELEASE_REPO to its path. cliff.toml
 #              is copied in untracked: the scripts read it from the working
-#              tree.
+#              tree. So are the release scripts, at `.ci/`.
 # @arg $1 tag the tag the first commit carries, or empty for none
 # @set RELEASE_REPO string the repository's absolute path
 function release_repo() {
@@ -41,6 +75,7 @@ function release_repo() {
   git -C "${RELEASE_REPO}" config commit.gpgsign false
   git -C "${RELEASE_REPO}" config tag.gpgsign false
   cp -- "${REPO_DIR}/cliff.toml" "${RELEASE_REPO}/cliff.toml"
+  install_release_scripts "${RELEASE_REPO}"
   commit_empty "${RELEASE_REPO}" 'chore: start'
   if [[ -n "${tag}" ]]; then
     git -C "${RELEASE_REPO}" tag "${tag}"

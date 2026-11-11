@@ -2,10 +2,10 @@
 
 bats_require_minimum_version 1.5.0
 
-# Every test runs in a fixture repo holding a two-lint manifest (one quick,
-# one slow), a one-formatter manifest (fx, whose derived lint is
-# check-fx-formatted) and example files that agree with them; each test breaks
-# one thing.
+# Every test runs a copy of the script, at the same depth, in a fixture repo
+# holding a two-lint manifest (one quick, one slow), a one-formatter manifest
+# (fx, whose derived lint is check-fx-formatted) and example files that agree
+# with them; each test breaks one thing.
 
 readonly IMAGE_REPO='ghcr.io/rvenutolo/repo-toolbelt'
 readonly USES_WORKFLOW='rvenutolo/repo-toolbelt/.github/workflows/lint.yml'
@@ -55,6 +55,10 @@ TOML
 YAML
   git add .
   git -c user.name=t -c user.email=t@example.invalid commit --quiet --message 'test: fixture'
+  # The script takes its repo root from its own path, so the copy makes the
+  # fixture the repo it checks.
+  mkdir --parents .ci
+  cp -- "${REPO_DIR}/.ci/check-examples" .ci/check-examples
 }
 
 # @description Write the example CI workflow.
@@ -111,7 +115,7 @@ function write_hook() {
 }
 
 @test 'passes when every example lists every lint and formatter and no release tag exists' {
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
@@ -128,14 +132,14 @@ function write_hook() {
     'check-fx-formatted'
   write_hook pre-push "${PLACEHOLDER_IMAGE}" "${NO_BLOCK}" '# all of them' 'lint-quick' '' 'lint-slow # slow' \
     'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
 
 @test 'passes a FORMATTERS block with an uncommented entry and blank lines' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" $'\n  fx  \n' 'lint-quick' 'lint-slow # slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
@@ -145,14 +149,14 @@ function write_hook() {
   write_workflow "${PLACEHOLDER_USES}" "${PLACEHOLDER_IMAGE}" 'lint-quick' 'lint-slow'
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '' 'lint-quick' 'lint-slow # slow'
   write_hook pre-push "${PLACEHOLDER_IMAGE}" "${NO_BLOCK}" 'lint-quick' 'lint-slow'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
 
 @test 'reports a lint the workflow example omits' {
   write_workflow "${PLACEHOLDER_USES}" "${PLACEHOLDER_IMAGE}" 'lint-quick' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_line --index 0 'examples/consumer/.github/workflows/lint.yml: omits lint-slow'
   assert_line --index 1 '1 example problem'
@@ -160,7 +164,7 @@ function write_hook() {
 
 @test 'reports a derived formatter lint the workflow example omits' {
   write_workflow "${PLACEHOLDER_USES}" "${PLACEHOLDER_IMAGE}" 'lint-quick' 'lint-slow'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.github/workflows/lint.yml: omits check-fx-formatted
 1 example problem'
@@ -169,7 +173,7 @@ function write_hook() {
 @test 'reports an unknown lint the workflow example names' {
   write_workflow "${PLACEHOLDER_USES}" "${PLACEHOLDER_IMAGE}" 'lint-quick' 'lint-slow' 'check-fx-formatted' \
     'lint-gone'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output "examples/consumer/.github/workflows/lint.yml: names unknown lint lint-gone
 1 example problem"
@@ -177,7 +181,7 @@ function write_hook() {
 
 @test 'reports a lint a hook example omits' {
   write_hook pre-push "${PLACEHOLDER_IMAGE}" "${NO_BLOCK}" 'lint-slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-push: omits lint-quick
 1 example problem'
@@ -185,7 +189,7 @@ function write_hook() {
 
 @test 'reports a derived formatter lint the pre-commit LINTS list omits' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick' 'lint-slow # slow'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit: omits check-fx-formatted
 1 example problem'
@@ -193,7 +197,7 @@ function write_hook() {
 
 @test 'reports a derived formatter lint the pre-push LINTS list omits' {
   write_hook pre-push "${PLACEHOLDER_IMAGE}" "${NO_BLOCK}" 'lint-quick' 'lint-slow'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-push: omits check-fx-formatted
 1 example problem'
@@ -202,7 +206,7 @@ function write_hook() {
 @test 'reports an unknown lint a hook example names, with its line' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick' 'lint-slow # slow' 'check-fx-formatted' \
     'lint-gone'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:10: names unknown lint lint-gone
 1 example problem'
@@ -210,7 +214,7 @@ function write_hook() {
 
 @test 'reports a slow lint not marked # slow in the pre-commit example' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick' 'lint-slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:8: lint-slow is slow but not marked # slow
 1 example problem'
@@ -218,7 +222,7 @@ function write_hook() {
 
 @test 'reports a derived lint of a slow formatter not marked # slow in the pre-commit example' {
   sed --in-place 's/^speed = "quick"$/speed = "slow"/' formatters.toml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:9: check-fx-formatted is slow but not marked # slow
 1 example problem'
@@ -226,7 +230,7 @@ function write_hook() {
 
 @test 'reports a quick lint marked # slow in the pre-commit example' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick # slow' 'lint-slow # slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:7: lint-quick is marked # slow but is quick
 1 example problem'
@@ -235,7 +239,7 @@ function write_hook() {
 @test 'reports a hook example with no lints list' {
   printf '#!/usr/bin/env bash\nexec docker run %s run --hook pre-push\n' "${PLACEHOLDER_IMAGE}" \
     > examples/consumer/.githooks/pre-push
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-push: no LINTS=( list
 1 example problem'
@@ -243,7 +247,7 @@ function write_hook() {
 
 @test 'reports a pre-commit example with no FORMATTERS block' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" "${NO_BLOCK}" 'lint-quick' 'lint-slow # slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit: missing FORMATTERS
 1 example problem'
@@ -251,7 +255,7 @@ function write_hook() {
 
 @test 'reports a formatter the FORMATTERS block omits' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '' 'lint-quick' 'lint-slow # slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit: omits fx
 1 example problem'
@@ -260,7 +264,7 @@ function write_hook() {
 @test 'reports an unknown formatter the FORMATTERS block names, with its line' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" $'  # fx\n  gone' 'lint-quick' 'lint-slow # slow' \
     'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:5: names unknown formatter gone
 1 example problem'
@@ -269,7 +273,7 @@ function write_hook() {
 @test 'reports a line in the FORMATTERS block that is not a formatter entry' {
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" $'  # Uncomment to rewrite\n  # fx' 'lint-quick' \
     'lint-slow # slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-commit:4: not a formatter entry
 1 example problem'
@@ -277,7 +281,7 @@ function write_hook() {
 
 @test 'reports a FORMATTERS block in the pre-push example' {
   write_hook pre-push "${PLACEHOLDER_IMAGE}" '# fx' 'lint-quick' 'lint-slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.githooks/pre-push:3: pre-push takes no FORMATTERS block
 1 example problem'
@@ -286,7 +290,7 @@ function write_hook() {
 @test 'reports every missing example file' {
   rm examples/consumer/.github/workflows/lint.yml examples/consumer/.githooks/pre-commit \
     examples/consumer/.githooks/pre-push examples/consumer/.repo-toolbelt.yml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.github/workflows/lint.yml: missing
 examples/consumer/.githooks/pre-commit: missing
@@ -297,7 +301,7 @@ examples/consumer/.repo-toolbelt.yml: missing
 
 @test 'reports an unknown lint the config example names in a commented section' {
   printf '# lint-gone:\n#   exempt: []\n' >> examples/consumer/.repo-toolbelt.yml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.repo-toolbelt.yml:6: names unknown lint lint-gone
 1 example problem'
@@ -305,7 +309,7 @@ examples/consumer/.repo-toolbelt.yml: missing
 
 @test 'reports every placeholder pin once a v* release tag exists' {
   git tag v0.1.0
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_output 'examples/consumer/.github/workflows/lint.yml:6: placeholder pin, but a v* release tag exists
 examples/consumer/.github/workflows/lint.yml:8: placeholder pin, but a v* release tag exists
@@ -316,7 +320,7 @@ examples/consumer/.githooks/pre-push:8: placeholder pin, but a v* release tag ex
 
 @test 'a tag that is not a v* release leaves the placeholder accepted' {
   git tag nightly
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
@@ -326,7 +330,7 @@ examples/consumer/.githooks/pre-push:8: placeholder pin, but a v* release tag ex
   write_workflow "${REAL_USES}" "${REAL_IMAGE}" 'lint-quick' 'lint-slow' 'check-fx-formatted'
   write_hook pre-commit "${REAL_IMAGE}" '# fx' 'lint-quick' 'lint-slow # slow' 'check-fx-formatted'
   write_hook pre-push "${REAL_IMAGE}" "${NO_BLOCK}" 'lint-quick' 'lint-slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_success
   assert_output ''
 }
@@ -334,34 +338,34 @@ examples/consumer/.githooks/pre-push:8: placeholder pin, but a v* release tag ex
 @test 'reports every problem in one run' {
   write_workflow "${PLACEHOLDER_USES}" "${PLACEHOLDER_IMAGE}" 'lint-quick' 'check-fx-formatted'
   write_hook pre-commit "${PLACEHOLDER_IMAGE}" '' 'lint-quick' 'lint-slow' 'check-fx-formatted'
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 1
   assert_line --index 3 '3 example problems'
 }
 
 @test 'exits 2 when the workflow example is not YAML' {
   printf 'jobs: [\n' > examples/consumer/.github/workflows/lint.yml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 2
   assert_stderr --partial 'check-examples: cannot read examples/consumer/.github/workflows/lint.yml'
 }
 
 @test 'exits 2 when the manifest cannot be read' {
   printf 'not = [toml\n' > lints.toml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 2
   assert_stderr --partial 'check-examples: cannot read lints.toml'
 }
 
 @test 'exits 2 when the formatter manifest cannot be read' {
   printf 'not = [toml\n' > formatters.toml
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
   assert_failure 2
   assert_stderr --partial 'check-examples: cannot read formatters.toml'
 }
 
 @test 'exits 2 with usage when given an argument' {
-  run --separate-stderr "${REPO_DIR}/.ci/check-examples" extra
+  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples" extra
   assert_failure 2
   assert_stderr 'usage: check-examples'
 }

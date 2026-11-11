@@ -234,3 +234,71 @@ function assert_in_devshell() {
   assert_line --regexp "^PATH=(.*:)?${HOST_DIR}(:.*)?$"
   assert [ ! -e "${BATS_TEST_TMPDIR}/nix-args" ]
 }
+
+@test "self-wrap: every wrapped script takes its repo root from its own path" {
+  # The strip count is the script's depth below the root plus one: a root-level
+  # script strips one component, `.ci/x` strips two, `test/testdata/x` three.
+  local path text strip depth expected failures=''
+  while IFS= read -r path; do
+    is_exempt "${path}" && continue
+    text="$(grep --invert-match '^[[:space:]]*#' -- "${REPO_DIR}/${path}" || true)"
+    if grep --quiet --extended-regexp 'git rev-parse --show-toplevel' <<< "${text}"; then
+      failures+=" ${path}(cwd root)"
+      continue
+    fi
+    depth="${path//[^\/]/}"
+    strip=''
+    for ((i = 0; i <= ${#depth}; i++)); do
+      strip+='/*'
+    done
+    expected="SELF_REPO=\"\${SELF_PATH%${strip}}\""
+    if ! awk --assign want="${expected}" '
+      $0 == want { seen = 1; next }
+      /\[\[.*IN_DEVSHELL/ { exit !seen }
+      END { if (!seen) exit 1 }
+    ' "${REPO_DIR}/${path}"; then
+      failures+=" ${path}(no SELF_REPO at depth ${#depth})"
+    fi
+  done < <(tracked_scripts)
+  assert_equal "${failures}" ''
+}
+
+@test "self-wrap: a check run through a symlink from outside any repo grades its own repo" {
+  mkdir -- "${BATS_TEST_TMPDIR}/elsewhere"
+  ln --symbolic -- "${REPO_DIR}/.ci/check-skill-xrefs" "${BATS_TEST_TMPDIR}/elsewhere/link"
+  cd "${BATS_TEST_TMPDIR}/elsewhere"
+  run env IN_DEVSHELL=1 "${BATS_TEST_TMPDIR}/elsewhere/link"
+  assert_success
+}
+
+@test "self-wrap: a check run through a symlink from another repo grades its own repo" {
+  local scratch="${BATS_TEST_TMPDIR}/other-repo"
+  mkdir --parents -- "${scratch}/.claude/skills/x"
+  # An inert dangling reference: the check rejects it if it grades this tree.
+  # shellcheck disable=SC2016 # the backticks are Markdown, not a substitution
+  printf '# x\n\nSee the "Nowhere Section" section of `nowhere.md`.\n' > "${scratch}/.claude/skills/x/SKILL.md"
+  git -C "${scratch}" init --quiet
+  git -C "${scratch}" add -- '.claude/skills/x/SKILL.md'
+  ln --symbolic -- "${REPO_DIR}/.ci/check-skill-xrefs" "${scratch}/link"
+  cd "${scratch}"
+  run env IN_DEVSHELL=1 "${scratch}/link"
+  assert_success
+}
+
+@test "self-wrap: no wrapped script locates itself from a non-canonical path" {
+  # BASH_SOURCE[0] and $0 name the path the script was started by, which is a
+  # symlink's own location when it is run through one. A path derived from
+  # either must first go through readlink or realpath.
+  local path text failures=''
+  while IFS= read -r path; do
+    is_exempt "${path}" && continue
+    text="$(grep --invert-match '^[[:space:]]*#' -- "${REPO_DIR}/${path}" || true)"
+    # shellcheck disable=SC2016 # the pattern is a regex, not an expansion
+    if grep --extended-regexp 'BASH_SOURCE|\$0([^0-9]|$)|\$\{0(\}|%)' <<< "${text}" \
+      | grep --invert-match --extended-regexp 'readlink --canonicalize|realpath' \
+      | grep --quiet .; then
+      failures+=" ${path}(non-canonical self path)"
+    fi
+  done < <(tracked_scripts)
+  assert_equal "${failures}" ''
+}
