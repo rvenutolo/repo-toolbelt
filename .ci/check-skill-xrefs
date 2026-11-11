@@ -51,9 +51,7 @@ fi
 shopt -s inherit_errexit
 
 readonly SKILLS_DIR='.claude/skills'
-SCRIPT_DIR="$(readlink --canonicalize -- "${BASH_SOURCE[0]}")"
-SCRIPT_DIR="${SCRIPT_DIR%/*}"
-readonly SCRIPT_DIR
+readonly SCRIPT_DIR="${SELF_REPO}/.ci"
 
 # Quoted text shaped like a section name that the skills quote as prose, not
 # as a reference, one per line: superpowers sub-skill sections and wording,

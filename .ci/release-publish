@@ -13,8 +13,8 @@
 #              under the version's tag, which the next run pushes again.
 #
 #              Run from a checkout of the commit being released; CHANGELOG.md
-#              is read from the top of the repository the current directory
-#              is in. GITHUB_REPOSITORY names the repository on GitHub and
+#              is read from the top of the repository this script lives in,
+#              whatever directory it is run from. GITHUB_REPOSITORY names the repository on GitHub and
 #              gh reads its token from GH_TOKEN. skopeo reads the registry
 #              credentials from the auth files it always reads.
 #
@@ -205,16 +205,16 @@ function fail() {
 # @arg $1 version
 function tag_exists() {
   local -r version="$1"
-  git rev-parse --verify --quiet "refs/tags/${version}" > '/dev/null'
+  git -C "${SELF_REPO}" rev-parse --verify --quiet "refs/tags/${version}" > '/dev/null'
 }
 
 # @description Print the path of the changelog at the top of the repository
-#              the current directory is in, or exit 1 when there is none.
+#              this script lives in, or exit 1 when there is none.
 # @stdout the path
 function changelog_path() {
   local top
-  if ! top="$(git rev-parse --show-toplevel 2> /dev/null)"; then # cwd-root: releases the repository the caller is in
-    fail 'not inside a git repository'
+  if ! top="$(git -C "${SELF_REPO}" rev-parse --show-toplevel 2> /dev/null)" || [[ "${top}" != "${SELF_REPO}" ]]; then
+    fail "${SELF_REPO} is not a git repository"
   fi
   if [[ ! -f "${top}/CHANGELOG.md" ]]; then
     fail "no CHANGELOG.md at the top of ${top}"
@@ -228,7 +228,7 @@ function changelog_path() {
 #              nothing to show for it.
 function require_full_clone() {
   local shallow
-  if ! shallow="$(git rev-parse --is-shallow-repository 2> /dev/null)"; then
+  if ! shallow="$(git -C "${SELF_REPO}" rev-parse --is-shallow-repository 2> /dev/null)"; then
     fail 'cannot tell whether the repository is a shallow clone'
   fi
   if [[ "${shallow}" != 'false' ]]; then
@@ -445,7 +445,7 @@ function pending() {
   # branch proposes, from the commit it proposes it from.
   local default_head
   default_head="$(default_branch_head "${repo}")"
-  if ! git cat-file -e "${default_head}^{commit}" 2> /dev/null; then
+  if ! git -C "${SELF_REPO}" cat-file -e "${default_head}^{commit}" 2> /dev/null; then
     fail "the default branch is at ${default_head}, and ${default_head} is not in this checkout: the branch moved on after the checkout was made, so its history cannot be walked from here. Run this workflow run again; a new attempt checks out again"
   fi
   # Made here and not in the functions that write to it: they run in
@@ -458,7 +458,7 @@ function pending() {
   fi
   local sha head
   sha="$(release_commit "${changelog}" "${version}" "${work}" "${default_head}")"
-  head="$(git rev-parse HEAD)"
+  head="$(git -C "${SELF_REPO}" rev-parse HEAD)"
   # Not a release to make from here, and not something to pass over
   # either: the run that should have published it did not.
   if [[ "${sha}" != "${head}" ]]; then

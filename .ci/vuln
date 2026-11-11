@@ -33,6 +33,10 @@ fi
 # `inherit_errexit` needs bash 4.4+; the devShell's bash provides it.
 shopt -s inherit_errexit
 
+# The module and the exceptions file are the script's own repo's, whatever
+# directory it is run from.
+cd -- "${SELF_REPO}" || exit 1
+
 readonly EXCEPTIONS_FILE='SECURITY-EXCEPTIONS.md'
 readonly EXCEPTION_RE='^- (GO-[0-9]{4}-[0-9]+):'
 
