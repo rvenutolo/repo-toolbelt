@@ -84,7 +84,7 @@ shopt -s inherit_errexit
 
 # From beside this script, not from the repository it is run in: its tests
 # run it inside throwaway repositories, which carry no .ci/ of their own.
-SCRIPT_DIR="$(dirname -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="${SELF_REPO}/.ci"
 readonly SCRIPT_DIR
 readonly RELEASE_VERSION="${SCRIPT_DIR}/release-version"
 
