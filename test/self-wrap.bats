@@ -286,3 +286,21 @@ function assert_in_devshell() {
   run env IN_DEVSHELL=1 "${scratch}/link"
   assert_success
 }
+
+@test "self-wrap: no wrapped script locates itself from a non-canonical path" {
+  # BASH_SOURCE[0] and $0 name the path the script was started by, which is a
+  # symlink's own location when it is run through one. A path derived from
+  # either must first go through readlink or realpath.
+  local path text failures=''
+  while IFS= read -r path; do
+    is_exempt "${path}" && continue
+    text="$(grep --invert-match '^[[:space:]]*#' -- "${REPO_DIR}/${path}" || true)"
+    # shellcheck disable=SC2016 # the pattern is a regex, not an expansion
+    if grep --extended-regexp 'BASH_SOURCE|\$0([^0-9]|$)|\$\{0(\}|%)' <<< "${text}" \
+      | grep --invert-match --extended-regexp 'readlink --canonicalize|realpath' \
+      | grep --quiet .; then
+      failures+=" ${path}(non-canonical self path)"
+    fi
+  done < <(tracked_scripts)
+  assert_equal "${failures}" ''
+}
