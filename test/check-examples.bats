@@ -122,7 +122,7 @@ function write_hook() {
 
 @test 'passes the real repo examples' {
   cd "${REPO_DIR}"
-  run --separate-stderr "${FIXTURE_REPO}/.ci/check-examples"
+  run --separate-stderr "${REPO_DIR}/.ci/check-examples"
   assert_success
   assert_output ''
 }

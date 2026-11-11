@@ -267,7 +267,7 @@ EOF
   assert_success
 }
 
-@test 'checks the repo holding the script when run from a subdirectory' {
+@test 'checks its repo when run from a subdirectory of it' {
   write_cited "${SERIAL}/notes.md" << 'EOF'
 "Gone section" here.
 EOF

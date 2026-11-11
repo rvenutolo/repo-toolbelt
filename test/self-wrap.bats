@@ -237,14 +237,12 @@ function assert_in_devshell() {
 
 @test "self-wrap: every wrapped script takes its repo root from its own path" {
   # The strip count is the script's depth below the root plus one: a root-level
-  # script strips one component, `.ci/x` strips two, `test/testdata/x` three. A
-  # `git rev-parse --show-toplevel` that deliberately means the caller's repo
-  # carries a `# cwd-root:` reason on its line.
+  # script strips one component, `.ci/x` strips two, `test/testdata/x` three.
   local path text strip depth expected failures=''
   while IFS= read -r path; do
     is_exempt "${path}" && continue
     text="$(grep --invert-match '^[[:space:]]*#' -- "${REPO_DIR}/${path}" || true)"
-    if grep --extended-regexp 'git rev-parse --show-toplevel' <<< "${text}" | grep --invert-match --quiet '# cwd-root: '; then
+    if grep --quiet --extended-regexp 'git rev-parse --show-toplevel' <<< "${text}"; then
       failures+=" ${path}(cwd root)"
       continue
     fi

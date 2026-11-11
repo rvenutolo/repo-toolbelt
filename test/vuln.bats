@@ -1,14 +1,19 @@
 #!/usr/bin/env bats
 
 # A stub `go` stands in for the toolchain: it prints the report in
-# STUB_REPORT (or exits non-zero when STUB_FAIL is set), so no scan runs.
+# STUB_REPORT (or exits non-zero when STUB_FAIL is set), so no scan runs. The
+# script takes its repo root from its own path, so a copy at `.ci/vuln` in the
+# fixture repo is what runs, and the fixture holds the exceptions file.
 
 function setup() {
   load test_helper/common
   make_repo
+  mkdir --parents .ci
+  cp -- "${REPO_DIR}/.ci/vuln" .ci/vuln
   mkdir "${BATS_TEST_TMPDIR}/bin"
   cat > "${BATS_TEST_TMPDIR}/bin/go" << 'STUB'
 #!/usr/bin/env bash
+pwd > "${STUB_PWD}"
 if [[ -n "${STUB_FAIL:-}" ]]; then
   exit 3
 fi
@@ -18,6 +23,8 @@ STUB
   PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
   STUB_REPORT="${BATS_TEST_TMPDIR}/report.json"
   export STUB_REPORT
+  STUB_PWD="${BATS_TEST_TMPDIR}/go-ran-in"
+  export STUB_PWD
 }
 
 # @description Write a govulncheck-style report with one finding per OSV id
@@ -41,27 +48,27 @@ function write_report() {
 
 @test 'passes when the report has no findings' {
   write_report
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_success
 }
 
 @test 'fails on a reachable vulnerability and names it' {
   write_report GO-2099-0001
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_failure 1
   assert_output --partial 'GO-2099-0001 in example.com/dep@v1.0.0, fixed in v1.2.3'
 }
 
 @test 'ignores a vulnerability that is only imported' {
   write_report import:GO-2099-0002
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_success
 }
 
 @test 'passes a reachable vulnerability listed in the exceptions file' {
   write_report GO-2099-0001
   printf -- '- GO-2099-0001: no fix released; review by 2099-01-01\n' > SECURITY-EXCEPTIONS.md
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_success
   assert_output --partial 'excepted: GO-2099-0001'
 }
@@ -69,7 +76,7 @@ function write_report() {
 @test 'fails on a reachable vulnerability the exceptions file does not list' {
   write_report GO-2099-0001 GO-2099-0003
   printf -- '- GO-2099-0001: no fix released; review by 2099-01-01\n' > SECURITY-EXCEPTIONS.md
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_failure 1
   assert_output --partial 'FAIL: GO-2099-0003'
   refute_output --partial 'FAIL: GO-2099-0001'
@@ -78,20 +85,31 @@ function write_report() {
 @test 'does not treat an id mentioned in prose as an exception' {
   write_report GO-2099-0001
   printf 'GO-2099-0001 is mentioned here but not excepted\n' > SECURITY-EXCEPTIONS.md
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_failure 1
 }
 
 @test 'fails when the scan does not complete' {
   write_report
-  STUB_FAIL=1 run "${REPO_DIR}/.ci/vuln"
+  STUB_FAIL=1 run "${FIXTURE_REPO}/.ci/vuln"
   assert_failure 1
   assert_output --partial 'govulncheck did not complete'
 }
 
 @test 'fails when the output is not a govulncheck report' {
   printf '{"finding":{"osv":"GO-2099-0001"}}\n' > "${STUB_REPORT}"
-  run "${REPO_DIR}/.ci/vuln"
+  run "${FIXTURE_REPO}/.ci/vuln"
   assert_failure 1
   assert_output --partial "could not read govulncheck's report"
+}
+
+@test 'scans and reads the exceptions of its own repo, from any directory' {
+  write_report GO-2099-0001
+  printf -- '- GO-2099-0001: no fix released; review by 2099-01-01\n' > SECURITY-EXCEPTIONS.md
+  mkdir "${BATS_TEST_TMPDIR}/elsewhere"
+  cd "${BATS_TEST_TMPDIR}/elsewhere" || return 1
+  run "${FIXTURE_REPO}/.ci/vuln"
+  assert_success
+  assert_output --partial 'excepted: GO-2099-0001'
+  assert_equal "$(< "${STUB_PWD}")" "${FIXTURE_REPO}"
 }

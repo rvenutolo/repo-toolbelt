@@ -4,7 +4,9 @@
 # stand-ins for gh, skopeo and sleep. Each stand-in records every argument list
 # it is handed; gh answers the reads from files the test writes, skopeo reads
 # the image stream it is piped and writes the digest it is told to, and sleep
-# returns at once. Nothing reaches GitHub or a registry.
+# returns at once. Nothing reaches GitHub or a registry. The script takes its
+# repo root from its own path, so each repository holds a copy at
+# `.ci/release-publish`, and the copy is what runs.
 
 bats_require_minimum_version 1.5.0
 
@@ -27,7 +29,6 @@ readonly READ_HEAD='api repos/gh-owner/tool/commits/HEAD --jq .sha'
 function setup() {
   load test_helper/common
   load test_helper/release
-  SCRIPT="${REPO_DIR}/.ci/release-publish"
   REPOSITORY='gh-owner/tool'
 }
 
@@ -240,7 +241,7 @@ function run_script() {
   : > "${STUB}/notes.md"
   cd "${RELEASE_REPO}" || return 1
   # The stand-ins shadow the real tools; each test runs in its own process.
-  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${SCRIPT}" "$@"
+  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${RELEASE_REPO}/.ci/release-publish" "$@"
   CALLS="$(< "${STUB}/calls.log")"
   SKOPEO="$(< "${STUB}/skopeo.log")"
   SLEPT="$(< "${STUB}/sleep.log")"
@@ -260,6 +261,7 @@ function set_repository() {
 function use_repo() {
   local -r repo="$1"
   RELEASE_REPO="${repo}"
+  install_release_scripts "${repo}"
   STUB="${repo}/.stub"
   write_stubs "${STUB}"
 }
@@ -349,7 +351,7 @@ esac
 STUB
   chmod +x "${BATS_TEST_TMPDIR}/odd/gh"
   cd "${RELEASE_REPO}" || return 1
-  PATH="${BATS_TEST_TMPDIR}/odd:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${SCRIPT}" pending
+  PATH="${BATS_TEST_TMPDIR}/odd:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${RELEASE_REPO}/.ci/release-publish" pending
   assert_failure 1
   assert_stderr --partial "cannot tell whether the release ${VERSION} is a draft: maybe"
 }
@@ -412,17 +414,30 @@ STUB
   assert_only_calls
 }
 
-@test 'pending: outside a repository, or with no changelog, is a failure' {
+@test 'pending: a copy in a tree that is no repository, or with no changelog, is a failure' {
   publish_repo
   rm -- "${RELEASE_REPO}/CHANGELOG.md"
   run_script pending
   assert_failure 1
   assert_stderr --partial 'no CHANGELOG.md at the top of'
-  mkdir "${BATS_TEST_TMPDIR}/not-a-repo"
+  install_release_scripts "${BATS_TEST_TMPDIR}/not-a-repo"
   cd "${BATS_TEST_TMPDIR}/not-a-repo" || return 1
-  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${SCRIPT}" pending
+  PATH="${STUB}/bin:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${BATS_TEST_TMPDIR}/not-a-repo/.ci/release-publish" pending
   assert_failure 1
-  assert_stderr --partial 'not inside a git repository'
+  assert_stderr --partial 'is not a git repository'
+}
+
+@test 'pending: run from another repository, it reads its own' {
+  publish_repo
+  local head
+  head="$(git -C "${RELEASE_REPO}" rev-parse HEAD)"
+  local -r own="${RELEASE_REPO}" own_stub="${STUB}"
+  # Another repository, holding no changelog at all.
+  release_repo
+  cd "${RELEASE_REPO}" || return 1
+  PATH="${own_stub}/bin:${PATH}" GITHUB_REPOSITORY="${REPOSITORY}" run --separate-stderr "${own}/.ci/release-publish" pending
+  assert_success
+  assert_output $'publish=true\nversion='"${VERSION}"$'\nsha='"${head}"
 }
 
 @test 'pending: only the merge that brought the version in publishes it' {
