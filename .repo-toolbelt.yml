@@ -34,6 +34,9 @@ check-issue-numbers:
     - path: test/release-version.bats
       match: 'merge --quiet --no-ff --message'
       reason: These fixtures are merge subjects as GitHub writes them, pull request number included, which the release tooling must drop.
+    - path: test/commitlintrc.bats
+      match: 'Closes #[0-9]+'
+      reason: The fixtures are merge-commit messages, whose footer holds the PR body's closing line.
 check-coverage-drop:
   reports:
     - format: go

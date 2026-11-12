@@ -2,9 +2,11 @@ extends:
   - "@commitlint/config-conventional"
 rules:
   # Merge commits use the PR body as their message. PR bodies routinely contain
-  # long paths and URLs that cannot be wrapped, so body line length is not
-  # enforced. Subject-length checks stay in effect.
+  # long paths, URLs and rulings that cannot be wrapped, so neither body nor
+  # footer line length is enforced: commitlint reads every line after the
+  # first `Word: text` line as footer. Subject-length checks stay in effect.
   body-max-line-length: [0, always, Infinity]
+  footer-max-line-length: [0, always, Infinity]
   header-max-length: [2, always, 72]
   # Explicit rather than inherited: flake.lock bumps auto-merge unattended, so
   # the allowed types must not move with config-conventional's default.

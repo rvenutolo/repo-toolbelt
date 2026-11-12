@@ -279,10 +279,7 @@ those steps refer to.
   - The body uses only `Closes #N` or `Part of #N`, never another closing keyword, each on a line by itself, because
     both skills tie a PR to its issue by matching that whole line (a substring match would take a PR for a longer
     issue number as this one's). It ends with the marker: an attribution line (such as "Generated with Claude Code")
-    goes above the `Closes #N` or `Part of #N` line, never after the marker. Every line of the body is at most 100
-    characters while `.commitlintrc.yml` leaves commitlint's footer rule at its inherited 100: the merge commit's
-    message is the PR body, and that rule reads every line after the first `Word:` line as footer. Wrap a long ruling
-    onto continuation lines indented two spaces.
+    goes above the `Closes #N` or `Part of #N` line, never after the marker.
   - The body carries every `Ruling:` the work made (from the ledger for plan-driven work, from the session's own
     calls otherwise), since nothing else survives the worktree. A ruling made after the PR opened is added with
     `gh pr edit <number> --body` (read the body first and add the rulings above the marker, so nothing already there
