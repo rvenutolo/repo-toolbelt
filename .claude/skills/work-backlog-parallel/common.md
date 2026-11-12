@@ -112,7 +112,7 @@ working, and nothing that arrives after your final message changes it.
   notice these itself. A consumer-impacting change is also a `Ruling:` in the PR body, as `halt-questions.md`'s
   default for that case asks; the `Summary:` line is its copy for the controller. `Summary:` lines are not rulings
   on the change: never put one in the PR body.
-- **PR bodies** follow the "PRs" bullet, its 100-character line limit and its body-edit procedure included (read the
+- **PR bodies** follow the "PRs" bullet, its body-edit procedure included (read the
   body, add the new `Ruling:` lines above the marker, never write the body anew).
 - **The superpowers plugin directory** is what `<main>/.claude/skills/work-backlog/permission-diff --superpowers-dir`
   prints: `code-reviewer.md` is `<it>/skills/requesting-code-review/code-reviewer.md`, and the plan scripts are under
