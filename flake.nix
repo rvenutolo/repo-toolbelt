@@ -195,9 +195,13 @@
             # Activate the tracked git hooks for this clone. Tolerant of failure
             # on purpose: a devShell that aborts on hook setup is worse than
             # inert hooks. Resolved via git rather than the flake's store path so
-            # it configures the working clone, not a read-only copy.
+            # it configures the working clone, not a read-only copy. Skipped on
+            # entry through .ci/in-devshell, which sets IN_DEVSHELL: the wrapper
+            # starts in the caller's directory, which can be another repo, and
+            # activation is for interactive entry from this one.
             shellHook = ''
-              if hooks_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+              if [[ -z "''${IN_DEVSHELL:-}" ]] \
+                && hooks_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
                 "$hooks_repo_root/.ci/activate-githooks" \
                   || echo 'warning: could not activate tracked git hooks' >&2
               fi
