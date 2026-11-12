@@ -383,9 +383,9 @@ the flake lacks fails here as it would in CI. A gate script takes that same repo
 from. `.ci/in-devshell <command>` is for commands that are not scripts, such as
 `./.ci/in-devshell go test ./...`. The exceptions are `.ci/in-devshell` itself, the wrapper every other script
 re-runs through, and the scripts marked `# devshell-exempt:` with their reason: `.ci/activate-githooks`, which the
-devShell's own startup runs, the shipped formatters and lints and the example consumer hooks, which run in consumer
-repos, and the Claude Code skill helpers under `.claude/skills/`, which run on the host. Outside the devShell the host
-needs bash 4.4+, git, GNU coreutils and nix.
+devShell's own startup runs on interactive entry, the shipped formatters and lints and the example consumer hooks,
+which run in consumer repos, and the Claude Code skill helpers under `.claude/skills/`, which run on the host. Outside
+the devShell the host needs bash 4.4+, git, GNU coreutils and nix.
 
 ```bash
 ./run-tests                            # Go tests and BATS under kcov; reports go to .coverage/

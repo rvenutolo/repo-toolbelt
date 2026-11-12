@@ -4,8 +4,9 @@
 #              directory so the repo's commit-msg, pre-commit and pre-push
 #              hooks fire. Repo-local git config cannot be committed, so
 #              without this the hooks sit inert. The flake devShell's
-#              shellHook calls it, which makes entering the shell the one
-#              onboarding step nobody skips. Idempotent and silent once the
+#              shellHook calls it on interactive entry (direnv or `nix
+#              develop`, not .ci/in-devshell), which makes entering the shell
+#              the one onboarding step nobody skips. Idempotent and silent once the
 #              value is correct, because it runs on every shell entry. A
 #              foreign core.hooksPath is overwritten and logged: leaving it
 #              would mean silently inert hooks.
